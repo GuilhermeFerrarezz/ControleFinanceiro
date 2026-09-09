@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { sequelize } from '@/src/lib/db';
 import { cookies } from 'next/headers';
-import { Empresa } from '@/src/models/Empresa';
 import { Usuario } from '@/src/models/Usuario';
+import { RefreshToken } from '@/src/models/RefreshToken';
 import * as jose from 'jose';
 import bcrypt from 'bcryptjs';
 
@@ -43,9 +42,18 @@ export async function POST(request: Request) {
             .setProtectedHeader({ alg: 'HS256' })
             .setExpirationTime('7d')
             .sign(refreshSecretKey);
-        console.log("Token gerado:", accessToken);
         
-        console.log("Token gerado:", refreshToken);
+        console.log("Token gerado:", accessToken);
+    
+        console.log("Refresh Token gerado:", refreshToken);
+        const dataExpiracao = new Date();
+        dataExpiracao.setDate(dataExpiracao.getDate() + 7)
+        await RefreshToken.create({
+            token: refreshToken,
+            userId: user.id,
+            expiresAt: dataExpiracao
+        })
+
 
     
         const cookieStore = await cookies();

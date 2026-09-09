@@ -1,6 +1,7 @@
 import { sequelize } from '../src/lib/db';
 import '../src/models/Empresa';
 import '../src/models/Usuario';
+import '../src/models/RefreshToken'
 
 async function syncDatabase() {
   try {

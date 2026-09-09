@@ -20,8 +20,8 @@ export async function middleware(request: NextRequest) {
     try {
       const secretKey = new TextEncoder().encode(process.env.JWT_SECRET!);
       const { payload } = await jose.jwtVerify(token, secretKey);
-
-    
+      console.log(payload)
+        
       const requestHeaders = new Headers(request.headers);
       
  
