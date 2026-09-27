@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 
 import { RefreshToken } from '@/src/models/RefreshToken';
 
-export async function POST(req: Request) {
+export async function DELETE(req: Request) {
     try {
         const cookieStore = await cookies()
         const refreshToken = cookieStore.get('refreshToken')?.value;

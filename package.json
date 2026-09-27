@@ -10,6 +10,7 @@
     "db:sync": "npx tsx scripts/sync-db.ts"
   },
   "dependencies": {
+    "axios": "^1.20.0",
     "jose": "^6.2.12",
     "next": "16.3.4",
     "pg": "^8.23.0",

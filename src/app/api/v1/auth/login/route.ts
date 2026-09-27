@@ -64,8 +64,14 @@ export async function POST(request: Request) {
             path: '/',
             maxAge: 60 * 60 * 24 * 7,
         })
-    
-        return NextResponse.json({ accessToken });
+        const payload = {
+            id: user.id,
+            nome: user.nome,
+            email: user.email,
+            empresaId: user.empresaId
+
+        }
+        return NextResponse.json({user: payload, accessToken });
 
 
 
