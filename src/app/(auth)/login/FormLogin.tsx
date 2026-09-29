@@ -1,8 +1,10 @@
 'use client';
+import { useRouter } from 'next/navigation';
 import React, { use, useState } from 'react';
 import { api } from '../../../lib/api'
-import { access } from 'fs';
+
 const FormLogin = () => {
+    const router = useRouter(); 
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [loading, setLoading] = useState(false)
@@ -23,12 +25,18 @@ const FormLogin = () => {
             if (user) {
                 localStorage.setItem('user', JSON.stringify(user));
             }
-            
-            
+            setMessage('Login bem-sucedido!');
+            setSucceed(true)    
+            router.push('/dashboard');
 
 
-        } catch (error) {
-            
+        } catch (error: any) {
+            console.error(error.status);
+            if (error.status == 401) {
+                setMessage('Credeniais inválidas')
+            } else {
+                setMessage(error.response?.data?.error || 'Erro ao conectar com servidor.');
+            }
         }
 
 

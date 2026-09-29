@@ -36,11 +36,26 @@ export async function middleware(request: NextRequest) {
     } catch (error) {
       return NextResponse.json({ erro: 'Sessão inválida ou expirada.' }, { status: 401 });
     }
+    }
+    const isPublicRoute = path === '/login' || path === '/cadastro';
+    const isApiRoute = path.startsWith('/api');
+    if (!isPublicRoute && !isApiRoute) {
+    
+    const refreshToken = request.cookies.get('refreshToken')?.value;
+    if (!refreshToken) {
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+    }
+    if (isPublicRoute) {
+    const refreshToken = request.cookies.get('refreshToken')?.value;
+    if (refreshToken) {
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    }
   }
-
+    
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: '/api/v1/:path*',
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };
