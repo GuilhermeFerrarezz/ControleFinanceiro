@@ -109,7 +109,7 @@ const FormLogin = () => {
         
         <button className="button-submit">Sign In</button>
         
-        <p className="p">Não tem uma conta? <span className="span">Sign Up</span></p>
+              <p className="p">Não tem uma conta? <span className="span" onClick={() => {router.push('/register');}}>Sign Up</span></p>
         <p className="p line">Ou com</p>
         
         <div className="flex-row">

@@ -37,7 +37,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.json({ erro: 'Sessão inválida ou expirada.' }, { status: 401 });
     }
     }
-    const isPublicRoute = path === '/login' || path === '/cadastro';
+    const isPublicRoute = path === '/login' || path === '/register';
     const isApiRoute = path.startsWith('/api');
     if (!isPublicRoute && !isApiRoute) {
     

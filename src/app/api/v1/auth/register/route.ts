@@ -53,10 +53,19 @@ export async function POST(request: Request) {
             throw dbError; 
     }
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('Erro no registro:', error);
-    return NextResponse.json(
-      { erro: 'Erro interno no servidor ao criar conta.' },
-      { status: 500 }
-    )}
+        
+        if (error.name === 'SequelizeUniqueConstraintError') {
+            return NextResponse.json(
+                { erro: 'Este email já está registado.' },
+                { status: 400 } 
+            );
+        }
+
+        return NextResponse.json(
+            { erro: 'Erro interno no servidor ao criar conta.' },
+            { status: 500 }
+        );
+    }
 }
