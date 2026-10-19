@@ -1,7 +1,8 @@
 'use client';
 import { api } from '../../../lib/api'
-import React, {useState } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+
 const FormCadastro = () => {
     const router = useRouter(); 
     const [email, setEmail] = useState('')
@@ -14,75 +15,45 @@ const FormCadastro = () => {
     const handleSubmit = async () => {
         setLoading(true)
         setMessage('')
-        console.log('Register')
         try {
-            const response = await api.post('/auth/register', 
-                {
+            const response = await api.post('/auth/register', {
                 nomeUsuario,
                 email,
-                "senha": password,
-                "papel": ""
-                }
-            )
-            console.log(response)
-            setMessage('Cadastro realizado')
+                senha: password,
+                papel: ""
+            })
+            setMessage('Cadastro realizado com sucesso!')
             setSucceed(true)
-            router.push('/login')
-
-
-
+            setTimeout(() => { 
+                router.push('/login')
+            }, 2000)
+            
         } catch (error: any) { 
-            if (error.status == 400) {
+            if (error.status == 400 || error.response?.status == 400) {
                 setMessage('Email já registrado')
             } else {
                 console.error(error);
                 setMessage(error.response?.data?.error || 'Erro ao comunicar com banco de dados.');
             }
+        } finally {
+            setLoading(false)
         }
-        }
+    }
     
-    return (
-        
-      
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  return (
     <div className="wrapper">
-            <form className="form" onSubmit={(e) => { 
-                e.preventDefault()
-                handleSubmit()
-            }}>
+      <form className="form" onSubmit={(e) => { 
+          e.preventDefault();
+          handleSubmit();
+      }}>
         
         {/* Campo de Nome */}
         <div className="flex-column">
           <label>Nome Completo</label>
         </div>
         <div className="inputForm">
-          {/* Ícone de Usuário */}
-          <svg xmlns="http://www.w3.org/2000/svg" width={20} viewBox="0 0 24 24" height={20} fill="none" stroke="#151717" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          {/* Ícone de Usuário ajustado para currentColor */}
+          <svg xmlns="http://www.w3.org/2000/svg" width={20} viewBox="0 0 24 24" height={20} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="icon-stroke">
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
             <circle cx="12" cy="7" r="4"></circle>
           </svg>
@@ -94,7 +65,7 @@ const FormCadastro = () => {
           <label>E-mail</label>
         </div>
         <div className="inputForm">
-          <svg xmlns="http://www.w3.org/2000/svg" width={20} viewBox="0 0 32 32" height={20}>
+          <svg xmlns="http://www.w3.org/2000/svg" width={20} viewBox="0 0 32 32" height={20} className="icon-fill">
             <g data-name="Layer 3" id="Layer_3">
               <path d="m30.853 13.87a15 15 0 0 0 -29.729 4.082 15.1 15.1 0 0 0 12.876 12.918 15.6 15.6 0 0 0 2.016.13 14.85 14.85 0 0 0 7.715-2.145 1 1 0 1 0 -1.031-1.711 13.007 13.007 0 1 1 5.458-6.529 2.149 2.149 0 0 1 -4.158-.759v-10.856a1 1 0 0 0 -2 0v1.726a8 8 0 1 0 .2 10.325 4.135 4.135 0 0 0 7.83.274 15.2 15.2 0 0 0 .823-7.455zm-14.853 8.13a6 6 0 1 1 6-6 6.006 6.006 0 0 1 -6 6z" />
             </g>
@@ -107,19 +78,26 @@ const FormCadastro = () => {
           <label>Senha</label>
         </div>
         <div className="inputForm">
-          <svg xmlns="http://www.w3.org/2000/svg" width={20} viewBox="-64 0 512 512" height={20}>
+          <svg xmlns="http://www.w3.org/2000/svg" width={20} viewBox="-64 0 512 512" height={20} className="icon-fill">
             <path d="m336 512h-288c-26.453125 0-48-21.523438-48-48v-224c0-26.476562 21.546875-48 48-48h288c26.453125 0 48 21.523438 48 48v224c0 26.476562-21.546875 48-48 48zm-288-288c-8.8125 0-16 7.167969-16 16v224c0 8.832031 7.1875 16 16 16h288c8.8125 0 16-7.167969 16-16v-224c0-8.832031-7.1875-16-16-16zm0 0" />
             <path d="m304 224c-8.832031 0-16-7.167969-16-16v-80c0-52.929688-43.070312-96-96-96s-96 43.070312-96 96v80c0 8.832031-7.167969 16-16 16s-16-7.167969-16-16v-80c0-70.59375 57.40625-128 128-128s128 57.40625 128 128v80c0 8.832031-7.167969 16-16 16zm0 0" />
           </svg>        
           <input placeholder="Mínimo de 6 caracteres" className="input" type="password" required value={password} onChange={(e) => setPassword(e.target.value)}/>
         </div>
         
-        <button className="button-submit" type="submit">Criar Conta</button>
+        <button className="button-submit" type="submit" disabled={loading}>
+            {loading ? 'A carregar...' : 'Criar Conta'}
+        </button>
         
         <p className="p">Já possui conta? <span className="span" onClick={()=>{router.push('/login')}}>Inicie sessão</span></p>
-        <p className="p line">Ou registre-se com</p>
         
-        <div className="flex-row">
+        <div className="divider">
+            <span className="line"></span>
+            <span className="divider-text">Ou registre-se com</span>
+            <span className="line"></span>
+        </div>
+        
+        <div className="social-row">
           <button type="button" className="btn google">
             <svg viewBox="0 0 512 512" y="0px" x="0px" xmlns="http://www.w3.org/2000/svg" id="Layer_1" width={20} version="1.1">
               <path d="M113.47,309.408L95.648,375.94l-65.139,1.378C11.042,341.211,0,299.9,0,256 c0-42.451,10.324-82.483,28.624-117.732h0.014l57.992,10.632l25.404,57.644c-5.317,15.501-8.215,32.141-8.215,49.456 C103.821,274.792,107.225,292.797,113.47,309.408z" style={{fill: '#FBBB00'}} />
@@ -135,10 +113,14 @@ const FormCadastro = () => {
               <g> <g> <path d="M15.769,0c0.053,0,0.106,0,0.162,0c0.13,1.606-0.483,2.806-1.228,3.675c-0.731,0.863-1.732,1.7-3.351,1.573 c-0.108-1.583,0.506-2.694,1.25-3.561C13.292,0.879,14.557,0.16,15.769,0z" /> <path d="M20.67,16.716c0,0.016,0,0.03,0,0.045c-0.455,1.378-1.104,2.559-1.896,3.655c-0.723,0.995-1.609,2.334-3.191,2.334 c-1.367,0-2.275-0.879-3.676-0.903c-1.482-0.024-2.297,0.735-3.652,0.926c-0.155,0-0.31,0-0.462,0 c-0.995-0.144-1.798-0.932-2.383-1.642c-1.725-2.098-3.058-4.808-3.306-8.276c0-0.34,0-0.679,0-1.019 c0.105-2.482,1.311-4.5,2.914-5.478c0.846-0.52,2.009-0.963,3.304-0.765c0.555,0.086,1.122,0.276,1.619,0.464 c0.471,0.181,1.06,0.502,1.618,0.485c0.378-0.011,0.754-0.208,1.135-0.347c1.116-0.403,2.21-0.865,3.652-0.648 c1.733,0.262,2.963,1.032,3.723,2.22c-1.466,0.933-2.625,2.339-2.427,4.74C17.818,14.688,19.086,15.964,20.67,16.716z" /> </g></g>
             </svg>
             Apple 
-                    </button>
-         {message && succeed == false ? <p className="responseMessage" style={{ color: 'red' }}>{message}</p> : <p style={{ color: 'green' }} className="response-message">{message}</p>}
-
+          </button>
         </div>
+        
+        {message && (
+          <p className="response-message" style={{ color: succeed ? '#10b981' : '#ef4444' }}>
+            {message}
+          </p>
+        )}
       </form>
 
       <style jsx>{`
@@ -146,113 +128,195 @@ const FormCadastro = () => {
           width: 100%;
           display: flex;
           justify-content: center;
+          padding: 20px;
+          box-sizing: border-box;
         }
 
         .form {
           display: flex;
           flex-direction: column;
-          gap: 10px;
+          gap: 16px;
           background-color: #ffffff;
-          padding: 30px;
+          padding: 40px 32px;
           width: 100%;
-          max-width: 450px;
-          border: solid 3px black;
-          border-radius: 20px;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-        }
-
-        ::placeholder {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-          color: #ccc6c6;
+          max-width: 420px;
+          border-radius: 24px;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+          border: 1px solid #f1f5f9;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          box-sizing: border-box;
         }
 
         .flex-column > label {
-          color: #151717;
+          color: #334155;
           font-weight: 600;
-          margin-top: 5px;
+          font-size: 0.9rem;
+          margin-bottom: -4px;
         }
 
         .inputForm {
-          border: 1.5px solid #ecedec;
-          border-radius: 10px;
-          height: 50px;
+          background-color: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-radius: 14px;
+          height: 52px;
           display: flex;
           align-items: center;
-          padding-left: 10px;
-          transition: 0.2s ease-in-out;
-        }
-
-        .input {
-          margin-left: 10px;
-          border-radius: 10px;
-          border: none;
-          width: 100%;
-          height: 100%;
-          color: black;
-        }
-
-        .input:focus {
-          outline: none;
+          padding: 0 16px;
+          transition: all 0.2s ease;
         }
 
         .inputForm:focus-within {
-          border: 1.5px solid #2d79f3;
+          border-color: #3b82f6;
+          background-color: #ffffff;
+          box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
         }
 
-        .flex-row {
-          display: flex;
-          flex-direction: row;
-          align-items: center;
-          gap: 10px;
-          justify-content: space-between;
+        /* Controle das cores dos SVGs (Fill e Stroke) */
+        .icon-fill { fill: #94a3b8; transition: fill 0.2s ease; }
+        .icon-stroke { stroke: #94a3b8; transition: stroke 0.2s ease; }
+        
+        .inputForm:focus-within .icon-fill { fill: #3b82f6; }
+        .inputForm:focus-within .icon-stroke { stroke: #3b82f6; }
+
+        .input {
+          margin-left: 12px;
+          border: none;
+          background: transparent;
+          width: 100%;
+          height: 100%;
+          color: #0f172a;
+          font-size: 0.95rem;
+          outline: none;
+        }
+
+        .input::placeholder {
+          color: #94a3b8;
         }
 
         .span {
-          font-size: 14px;
-          margin-left: 5px;
-          color: #2d79f3;
-          font-weight: 500;
+          font-size: 0.875rem;
+          color: #3b82f6;
+          font-weight: 600;
           cursor: pointer;
+          transition: color 0.2s ease;
+        }
+
+        .span:hover {
+          color: #2563eb;
         }
 
         .button-submit {
-          margin: 20px 0 10px 0;
-          background-color: #151717;
-          border: none;
+          margin-top: 8px;
+          background-color: #0f172a;
           color: white;
-          font-size: 15px;
-          font-weight: 500;
-          border-radius: 10px;
-          height: 50px;
+          border: none;
+          font-size: 1rem;
+          font-weight: 600;
+          border-radius: 14px;
+          height: 52px;
           width: 100%;
           cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .button-submit:hover:not(:disabled) {
+          background-color: #1e293b;
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15);
+        }
+        
+        .button-submit:active:not(:disabled) {
+          transform: translateY(0);
+        }
+
+        .button-submit:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
         }
 
         .p {
           text-align: center;
-          color: black;
-          font-size: 14px;
-          margin: 5px 0;
+          color: #64748b;
+          font-size: 0.875rem;
+          margin: 4px 0;
+        }
+
+        .divider {
+          display: flex;
+          align-items: center;
+          margin: 8px 0;
+        }
+        
+        .line {
+          flex: 1;
+          height: 1px;
+          background-color: #e2e8f0;
+        }
+        
+        .divider-text {
+          padding: 0 14px;
+          color: #94a3b8;
+          font-size: 0.8rem;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .social-row {
+          display: flex;
+          gap: 12px;
+          width: 100%;
         }
 
         .btn {
-          margin-top: 10px;
-          width: 100%;
-          height: 50px;
-          border-radius: 10px;
+          flex: 1;
+          height: 52px;
+          border-radius: 14px;
           display: flex;
           justify-content: center;
           align-items: center;
-          font-weight: 500;
+          font-weight: 600;
+          font-size: 0.95rem;
           gap: 10px;
-          border: 1px solid #ededef;
-          background-color: white;
+          border: 1px solid #e2e8f0;
+          background-color: #ffffff;
+          color: #334155;
           cursor: pointer;
-          transition: 0.2s ease-in-out;
+          transition: all 0.2s ease;
         }
 
         .btn:hover {
-          border: 1px solid #2d79f3;
+          background-color: #f8fafc;
+          border-color: #cbd5e1;
+        }
+
+        .response-message {
+          text-align: center;
+          font-size: 0.9rem;
+          font-weight: 500;
+          margin-top: 8px;
+        }
+
+        /* === RESPONSIVIDADE PARA CELULARES === */
+        @media (max-width: 480px) {
+          .wrapper {
+            padding: 16px;
+          }
+
+          .form {
+            padding: 32px 24px;
+            border-radius: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            gap: 14px;
+          }
+
+          .inputForm, .button-submit, .btn {
+            height: 48px;
+          }
+
+          .social-row {
+            flex-direction: column;
+            gap: 10px;
+          }
         }
       `}</style>
     </div>

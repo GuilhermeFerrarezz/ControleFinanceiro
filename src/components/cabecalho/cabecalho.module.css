@@ -98,3 +98,48 @@
 .logoutBtn:hover {
   background-color: #fef2f2;
 }
+
+@media (max-width: 480px) {
+  .headerContainer {
+    min-width: 0;
+    gap: 0.5rem;
+    padding: 0 0.75rem;
+  }
+
+  .logo {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .logo h2 {
+    overflow: hidden;
+    font-size: 1.15rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .profileSection {
+    min-width: 0;
+    gap: 0.5rem;
+  }
+
+  .userInfo {
+    min-width: 0;
+  }
+
+  .userName,
+  .userEmail {
+    max-width: 34vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .userName {
+    font-size: 0.85rem;
+  }
+
+  .userEmail {
+    font-size: 0.7rem;
+  }
+}

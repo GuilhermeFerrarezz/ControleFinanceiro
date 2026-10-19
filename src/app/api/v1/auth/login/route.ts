@@ -23,8 +23,12 @@ export async function POST(request: Request) {
         const usuario = await Usuario.findOne({ where: { email } })
         const user = usuario?.dataValues
         console.log(user)
-        console.log(user.senha)
-        if (!usuario || !(await bcrypt.compare(String(senha), user.senha))) {
+        if (!usuario) {
+            return NextResponse.json({ erro: 'Credenciais inválidas' }, { status: 401 });
+        }
+        // 2. SEGUNDO: Só compara a senha porque agora TEMOS A CERTEZA que "user" existe
+        const senhaValida = await bcrypt.compare(String(senha), user.senha);
+        if (!senhaValida) {
             return NextResponse.json({ erro: 'Credenciais inválidas' }, { status: 401 });
         }
         
@@ -59,8 +63,8 @@ export async function POST(request: Request) {
         const cookieStore = await cookies();
         cookieStore.set('refreshToken', refreshToken, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
+            secure: false, //process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
             path: '/',
             maxAge: 60 * 60 * 24 * 7,
         })

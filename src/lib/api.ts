@@ -2,7 +2,8 @@ import axios from 'axios';
 
 export const api = axios.create({
     baseURL: '/api/v1',
-    timeout: 10000
+    timeout: 10000,
+    withCredentials: true,
 });
 
 api.interceptors.request.use(
@@ -29,7 +30,7 @@ api.interceptors.response.use(
             originalRequest._retry = true;
         
             try {
-                const response = await axios.post('/api/v1/auth/refresh');
+                const response = await axios.post('/api/v1/auth/refresh',{}, { withCredentials: true });
                 const { accessToken } = response.data;
                 localStorage.setItem('accessToken', accessToken);
                 originalRequest.headers.Authorization = `Bearer ${accessToken}`;
