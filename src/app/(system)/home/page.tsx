@@ -1,45 +1,10 @@
-'use client'
-import React, { useEffect, useState } from 'react';
-import styles from './home.module.css';
+import { redirect } from 'next/navigation';
 import Header from '@/src/components/cabecalho/page';
-
-export default function Home() {
-    const [user, setUser] = useState<any>(null)
-    const loadUser = async () => {
-         const savedUser = localStorage.getItem('user');
-        if (savedUser) {
-            setUser(JSON.parse(savedUser));
-            console.log(savedUser)
-        }
-
-
-    }
-    useEffect(() => {
-        loadUser()
-    }, []);
-    
-
-    return (
-        <>
-            <Header nome={user?.empresaId !== null ? 'Restaurante do Jose' : 'HOME'}></Header>
-        
-        </>
-        
-        
-
-    )
-
-
-
-
-
-
-
-
-
-
-
-
-
+import { currentUser } from '@/src/lib/auth';
+import CompanyForm from './CompanyForm';
+export default async function Home() {
+  const user = await currentUser();
+  if (!user) redirect('/login');
+  if (user.empresaId) redirect('/dashboard');
+  return <><Header nome="Configurar restaurante" user={user} /><main style={{ padding: 24 }}><CompanyForm /></main></>;
 }
-

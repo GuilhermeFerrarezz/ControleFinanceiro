@@ -1,11 +1,8 @@
-import { NextResponse } from "next/server";
-
-export async function GET(request: Request) {
-    const userId = request.headers.get('user-id');
-  
-    console.log("ID recuperado na API:", userId);
-
-    return NextResponse.json({ userId: userId })
-
-
+import { NextResponse } from 'next/server';
+import { clearSession, currentUser, jsonError } from '@/src/lib/auth';
+export async function GET() {
+  const user = await currentUser();
+  if (!user) return clearSession(jsonError('Sessão inválida ou expirada.', 401));
+  // Identity and tenant always come from the server session, never request headers.
+  return NextResponse.json({ user }, { headers: { 'Cache-Control': 'no-store' } });
 }

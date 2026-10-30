@@ -8,8 +8,9 @@ export const sequelize =
   new Sequelize({
     dialect: 'sqlite',
     dialectModule: sqlite3,
-    storage: './database.sqlite',
+    storage: process.env.DATABASE_STORAGE || './database.sqlite',
     logging: false,
+    retry: { max: 5 },
   });
 
 if (process.env.NODE_ENV !== 'production') {

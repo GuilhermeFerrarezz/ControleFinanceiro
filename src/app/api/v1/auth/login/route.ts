@@ -1,87 +1,40 @@
-import { NextResponse } from "next/server";
-import { cookies } from 'next/headers';
-import { Usuario } from '@/src/models/Usuario';
-import { RefreshToken } from '@/src/models/RefreshToken';
-import * as jose from 'jose';
+import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
+import { Op, fn, col, where } from 'sequelize';
+import { Usuario } from '@/src/models/Usuario';
+import { Empresa } from '@/src/models/Empresa';
+import { cookieOptions, createSession, jsonError, revokeSession, SESSION_COOKIE, trustedOrigin } from '@/src/lib/auth';
+import { cookies } from 'next/headers';
+import { emailValue, InputError, passwordValue, readBody } from '@/src/lib/validation';
+import { consumeLimit } from '@/src/lib/rate-limit';
 
-
+// A fixed hash keeps nonexistent accounts on the same bcrypt comparison path.
+const dummyHash = bcrypt.hashSync('not-a-real-user-password', 10);
 export async function POST(request: Request) {
-    try {
-        const { email, senha } = await request.json();
-        if (!email || !senha) {
-           
-            return NextResponse.json(
-                { erro: 'Preencha todos os campos obrigatórios.' },
-                { status: 400 }
-            );
-        }
-
-
-
-
-        const usuario = await Usuario.findOne({ where: { email } })
-        const user = usuario?.dataValues
-        console.log(user)
-        if (!usuario) {
-            return NextResponse.json({ erro: 'Credenciais inválidas' }, { status: 401 });
-        }
-        // 2. SEGUNDO: Só compara a senha porque agora TEMOS A CERTEZA que "user" existe
-        const senhaValida = await bcrypt.compare(String(senha), user.senha);
-        if (!senhaValida) {
-            return NextResponse.json({ erro: 'Credenciais inválidas' }, { status: 401 });
-        }
-        
-        const secretKey = new TextEncoder().encode(process.env.JWT_SECRET!);
-        const refreshSecretKey = new TextEncoder().encode(process.env.JWT_REFRESH_SECRET!);
-    
-
-        const accessToken = await new jose.SignJWT({ userId: user.id })
-            .setProtectedHeader({ alg: 'HS256' })
-            .setExpirationTime('15m')
-            .sign(secretKey);
-
-    
-        const refreshToken = await new jose.SignJWT({ userId: user.id })
-            .setProtectedHeader({ alg: 'HS256' })
-            .setExpirationTime('7d')
-            .sign(refreshSecretKey);
-        
-        console.log("Token gerado:", accessToken);
-    
-        console.log("Refresh Token gerado:", refreshToken);
-        const dataExpiracao = new Date();
-        dataExpiracao.setDate(dataExpiracao.getDate() + 7)
-        await RefreshToken.create({
-            token: refreshToken,
-            userId: user.id,
-            expiresAt: dataExpiracao
-        })
-
-
-    
-        const cookieStore = await cookies();
-        cookieStore.set('refreshToken', refreshToken, {
-            httpOnly: true,
-            secure: false, //process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            path: '/',
-            maxAge: 60 * 60 * 24 * 7,
-        })
-        const payload = {
-            id: user.id,
-            nome: user.nome,
-            email: user.email,
-            empresaId: user.empresaId
-
-        }
-        return NextResponse.json({user: payload, accessToken });
-
-
-
-    } catch (error) {
-        console.log(error)
-        return NextResponse.json({ erro: 'Erro interno no servidor.', }, { status: 500 });
-        
+  if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
+  try {
+    if (!await consumeLimit('login:global', 100, 60_000)) return jsonError('Muitas tentativas. Aguarde um minuto.', 429);
+    const body = await readBody(request);
+    const email = emailValue(body.email);
+    const senha = passwordValue(body.senha);
+    if (body.remember !== undefined && typeof body.remember !== 'boolean') throw new InputError('Opção de sessão inválida.');
+    if (!await consumeLimit(`login:${email}`, 5, 15 * 60_000)) return jsonError('Muitas tentativas. Aguarde 15 minutos.', 429);
+    const usuario = await Usuario.findOne({ where: { [Op.and]: [where(fn('lower', fn('trim', col('email'))), email)] } });
+    const valid = await bcrypt.compare(senha, usuario ? usuario.get('senha') as string : dummyHash);
+    if (!usuario || !valid) return jsonError('Credenciais inválidas.', 401);
+    if (usuario.get('empresaId')) {
+      const empresa = await Empresa.findByPk(usuario.get('empresaId') as string);
+      if (!empresa || !empresa.get('ativo')) return jsonError('Conta indisponível. Contate o responsável pelo restaurante.', 403);
     }
+    const cookieStore = await cookies();
+    const session = await createSession(usuario.get('id') as string, body.remember === true);
+    await revokeSession(cookieStore.get(SESSION_COOKIE)?.value);
+    const response = NextResponse.json({ message: 'Login realizado.' }, { headers: { 'Cache-Control': 'no-store' } });
+    response.cookies.set(SESSION_COOKIE, session.token, { ...cookieOptions, ...(body.remember === true ? { maxAge: session.lifetime } : {}) });
+    response.cookies.set('refreshToken', '', { ...cookieOptions, maxAge: 0 });
+    return response;
+  } catch (error) {
+    if (error instanceof InputError) return jsonError(error.message, 400);
+    return jsonError('Não foi possível entrar. Tente novamente.', 500);
+  }
 }

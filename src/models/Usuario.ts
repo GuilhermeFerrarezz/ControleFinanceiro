@@ -29,7 +29,7 @@ Usuario.init(
             defaultValue: 'colaborador',
         },
         empresaId: {
-            type: DataTypes.INTEGER,
+            type: DataTypes.UUID,
             allowNull: true,
             references: {
                 model: Empresa,

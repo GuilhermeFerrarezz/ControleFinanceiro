@@ -1,52 +1,10 @@
 import axios from 'axios';
-
-export const api = axios.create({
-    baseURL: '/api/v1',
-    timeout: 10000,
-    withCredentials: true,
-});
-
-api.interceptors.request.use(
-    (config) => {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-        if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-        }
-        return config
-    },
-    (error) => {
-    return Promise.reject(error);
-  }
-)
-
-
-api.interceptors.response.use(
-    (response) => {
-        return response
-    },
-    async (error) => {
-        const originalRequest = error.config;
-        if (error.response?.status === 401 && !originalRequest._retry) {
-            originalRequest._retry = true;
-        
-            try {
-                const response = await axios.post('/api/v1/auth/refresh',{}, { withCredentials: true });
-                const { accessToken } = response.data;
-                localStorage.setItem('accessToken', accessToken);
-                originalRequest.headers.Authorization = `Bearer ${accessToken}`;
-                return api(originalRequest);
-            
-            } catch (refreshError) {
-                localStorage.removeItem('accessToken');
-                localStorage.removeItem('userId');
-                if (typeof window !== 'undefined') {
-                    window.location.href = '/login';
-                }
-                return Promise.reject(refreshError);
-            }
-        }
-        return Promise.reject(error);
-    }
-
-)
-
+export const api = axios.create({ baseURL: '/api/v1', timeout: 10000, withCredentials: true });
+export function clearLegacyAuth() {
+  try { for (const key of ['accessToken', 'token', 'user', 'userId']) localStorage.removeItem(key); }
+  catch { /* Storage can be unavailable in private browsing; sessions use cookies. */ }
+}
+export function errorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) return error.response?.data?.erro || 'Não foi possível comunicar com o servidor.';
+  return 'Ocorreu um erro inesperado. Tente novamente.';
+}

@@ -3,10 +3,10 @@ import { sequelize } from '../lib/db'
 import { UUID } from 'crypto';
 
 export class Empresa extends Model {
-    public id!: UUID;
-    public nome!: string;
-    public cnpj!: string;
-    public ativo!: boolean;
+    declare id: UUID;
+    declare nome: string;
+    declare cnpj: string | null;
+    declare ativo: boolean;
 }
 Empresa.init(
     {

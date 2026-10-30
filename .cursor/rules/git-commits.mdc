@@ -1,0 +1,20 @@
+---
+description: Auto-generate Git commit commands for every code modification
+globs: ["*"]
+---
+# Git Commit Standards
+
+CRITICAL RULE: EVERY TIME you generate, modify, or refactor code for me in this chat, you MUST AUTOMATICALLY append the `git commit` command at the very end of your response. I will NOT ask for it. You must do it proactively.
+
+1. CONVENTIONAL COMMITS STANDARD:
+   - Use standard prefixes: `feat:` (new feature), `fix:` (bug fix), `chore:` (maintenance/config), `refactor:` (code refactoring), `style:` (formatting), `docs:` (documentation).
+
+2. MANDATORY OUTPUT FORMAT:
+   - Write the commit message entirely in ENGLISH.
+   - The command must use the `-m` flag for the title and a second `-m` for the description.
+   - Provide ONLY the bash code block for the git commands at the end of your message.
+
+Example of your mandatory ending:
+```bash
+git add .
+git commit -m "feat: add expense entry form" -m "Create React component with Next.js integration and BRL currency mask"
