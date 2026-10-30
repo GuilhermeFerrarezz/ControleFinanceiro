@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, errorMessage } from '@/src/lib/api';
-import { addDays, displayDate, EXPENSE_CATEGORIES, money, monthPeriod, todayInSaoPaulo, type ExpenseDashboardData, type ExpenseFilters, type ExpenseRecord } from '@/src/lib/expense-shared';
+import { addDays, displayDate, EXPENSE_CATEGORIES, money, monthPeriod, yearPeriod, selectedPeriodYear, todayInSaoPaulo, type ExpenseDashboardData, type ExpenseFilters, type ExpenseRecord } from '@/src/lib/expense-shared';
 import RestaurantSwitcher from '@/src/app/(system)/dashboard/RestaurantSwitcher';
 import ExpenseCharts from './ExpenseCharts';
 import DemoDataControls from './DemoDataControls';
@@ -86,6 +86,11 @@ export default function FinancialDashboard({ initialData, view, user, restaurant
     }} />}
     <section className={styles.filtersCard} aria-label="Filtros do período"><form onSubmit={apply} className={styles.filters}>
       <div className={styles.periodShortcuts}><span>Ver período</span><div><button type="button" onClick={() => preset('month')}>Mês atual</button><button type="button" onClick={() => preset('previous')}>Mês anterior</button><button type="button" onClick={() => preset('week')}>Últimos 7 dias</button></div></div>
+      <label className={styles.filterField} htmlFor="filter-year">Ano<select id="filter-year" value={selectedPeriodYear(draft)} disabled={loading} onChange={event=>{
+        if(!event.target.value) return;
+        const filters={...draft,...yearPeriod(Number(event.target.value)),page:1};
+        setDraft(filters);setNotice('');void load(filters);
+      }}><option value="">Período personalizado</option>{Array.from(new Set([...data.years,Number(draft.start.slice(0,4))])).sort((a,b)=>b-a).map(year=><option key={year} value={year}>{year}</option>)}</select></label>
       <label className={styles.filterField} htmlFor="filter-start">De<input id="filter-start" type="date" min="2000-01-01" max="2100-12-31" required value={draft.start} onChange={event => setDraft({ ...draft, start: event.target.value })} /></label>
       <label className={styles.filterField} htmlFor="filter-end">Até<input id="filter-end" type="date" min="2000-01-01" max="2100-12-31" required value={draft.end} onChange={event => setDraft({ ...draft, end: event.target.value })} /></label>
       <label className={styles.filterField} htmlFor="filter-category">Categoria<select id="filter-category" value={draft.category} onChange={event => setDraft({ ...draft, category: event.target.value })}><option value="">Todas as categorias</option>{EXPENSE_CATEGORIES.map(category => <option key={category.id} value={category.id}>{category.label}</option>)}</select></label>

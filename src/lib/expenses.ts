@@ -1,7 +1,7 @@
-import { countDemoExpenses, expenseCategories, expenseDaily, expenseTotals, findExpense, insertExpense, insertExpenseAudit, listExpenses, updateExpense, type IExpense } from '../models/Expense';
+import { countDemoExpenses, expenseYears, expenseCategories, expenseDaily, expenseTotals, findExpense, insertExpense, insertExpenseAudit, listExpenses, updateExpense, type IExpense } from '../models/Expense';
 import { inTransaction } from './postgres';
 import { InputError } from './validation';
-import { addDays, daysBetween, EXPENSE_CATEGORIES, MAX_AMOUNT_CENTS, monthPeriod, PAYMENT_METHODS, type ExpenseDashboardData, type ExpenseFilters, type ExpenseInput, type ExpenseRecord } from './expense-shared';
+import { addDays, daysBetween, EXPENSE_CATEGORIES, MAX_AMOUNT_CENTS, monthPeriod, yearPeriod, todayInSaoPaulo, PAYMENT_METHODS, type ExpenseDashboardData, type ExpenseFilters, type ExpenseInput, type ExpenseRecord } from './expense-shared';
 
 export type ExpenseActor = { id: string; empresaId: string; role?: string };
 export class ExpenseError extends Error {
@@ -38,9 +38,11 @@ export function versionValue(value: unknown) {
   return value as number;
 }
 export function expenseFilters(params = new URLSearchParams()): ExpenseFilters {
-  const defaults = monthPeriod();
-  const start = dateValue(params.get('start') || defaults.start);
-  const end = dateValue(params.get('end') || defaults.end);
+  const year = params.get('year');
+  if (year !== null && !/^(20[0-9]{2}|2100)$/.test(year)) throw new InputError('Escolha um ano válido.');
+  const defaults = year === null ? monthPeriod() : yearPeriod(Number(year));
+  const start = dateValue(year === null ? params.get('start') || defaults.start : defaults.start);
+  const end = dateValue(year === null ? params.get('end') || defaults.end : defaults.end);
   if (start > end || daysBetween(start, end) > 366) throw new InputError('Escolha um período de até 366 dias, com início anterior ao fim.');
   const category = params.get('category') || '';
   const status = params.get('status') || '';
@@ -84,6 +86,7 @@ export async function expenseDashboard(actor: ExpenseActor,filters: ExpenseFilte
   return inTransaction(async client => {
     const totals = await expenseTotals(actor.empresaId,filters,client);
     const demoCount = await countDemoExpenses(actor.empresaId,client);
+    const years = Array.from(new Set([Number(todayInSaoPaulo().slice(0,4)), ...await expenseYears(actor.empresaId,client)])).sort((a,b)=>b-a);
     const pageSize=15, pages=Math.max(1,Math.ceil(totals.count/pageSize)), page=Math.min(filters.page,pages);
     const expenses = await listExpenses(actor.empresaId,filters,pageSize,(page-1)*pageSize,client);
     const categories = await expenseCategories(actor.empresaId,filters,client);
@@ -92,7 +95,7 @@ export async function expenseDashboard(actor: ExpenseActor,filters: ExpenseFilte
     const previous = await expenseTotals(actor.empresaId,{...filters,start:addDays(previousEnd,-(duration-1)),end:previousEnd},client);
     const byDate=new Map(daily.map(day=>[day.date,day.totalCents]));
     const series=Array.from({length:duration},(_,index)=>{const date=addDays(filters.start,index);return {date,totalCents:byDate.get(date)||0};});
-    return { filters:{...filters,page},expenses:expenses.map(row=>toRecord(row,actor)),count:totals.count,pages,pageSize,demoCount,
+    return { filters:{...filters,page},expenses:expenses.map(row=>toRecord(row,actor)),count:totals.count,pages,pageSize,demoCount,years,
       summary:{...totals,averageDailyCents:Math.round(totals.totalCents/duration),previousTotalCents:previous.totalCents,
         changePercent:previous.totalCents>0 ? Math.round((totals.totalCents-previous.totalCents)/previous.totalCents*1000)/10 : null},categories,series };
   },true);

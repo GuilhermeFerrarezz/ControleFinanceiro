@@ -10,7 +10,7 @@ Sistema para organizar a gestão financeira de restaurantes, pensado para acompa
 - **Acessos individuais:** cada pessoa usa seu próprio e-mail e senha. A senha deve ter pelo menos 6 caracteres.
 - **Mais de um restaurante:** uma conta pode participar de diferentes restaurantes e alternar entre eles no painel.
 
-A central financeira reúne o resumo dos gastos, valores pagos e a pagar, média diária e gráficos de evolução e categorias. Use os filtros para consultar períodos, categorias e situações de pagamento.
+A central financeira reúne o resumo dos gastos, valores pagos e a pagar, média diária e gráficos de evolução e categorias. Use o seletor de ano ou as datas para consultar períodos, categorias e situações de pagamento. No gráfico de categorias, clique ou toque em uma fatia para ver seu nome, valor e percentual.
 
 Em **Novo gasto**, informe descrição, valor, data e categoria. Você também pode registrar o local de compra ou favorecido, a forma de pagamento e observações. Há categorias para alimentos, funcionários, produtos, bebidas, embalagens, contas, manutenção, impostos e outros gastos.
 
@@ -65,4 +65,4 @@ Se o IP do computador mudar, reinicie a aplicação. Para parar o servidor, pres
 
 ### Testar com dados de exemplo
 
-Com `ENABLE_DEMO_DATA=true` no `.env`, o dono vê os controles **Restaurar exemplos** e **Excluir exemplos** no painel e na lista de lançamentos. São 54 gastos fictícios entre o mês atual e o anterior, identificados com a etiqueta **Exemplo**. Restaurar recompõe os exemplos e desfaz alterações feitas neles; excluir retira somente esses registros. Os gastos reais são preservados. Para ocultar os controles, defina `ENABLE_DEMO_DATA=false` e reinicie a aplicação.
+Com `ENABLE_DEMO_DATA=true` no `.env`, o dono vê os controles **Restaurar exemplos** e **Excluir exemplos** no painel e na lista de lançamentos. São 18 gastos fictícios por mês, de janeiro de 2025 até a data atual, identificados com a etiqueta **Exemplo**. Restaurar recompõe os exemplos e desfaz alterações feitas neles; excluir retira somente esses registros. Os gastos reais são preservados. Para ocultar os controles, defina `ENABLE_DEMO_DATA=false` e reinicie a aplicação.

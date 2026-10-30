@@ -91,3 +91,7 @@ export async function restoreDemoExpense(id: string, empresaId: string, client: 
 export async function countDemoExpenses(empresaId: string, client: Queryable) {
   return Number((await client.query<{ count: string }>('SELECT count(*) FROM expenses WHERE empresa_id=$1 AND demo_key IS NOT NULL AND deleted_at IS NULL', [empresaId])).rows[0].count);
 }
+
+export async function expenseYears(empresaId: string, client: Queryable) {
+  return (await client.query<{ year:number }>('SELECT DISTINCT EXTRACT(YEAR FROM date)::integer AS year FROM expenses WHERE empresa_id=$1 AND deleted_at IS NULL ORDER BY year DESC',[empresaId])).rows.map(row=>row.year);
+}

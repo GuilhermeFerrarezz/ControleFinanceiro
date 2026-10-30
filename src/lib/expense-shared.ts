@@ -41,6 +41,23 @@ export function parseMoneyInput(value: string): number | null {
   return Number.isSafeInteger(cents) && cents > 0 && cents <= MAX_AMOUNT_CENTS ? cents : null;
 }
 export function monthPeriod(today = todayInSaoPaulo()) { return { start: `${today.slice(0, 7)}-01`, end: today }; }
+export function yearPeriod(year: number, today = todayInSaoPaulo()) {
+  return { start: `${year}-01-01`, end: year === Number(today.slice(0, 4)) ? today : `${year}-12-31` };
+}
+export function selectedPeriodYear(period: { start: string; end: string }, today = todayInSaoPaulo()) {
+  const year = Number(period.start.slice(0, 4));
+  const expected = yearPeriod(year, today);
+  return period.start === expected.start && period.end === expected.end ? String(year) : '';
+}
+export function expenseTrend(daily: { date: string; totalCents: number }[]) {
+  if (daily.length <= 90) return { monthly: false, series: daily };
+  const months = new Map<string, number>();
+  for (const day of daily) {
+    const month = `${day.date.slice(0,7)}-01`;
+    months.set(month,(months.get(month) || 0)+day.totalCents);
+  }
+  return { monthly: true, series: Array.from(months,([date,totalCents])=>({date,totalCents})) };
+}
 export function newExpenseRequestId() {
   // getRandomValues works on LAN HTTP too; randomUUID requires a secure context.
   const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -52,7 +69,7 @@ export type ExpenseInput = { description: string; amountCents: number; date: str
 export type ExpenseRecord = ExpenseInput & { id: string; createdBy: string; authorName: string; version: number; createdAt: string; canManage: boolean; isDemo: boolean };
 export type ExpenseFilters = { start: string; end: string; category: string; status: string; q: string; page: number };
 export type ExpenseDashboardData = {
-  filters: ExpenseFilters; expenses: ExpenseRecord[]; count: number; pages: number; pageSize: number; demoCount: number;
+  filters: ExpenseFilters; expenses: ExpenseRecord[]; count: number; pages: number; pageSize: number; demoCount: number; years: number[];
   summary: { totalCents: number; paidCents: number; pendingCents: number; count: number; averageDailyCents: number; previousTotalCents: number; changePercent: number | null };
   categories: { category: ExpenseCategory; totalCents: number; count: number }[];
   series: { date: string; totalCents: number }[];

@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import { createServer } from 'node:net';
 import { randomUUID } from 'node:crypto';
 import { isolatedDatabase, query } from './postgres-fixture';
+import { demoSamples } from '../src/lib/demo-data';
 
 test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async t => {
   const fixture = await isolatedDatabase();
@@ -141,27 +142,45 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal((await api('/demo-data',employee,'POST',{action:'restore'})).status,403);
     assert.equal((await api('/demo-data',owner,'POST',{action:'restore'},'https://hostil.invalid')).status,403);
     assert.equal((await api('/demo-data',owner,'POST',{action:'truncate'})).status,400);
+    const expectedDemoCount=demoSamples().length;
+    const legacyResponse=await create(owner,{description:'Exemplo da versão anterior'});
+    const legacyId=(await legacyResponse.json()).id;
+    await query(fixture.pool,'UPDATE expenses SET demo_key=$1 WHERE id=$2',['v1-current-0',legacyId]);
+
     const before = await query(fixture.pool,'SELECT * FROM expenses WHERE empresa_id=$1 AND demo_key IS NULL ORDER BY id',[ownerUser.empresaId]);
     const restore = await api('/demo-data',owner,'POST',{action:'restore',empresaId:'forged'});
     assert.equal(restore.status,200,await restore.clone().text());
-    assert.equal((await restore.json()).count,54);
-    const examples = await query<{id:string}>(fixture.pool,'SELECT id FROM expenses WHERE empresa_id=$1 AND demo_key IS NOT NULL ORDER BY id',[ownerUser.empresaId]);
-    assert.equal(examples.length,54);
-    const demo = await list(owner,''); assert.equal(demo.demoCount,54);
+    assert.equal((await restore.json()).count,expectedDemoCount);
+    const legacy=await query(fixture.pool,'SELECT deleted_at FROM expenses WHERE id=$1',[legacyId]);
+    assert.ok(legacy[0].deleted_at);
+
+    const examples = await query<{id:string}>(fixture.pool,'SELECT id FROM expenses WHERE empresa_id=$1 AND demo_key IS NOT NULL AND deleted_at IS NULL ORDER BY id',[ownerUser.empresaId]);
+    assert.equal(examples.length,expectedDemoCount);
+    const demo = await list(owner,''); assert.equal(demo.demoCount,expectedDemoCount);
+    const annual = await list(owner,'year=2025');
+    assert.equal(annual.count,216); assert.equal(annual.filters.start,'2025-01-01'); assert.equal(annual.filters.end,'2025-12-31');
+    assert.equal(annual.series.length,365); assert.ok(annual.years.includes(2025));
+    assert.ok(annual.expenses.every((row:{date:string;isDemo:boolean})=>row.date.startsWith('2025-') && row.isDemo));
+    assert.equal(annual.categories.reduce((sum:number,row:{totalCents:number})=>sum+row.totalCents,0),annual.summary.totalCents);
+    assert.equal((await list(other,'year=2025')).count,0);
+    assert.equal((await api('/expenses?year=2025%20OR%201=1',owner)).status,400);
+    const csv2025=await (await api('/expenses?year=2025&format=csv',owner)).text();
+    assert.match(csv2025, /2025-01-/); assert.doesNotMatch(csv2025, /"2026-/);
+
     assert.equal(demo.categories.length,9); assert.ok(demo.expenses.some((row:{isDemo:boolean})=>row.isDemo));
     assert.equal((await list(other,'')).demoCount,0);
     const repeated = await Promise.all([api('/demo-data',owner,'POST',{action:'restore'}),api('/demo-data',owner,'POST',{action:'restore'})]);
     assert.deepEqual(repeated.map(response=>response.status),[200,200]);
-    assert.deepEqual(await query(fixture.pool,'SELECT id FROM expenses WHERE empresa_id=$1 AND demo_key IS NOT NULL ORDER BY id',[ownerUser.empresaId]),examples);
+    assert.deepEqual(await query(fixture.pool,'SELECT id FROM expenses WHERE empresa_id=$1 AND demo_key IS NOT NULL AND deleted_at IS NULL ORDER BY id',[ownerUser.empresaId]),examples);
     assert.equal((await api('/demo-data',other,'POST',{action:'clear'})).status,200);
-    assert.equal((await list(owner,'')).demoCount,54);
+    assert.equal((await list(owner,'')).demoCount,expectedDemoCount);
     const cleared = await api('/demo-data',owner,'POST',{action:'clear'});
     assert.equal(cleared.status,200); assert.equal((await cleared.json()).count,0);
     const unchanged = await query(fixture.pool,'SELECT * FROM expenses WHERE empresa_id=$1 AND demo_key IS NULL ORDER BY id',[ownerUser.empresaId]);
     assert.deepEqual(unchanged,before);
     assert.equal((await list(owner,'')).demoCount,0);
     assert.equal((await api('/demo-data',owner,'POST',{action:'restore'})).status,200);
-    assert.equal((await list(owner,'')).demoCount,54);
+    assert.equal((await list(owner,'')).demoCount,expectedDemoCount);
   });
   await t.test('remoção revoga acesso, protege donos e preserva a autoria e outros restaurantes', async () => {
     const members = await query<{id:string;userId:string;role:string}>(fixture.pool,'SELECT id,user_id AS "userId",role FROM restaurant_members WHERE empresa_id=$1',[ownerUser.empresaId]);

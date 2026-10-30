@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addDays, daysBetween, monthPeriod, newExpenseRequestId, parseMoneyInput } from '../src/lib/expense-shared';
+import { addDays, daysBetween, monthPeriod, yearPeriod, selectedPeriodYear, expenseTrend, newExpenseRequestId, parseMoneyInput } from '../src/lib/expense-shared';
 import { dateValue, expenseFilters, validateExpense } from '../src/lib/expenses';
 
 test('valores em reais são convertidos para centavos sem arredondamento binário', () => {
@@ -27,4 +27,24 @@ test('a proteção contra duplicidade pode gerar identificadores fora de context
   const first = newExpenseRequestId(); const second = newExpenseRequestId();
   assert.match(first, /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
   assert.notEqual(first, second);
+});
+
+test('períodos anuais abrangem o ano completo e limitam o ano atual a hoje', () => {
+  assert.deepEqual(yearPeriod(2025,'2026-10-30'),{start:'2025-01-01',end:'2025-12-31'});
+  assert.deepEqual(yearPeriod(2026,'2026-10-30'),{start:'2026-01-01',end:'2026-10-30'});
+  assert.equal(selectedPeriodYear(yearPeriod(2025,'2026-10-30'),'2026-10-30'),'2025');
+  assert.equal(selectedPeriodYear({start:'2025-02-01',end:'2025-12-31'},'2026-10-30'),'');
+  const leap=expenseFilters(new URLSearchParams('year=2024'));
+  assert.equal(daysBetween(leap.start,leap.end),366);
+  for(const year of ['abc',"2025 OR 1=1",'2025.5','1999','2101','']) assert.throws(()=>expenseFilters(new URLSearchParams({year})));
+});
+
+test('o gráfico anual agrupa por mês preservando centavos e dias sem gasto',()=>{
+  const daily=Array.from({length:366},(_,index)=>({date:addDays('2024-01-01',index),totalCents:index===0?101:index===59?250:0}));
+  const result=expenseTrend(daily);
+  assert.equal(result.monthly,true);assert.equal(result.series.length,12);
+  assert.equal(result.series[0].totalCents,101);assert.equal(result.series[1].totalCents,250);
+  assert.equal(result.series[2].totalCents,0);
+  assert.equal(result.series.reduce((sum,row)=>sum+row.totalCents,0),351);
+  assert.equal(expenseTrend(daily.slice(0,30)).monthly,false);
 });
