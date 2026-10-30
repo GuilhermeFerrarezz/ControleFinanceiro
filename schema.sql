@@ -123,4 +123,8 @@ CREATE INDEX IF NOT EXISTS audit_expense ON expense_audit (empresa_id, expense_i
 CREATE INDEX IF NOT EXISTS audit_expense_reference ON expense_audit (expense_id);
 CREATE INDEX IF NOT EXISTS audit_actor ON expense_audit (actor_id);
 
+-- Idempotent addition for databases created before demonstration data controls.
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS demo_key TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS expenses_demo_key ON expenses (empresa_id, demo_key) WHERE demo_key IS NOT NULL;
+
 COMMIT;

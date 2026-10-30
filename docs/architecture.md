@@ -65,3 +65,9 @@ Para um futuro ambiente serverless, use a URL de conexão com pooling oferecida 
 ## Verificação
 
 Execute `npm run build` antes de `npm test`. Os testes HTTP usam schemas PostgreSQL temporários, com nomes gerados internamente e removidos ao final; não alteram tabelas do schema da aplicação. Configure `TEST_DATABASE_URL` para usar um banco dedicado, ou os testes usarão `DATABASE_URL`. O usuário dos testes precisa de permissão para criar schemas. `npm run lint` e `npm run typecheck` completam as verificações.
+
+## Remoção da equipe e exemplos de teste
+
+Remover um funcionário exclui apenas seu vínculo no restaurante ativo, revoga as sessões que usam esse contexto e os convites pendentes desse restaurante. A identidade e os gastos permanecem, preservando `created_by` e a auditoria. Donos não podem ser removidos por esse endpoint. A operação exige dono, origem válida e uma transação com bloqueio do vínculo.
+
+A coluna `expenses.demo_key` identifica exclusivamente os exemplos; um índice único por restaurante impede duplicatas. O endpoint de demonstração exige `ENABLE_DEMO_DATA=true` e papel de dono. Restaurar gera 54 registros entre o mês atual e o anterior, reaproveitando as mesmas identidades e preservando a autoria original; limpar realiza exclusão lógica somente dos exemplos. Ambas as operações têm auditoria e são serializadas por restaurante. Os campos de marcação de exemplos e autoria nunca são aceitos do cliente na criação normal de gastos.

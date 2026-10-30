@@ -1,4 +1,4 @@
-import { expenseCategories, expenseDaily, expenseTotals, findExpense, insertExpense, insertExpenseAudit, listExpenses, updateExpense, type IExpense } from '../models/Expense';
+import { countDemoExpenses, expenseCategories, expenseDaily, expenseTotals, findExpense, insertExpense, insertExpenseAudit, listExpenses, updateExpense, type IExpense } from '../models/Expense';
 import { inTransaction } from './postgres';
 import { InputError } from './validation';
 import { addDays, daysBetween, EXPENSE_CATEGORIES, MAX_AMOUNT_CENTS, monthPeriod, PAYMENT_METHODS, type ExpenseDashboardData, type ExpenseFilters, type ExpenseInput, type ExpenseRecord } from './expense-shared';
@@ -78,11 +78,12 @@ function toRecord(row: IExpense,actor: ExpenseActor): ExpenseRecord {
   // Keep persistence metadata out of the API response.
   return { id:row.id,description:row.description,amountCents:row.amountCents,date:row.date,category:row.category,merchant:row.merchant,
     status:row.status,paymentMethod:row.paymentMethod,notes:row.notes,createdBy:row.createdBy,authorName:row.authorName,
-    version:row.version,createdAt:row.createdAt,canManage:actor.role === 'owner' || row.createdBy === actor.id };
+    version:row.version,createdAt:row.createdAt,isDemo:row.isDemo,canManage:actor.role === 'owner' || row.createdBy === actor.id };
 }
 export async function expenseDashboard(actor: ExpenseActor,filters: ExpenseFilters): Promise<ExpenseDashboardData> {
   return inTransaction(async client => {
     const totals = await expenseTotals(actor.empresaId,filters,client);
+    const demoCount = await countDemoExpenses(actor.empresaId,client);
     const pageSize=15, pages=Math.max(1,Math.ceil(totals.count/pageSize)), page=Math.min(filters.page,pages);
     const expenses = await listExpenses(actor.empresaId,filters,pageSize,(page-1)*pageSize,client);
     const categories = await expenseCategories(actor.empresaId,filters,client);
@@ -91,7 +92,7 @@ export async function expenseDashboard(actor: ExpenseActor,filters: ExpenseFilte
     const previous = await expenseTotals(actor.empresaId,{...filters,start:addDays(previousEnd,-(duration-1)),end:previousEnd},client);
     const byDate=new Map(daily.map(day=>[day.date,day.totalCents]));
     const series=Array.from({length:duration},(_,index)=>{const date=addDays(filters.start,index);return {date,totalCents:byDate.get(date)||0};});
-    return { filters:{...filters,page},expenses:expenses.map(row=>toRecord(row,actor)),count:totals.count,pages,pageSize,
+    return { filters:{...filters,page},expenses:expenses.map(row=>toRecord(row,actor)),count:totals.count,pages,pageSize,demoCount,
       summary:{...totals,averageDailyCents:Math.round(totals.totalCents/duration),previousTotalCents:previous.totalCents,
         changePercent:previous.totalCents>0 ? Math.round((totals.totalCents-previous.totalCents)/previous.totalCents*1000)/10 : null},categories,series };
   },true);

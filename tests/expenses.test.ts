@@ -15,7 +15,7 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
   const origin = `http://127.0.0.1:${address.port}`;
   await new Promise<void>(resolve => portServer.close(() => resolve()));
   const server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '-p', String(address.port), '-H', '127.0.0.1'], {
-    env: { ...process.env, NODE_ENV: 'production', DATABASE_URL: fixture.connectionString, APP_ORIGIN: origin }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, NODE_ENV: 'production', DATABASE_URL: fixture.connectionString, APP_ORIGIN: origin, ENABLE_DEMO_DATA: 'true' }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = ''; server.stdout.on('data', data => { output = (output + data.toString()).slice(-5000); }); server.stderr.on('data', data => { output = (output + data.toString()).slice(-5000); });
   stop = async () => { if (server.exitCode === null) { const closed = once(server, 'exit'); server.kill(); await closed; } };
@@ -134,6 +134,62 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal((await list(owner, `${period}&q=${encodeURIComponent('\\')}`)).count, 0);
     assert.equal((await api(`/expenses?${period}&category=${encodeURIComponent("' OR 1=1 --")}`, owner)).status, 400);
     assert.ok((await list()).count > 1);
+  });
+
+  await t.test('exemplos só podem ser gerenciados pelo dono e preservam os gastos reais', async () => {
+    assert.equal((await api('/demo-data','','POST',{action:'restore'})).status,401);
+    assert.equal((await api('/demo-data',employee,'POST',{action:'restore'})).status,403);
+    assert.equal((await api('/demo-data',owner,'POST',{action:'restore'},'https://hostil.invalid')).status,403);
+    assert.equal((await api('/demo-data',owner,'POST',{action:'truncate'})).status,400);
+    const before = await query(fixture.pool,'SELECT * FROM expenses WHERE empresa_id=$1 AND demo_key IS NULL ORDER BY id',[ownerUser.empresaId]);
+    const restore = await api('/demo-data',owner,'POST',{action:'restore',empresaId:'forged'});
+    assert.equal(restore.status,200,await restore.clone().text());
+    assert.equal((await restore.json()).count,54);
+    const examples = await query<{id:string}>(fixture.pool,'SELECT id FROM expenses WHERE empresa_id=$1 AND demo_key IS NOT NULL ORDER BY id',[ownerUser.empresaId]);
+    assert.equal(examples.length,54);
+    const demo = await list(owner,''); assert.equal(demo.demoCount,54);
+    assert.equal(demo.categories.length,9); assert.ok(demo.expenses.some((row:{isDemo:boolean})=>row.isDemo));
+    assert.equal((await list(other,'')).demoCount,0);
+    const repeated = await Promise.all([api('/demo-data',owner,'POST',{action:'restore'}),api('/demo-data',owner,'POST',{action:'restore'})]);
+    assert.deepEqual(repeated.map(response=>response.status),[200,200]);
+    assert.deepEqual(await query(fixture.pool,'SELECT id FROM expenses WHERE empresa_id=$1 AND demo_key IS NOT NULL ORDER BY id',[ownerUser.empresaId]),examples);
+    assert.equal((await api('/demo-data',other,'POST',{action:'clear'})).status,200);
+    assert.equal((await list(owner,'')).demoCount,54);
+    const cleared = await api('/demo-data',owner,'POST',{action:'clear'});
+    assert.equal(cleared.status,200); assert.equal((await cleared.json()).count,0);
+    const unchanged = await query(fixture.pool,'SELECT * FROM expenses WHERE empresa_id=$1 AND demo_key IS NULL ORDER BY id',[ownerUser.empresaId]);
+    assert.deepEqual(unchanged,before);
+    assert.equal((await list(owner,'')).demoCount,0);
+    assert.equal((await api('/demo-data',owner,'POST',{action:'restore'})).status,200);
+    assert.equal((await list(owner,'')).demoCount,54);
+  });
+  await t.test('remoção revoga acesso, protege donos e preserva a autoria e outros restaurantes', async () => {
+    const members = await query<{id:string;userId:string;role:string}>(fixture.pool,'SELECT id,user_id AS "userId",role FROM restaurant_members WHERE empresa_id=$1',[ownerUser.empresaId]);
+    const employeeMember = members.find(row=>row.userId===employeeUser.id)!;
+    const ownerMember = members.find(row=>row.role==='owner')!;
+    const created = await create(employee,{description:'Compra com autoria preservada',amountCents:4990});
+    assert.equal(created.status,201); const expenseId = (await created.json()).id;
+    assert.equal((await api(`/members/${employeeMember.id}`,'','DELETE')).status,401);
+    assert.equal((await api(`/members/${ownerMember.id}`,employee,'DELETE')).status,403);
+    assert.equal((await api(`/members/${employeeMember.id}`,other,'DELETE')).status,404);
+    assert.equal((await api(`/members/${ownerMember.id}`,owner,'DELETE')).status,400);
+    assert.equal((await api(`/members/${employeeMember.id}`,owner,'DELETE',undefined,'https://hostil.invalid')).status,403);
+    // The same account keeps access to a different restaurant.
+    const otherCompany = (await (await api('/private',other)).json()).user.empresaId;
+    await query(fixture.pool,"INSERT INTO restaurant_members (user_id,empresa_id,role) VALUES ($1,$2,'employee')",[employeeUser.id,otherCompany]);
+    const otherEmployeeCookie = await login('employee@expenses.invalid');
+    assert.equal((await api('/company/switch',otherEmployeeCookie,'POST',{empresaId:otherCompany})).status,200);
+    assert.equal((await api(`/members/${employeeMember.id}`,owner,'DELETE')).status,200);
+    assert.equal((await api('/private',employee)).status,401);
+    assert.equal((await create(employee)).status,401);
+    assert.equal((await api('/private',otherEmployeeCookie)).status,200);
+    const record = (await list(owner,`${period}&q=autoria`)).expenses.find((row:{id:string})=>row.id===expenseId);
+    assert.ok(record); assert.equal(record.createdBy,employeeUser.id); assert.equal(record.authorName,'Funcionário');
+    assert.equal((await api(`/members/${employeeMember.id}`,owner,'DELETE')).status,404);
+    // Re-admission is possible through a new invitation, with the original history intact.
+    const invite = await api('/invitations',owner,'POST',{email:'employee@expenses.invalid'});
+    assert.equal(invite.status,201); const token=(await invite.json()).path.split('/').at(-1);
+    assert.equal((await api('/invitations/accept',otherEmployeeCookie,'POST',{token})).status,200);
   });
 
 });

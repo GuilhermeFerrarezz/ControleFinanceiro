@@ -49,10 +49,10 @@ export function newExpenseRequestId() {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 export type ExpenseInput = { description: string; amountCents: number; date: string; category: ExpenseCategory; merchant: string; status: ExpenseStatus; paymentMethod: PaymentMethod; notes: string };
-export type ExpenseRecord = ExpenseInput & { id: string; createdBy: string; authorName: string; version: number; createdAt: string; canManage: boolean };
+export type ExpenseRecord = ExpenseInput & { id: string; createdBy: string; authorName: string; version: number; createdAt: string; canManage: boolean; isDemo: boolean };
 export type ExpenseFilters = { start: string; end: string; category: string; status: string; q: string; page: number };
 export type ExpenseDashboardData = {
-  filters: ExpenseFilters; expenses: ExpenseRecord[]; count: number; pages: number; pageSize: number;
+  filters: ExpenseFilters; expenses: ExpenseRecord[]; count: number; pages: number; pageSize: number; demoCount: number;
   summary: { totalCents: number; paidCents: number; pendingCents: number; count: number; averageDailyCents: number; previousTotalCents: number; changePercent: number | null };
   categories: { category: ExpenseCategory; totalCents: number; count: number }[];
   series: { date: string; totalCents: number }[];

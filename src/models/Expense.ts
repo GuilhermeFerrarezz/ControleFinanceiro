@@ -4,12 +4,12 @@ import type { ExpenseInput, ExpenseFilters } from '../lib/expense-shared';
 
 export interface IExpense extends ExpenseInput {
   id: string; empresaId: string; createdBy: string; updatedBy: string; requestId: string;
-  version: number; createdAt: string; deletedAt: Date | null; authorName: string;
+  version: number; createdAt: string; deletedAt: Date | null; authorName: string; isDemo: boolean;
 }
 export interface IExpenseAudit { id: string; expenseId: string; empresaId: string; actorId: string; action: 'created' | 'updated' | 'deleted'; before: Record<string, unknown> | null; after: Record<string, unknown> | null; createdAt: Date }
 const columns = `e.id,e.empresa_id AS "empresaId",e.created_by AS "createdBy",e.updated_by AS "updatedBy",e.request_id AS "requestId",
   e.description,e.amount_cents AS "amountCents",to_char(e.date,'YYYY-MM-DD') AS date,e.category,e.merchant,e.status,
-  e.payment_method AS "paymentMethod",e.notes,e.version,e.created_at AS "createdAt",e.deleted_at AS "deletedAt"`;
+  e.payment_method AS "paymentMethod",e.notes,e.version,(e.demo_key IS NOT NULL) AS "isDemo",e.created_at AS "createdAt",e.deleted_at AS "deletedAt"`;
 export function integer(value: unknown) {
   const number = Number(value);
   if (!Number.isSafeInteger(number)) throw new Error('Valor agregado fora do intervalo seguro.');
@@ -77,4 +77,17 @@ export async function expenseDaily(empresaId: string, filters: ExpenseFilters, c
   const { clause, values } = scope(empresaId,filters);
   return (await client.query<{ date: string; totalCents: string }>(`SELECT to_char(e.date,'YYYY-MM-DD') AS date,SUM(e.amount_cents) AS "totalCents"
     FROM expenses e WHERE ${clause} GROUP BY e.date ORDER BY e.date`,values)).rows.map(row=>({...row,totalCents:integer(row.totalCents)}));
+}
+
+export async function listDemoExpenses(empresaId: string, client: Queryable) {
+  return (await client.query<IExpense & { demoKey: string }>(`SELECT ${columns},e.demo_key AS "demoKey" FROM expenses e WHERE e.empresa_id=$1 AND e.demo_key IS NOT NULL FOR UPDATE`, [empresaId])).rows;
+}
+export async function tagDemoExpense(id: string, empresaId: string, key: string, client: Queryable) {
+  await client.query('UPDATE expenses SET demo_key=$1 WHERE id=$2 AND empresa_id=$3', [key,id,empresaId]);
+}
+export async function restoreDemoExpense(id: string, empresaId: string, client: Queryable) {
+  await client.query('UPDATE expenses SET deleted_at=NULL WHERE id=$1 AND empresa_id=$2 AND demo_key IS NOT NULL', [id,empresaId]);
+}
+export async function countDemoExpenses(empresaId: string, client: Queryable) {
+  return Number((await client.query<{ count: string }>('SELECT count(*) FROM expenses WHERE empresa_id=$1 AND demo_key IS NOT NULL AND deleted_at IS NULL', [empresaId])).rows[0].count);
 }

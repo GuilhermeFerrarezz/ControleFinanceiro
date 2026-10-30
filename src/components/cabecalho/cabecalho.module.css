@@ -10,3 +10,13 @@
   .dropdown > strong, .dropdown button { font-size: 16px; }
   .dropdown > span, .dropdown p { font-size: 14px; }
 }
+
+.inner, .restaurant, .account { min-width: 0; }
+.restaurant > span { min-width: 0; overflow-wrap: anywhere; }
+.restaurant > svg { flex-shrink: 0; }
+.dropdown { max-width: calc(100vw - 40px); }
+@media (max-width: 700px) { .inner { padding-inline: 16px; }.restaurant { flex-basis: 100%; } }
+
+.account { flex-shrink: 0; }
+.restaurant { flex: 1 1 0%; }
+@media (max-width: 700px) { .restaurant { flex-basis: 100%; } }

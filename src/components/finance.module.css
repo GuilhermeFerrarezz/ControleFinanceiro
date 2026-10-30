@@ -1,4 +1,4 @@
-.main { width: 100%; max-width: 1440px; margin: 0 auto; padding: 0 48px 40px; }
+.main { min-width: 0; width: 100%; max-width: 1440px; margin: 0 auto; padding: 0 48px 40px; }
 .navigation { display: flex; gap: 34px; border-bottom: 1px solid var(--line); margin-bottom: 36px; overflow-x: auto; }
 .navigation a { display: inline-flex; align-items: center; gap: 9px; padding: 23px 0 19px; font-size: 15px; color: #7a856e; border-bottom: 3px solid transparent; white-space: nowrap; }
 .navigation a[aria-current='page'] { color: var(--green); border-color: var(--green); font-weight: 600; }
@@ -46,7 +46,7 @@
 .listCard { border: 1px solid var(--line); border-radius: 12px; background: #fffefa; overflow: hidden; }
 .listHeading { padding: 25px 26px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }.listActions { display: flex; align-items: center; gap: 24px; flex-shrink: 0; }
 .textButton { border: 0; background: none; padding: 8px 0; font-size: 14px; font-weight: 500; color: #527442; display: inline-flex; align-items: center; gap: 8px; min-height: 40px; }.textButton:hover { text-decoration: underline; text-underline-offset: 4px; }.textButton:disabled { color: #a1a993; cursor: default; }
-.tableWrap { overflow-x: auto; }.expenseTable { width: 100%; border-collapse: collapse; font-size: 14px; }.expenseTable th { text-align: left; background: #f3f5ed; font-size: 12px; color: #7b886c; font-weight: 500; padding: 14px 20px; border-block: 1px solid #e6e9dd; }.expenseTable td { padding: 20px; border-bottom: 1px solid #edf0e4; vertical-align: middle; }.expenseTable tr:last-child td { border-bottom: 0; }.expenseTable th:first-child,.expenseTable td:first-child { padding-left: 26px; }.expenseTable td:first-child { max-width: 310px; min-width: 200px; }.expenseTable td > strong { font-size: 15px; display: block; line-height: 1.5; overflow-wrap: anywhere; }.expenseTable td > span:not(.categoryChip):not(.paid):not(.pending) { display: block; font-size: 13px; color: #7e8a70; margin-top: 5px; overflow-wrap: anywhere; }.expenseTable td > small { display: block; color: #98a18c; font-size: 11px; margin-top: 6px; }.expenseTable td:nth-child(3) { white-space: nowrap; color: #75816c; }
+.tableWrap { overflow-x: auto; }.expenseTable { width: 100%; border-collapse: collapse; font-size: 14px; }.expenseTable th { text-align: left; background: #f3f5ed; font-size: 12px; color: #7b886c; font-weight: 500; padding: 14px 20px; border-block: 1px solid #e6e9dd; }.expenseTable td { padding: 20px; border-bottom: 1px solid #edf0e4; vertical-align: middle; }.expenseTable tr:last-child td { border-bottom: 0; }.expenseTable th:first-child,.expenseTable td:first-child { padding-left: 26px; }.expenseTable td:first-child { max-width: 310px; min-width: 200px; }.expenseTable td > strong { font-size: 15px; display: block; line-height: 1.5; overflow-wrap: anywhere; }.expenseTable td > span:not(.categoryChip):not(.paid):not(.pending):not(.demoBadge) { display: block; font-size: 13px; color: #7e8a70; margin-top: 5px; overflow-wrap: anywhere; }.expenseTable td > small { display: block; color: #98a18c; font-size: 11px; margin-top: 6px; }.expenseTable td:nth-child(3) { white-space: nowrap; color: #75816c; }
 .categoryChip { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; line-height: 1.5; }.categoryChip i { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }.amount { font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .paid,.pending { display: inline-flex; border-radius: 5px; padding: 6px 10px; font-size: 12px; white-space: nowrap; }.paid { background: #edf3e3; color: #618044; }.pending { background: #f8eedf; color: #a27941; }
 .rowActions { display: flex; gap: 3px; justify-content: flex-end; }.iconButton { border: 0; background: transparent; color: #7c8c6d; border-radius: 7px; min-width: 40px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; padding: 8px; }.iconButton:hover { background: #eff3e6; color: #3f633b; }.readOnly { font-size: 11px; color: #929d87; white-space: nowrap; }
@@ -92,3 +92,61 @@
 @media (max-width: 600px) { .chartInsights { gap: 12px; }.chartInsights strong { font-size: 18px; }.chartInsights span { font-size: 11px; } }
 
 @media (min-width: 851px) and (max-width: 1050px) { .charts { grid-template-columns: 1fr; }.chartCard:last-child { grid-template-columns: 180px minmax(0,1fr); } }
+
+/* Let flex/grid children shrink instead of widening the mobile viewport. */
+.heading > div, .headingActions, .headingActions > div, .filtersCard, .filters,
+.listHeading > div, .listActions, .tableWrap, .demoPanel > div { min-width: 0; max-width: 100%; }
+.heading h1, .heading p, .notice span, .bottomNote { overflow-wrap: anywhere; }
+.filters input, .filters select, .field input, .field select { min-inline-size: 0; max-inline-size: 100%; }
+.tableWrap { width: 100%; }
+.charts { overflow-wrap: anywhere; }
+.chartCard:last-child { grid-template-columns: minmax(0,140px) minmax(0,1fr); }
+.authorship { line-height: 1.6; }
+.authorship b { font-weight: 600; color: #637652; }
+.expenseTable td > .demoBadge { display: inline-flex; margin-top: 8px; color: #557053; background: #edf2e6; border-radius: 4px; padding: 3px 7px; font-size: 11px; }
+.demoPanel { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px; padding: 20px 22px; margin-bottom: 22px; background: #eff3e6; border: 1px dashed #cbd8bb; border-radius: 12px; }
+.demoPanel > div:first-child { flex: 1 1 340px; }
+.demoLabel { display: block; font-size: 10px; letter-spacing: 1.4px; color: #7d8d6a; font-weight: 700; }
+.demoPanel h2 { font-size: 17px; font-weight: 600; margin: 8px 0; }
+.demoPanel p { font-size: 13px; color: #77856b; line-height: 1.7; margin: 0; }
+.demoActions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.demoActions > button { font-size: 13px; }
+@media (max-width: 850px) { .chartCard:last-child { grid-template-columns: minmax(0,160px) minmax(0,1fr); } }
+@media (max-width: 600px) {
+  .main { padding-inline: 16px; }
+  .headingActions { flex-direction: column; align-items: stretch; }
+  .headingActions > div, .headingActions label { width: 100%; max-width: 100%; }
+  .headingActions > button { width: 100%; }
+  .filters input, .filters select, .field input, .field select { font-size: 16px; }
+  .filters { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .periodShortcuts, .filters > button, .searchField { grid-column: 1 / -1; }
+  .formRow { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .chartCard:last-child { display: block; }
+  .demoPanel { padding: 18px 16px; }
+  .demoActions { width: 100%; }
+  .demoActions > button { flex: 1 1 140px; }
+  .demoPanel p { font-size: 12px; }
+  .expenseTable { min-width: 0; display: block; }
+  .expenseTable thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .expenseTable tbody { display: block; }
+  .expenseTable tbody tr { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; padding: 20px 18px; border-top: 1px solid #e6e9dd; }
+  .expenseTable td, .expenseTable th:first-child, .expenseTable td:first-child { display: block; min-width: 0; max-width: none; padding: 0; border: 0; white-space: normal; }
+  .expenseTable td:first-child { grid-column: 1 / -1; }
+  .expenseTable td::before { content: attr(data-label); display: block; margin-bottom: 6px; font-size: 11px; font-weight: 400; color: #859176; }
+  .expenseTable td:first-child::before { display: none; }
+  .expenseTable td:nth-child(6) { grid-column: 1 / -1; }
+  .expenseTable td:nth-child(6)::before { display: none; }
+  .rowActions { justify-content: flex-start; border-top: 1px solid #eef0e5; padding-top: 8px; }
+  .rowActions button { min-height: 44px; min-width: 44px; }
+  .expenseTable td > small { font-size: 12px; }
+  .cardHeading { flex-wrap: wrap; }
+}
+@media (max-width: 360px) {
+  .navigation { gap: 16px; }
+  .navigation a { font-size: 12px; }
+  .formRow { grid-template-columns: minmax(0,1fr); }
+  .formActions { flex-wrap: wrap; }
+  .formActions button { min-width: 0; flex-basis: 100%; }
+  .heading h1 { font-size: 32px; }
+  .categoryLegend li { flex-wrap: wrap; }
+}

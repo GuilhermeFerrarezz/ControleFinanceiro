@@ -5,6 +5,7 @@ import { api, errorMessage } from '@/src/lib/api';
 import { addDays, displayDate, EXPENSE_CATEGORIES, money, monthPeriod, todayInSaoPaulo, type ExpenseDashboardData, type ExpenseFilters, type ExpenseRecord } from '@/src/lib/expense-shared';
 import RestaurantSwitcher from '@/src/app/(system)/dashboard/RestaurantSwitcher';
 import ExpenseCharts from './ExpenseCharts';
+import DemoDataControls from './DemoDataControls';
 import ExpenseForm from './ExpenseForm';
 import Icon from './Icon';
 import styles from './finance.module.css';
@@ -12,9 +13,9 @@ import styles from './finance.module.css';
 function filterParams(filters: ExpenseFilters) {
   return new URLSearchParams(Object.entries(filters).map(([key, value]) => [key, String(value)]));
 }
-export default function FinancialDashboard({ initialData, view, user, restaurants, selectedRestaurant, initialNotice }: {
+export default function FinancialDashboard({ initialData, view, user, restaurants, selectedRestaurant, initialNotice, demoEnabled }: {
   initialData: ExpenseDashboardData; view: 'overview' | 'expenses'; user: { id: string; nome: string; role?: string };
-  restaurants: { id: string; nome: string }[]; selectedRestaurant: string; initialNotice: string;
+  restaurants: { id: string; nome: string }[]; selectedRestaurant: string; initialNotice: string; demoEnabled: boolean;
 }) {
   const [data, setData] = useState(initialData);
   const [draft, setDraft] = useState(initialData.filters);
@@ -79,6 +80,10 @@ export default function FinancialDashboard({ initialData, view, user, restaurant
     <div className={styles.heading}><div><span className="eyebrow">{view === 'overview' ? 'Um olhar atento para o seu negócio' : 'A rotina da casa, organizada'}</span><h1>{view === 'overview' ? 'Cada gasto, mais clareza.' : 'Todos os gastos, em um lugar.'}</h1><p>{view === 'overview' ? `Olá, ${user.nome.split(' ')[0]}. Acompanhe os custos e cuide dos próximos passos.` : 'Registre, encontre e acompanhe os lançamentos do seu restaurante.'}</p></div><div className={styles.headingActions}><RestaurantSwitcher restaurants={restaurants} selected={selectedRestaurant} /><button className="button" onClick={() => { setNotice(''); setForm('new'); }}><Icon name="plus" size={19} />Novo gasto</button></div></div>
     {notice && <div className={styles.notice} role="status"><Icon name="check" size={18} /><span>{notice}</span><button aria-label="Fechar mensagem" onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}
     {error && <div className={styles.error} role="alert">{error} <button className={styles.textButton} onClick={() => void load()}>Atualizar lista</button></div>}
+    {demoEnabled && <DemoDataControls count={data.demoCount} onChanged={async action => {
+      setNotice(action === 'restore' ? 'Exemplos restaurados. Mostrando o mês atual.' : 'Exemplos excluídos. Seus gastos reais foram preservados.');
+      await load(action === 'restore' ? { ...data.filters,...monthPeriod(),category:'',status:'',q:'',page:1 } : data.filters);
+    }} />}
     <section className={styles.filtersCard} aria-label="Filtros do período"><form onSubmit={apply} className={styles.filters}>
       <div className={styles.periodShortcuts}><span>Ver período</span><div><button type="button" onClick={() => preset('month')}>Mês atual</button><button type="button" onClick={() => preset('previous')}>Mês anterior</button><button type="button" onClick={() => preset('week')}>Últimos 7 dias</button></div></div>
       <label className={styles.filterField} htmlFor="filter-start">De<input id="filter-start" type="date" min="2000-01-01" max="2100-12-31" required value={draft.start} onChange={event => setDraft({ ...draft, start: event.target.value })} /></label>
@@ -101,7 +106,7 @@ export default function FinancialDashboard({ initialData, view, user, restaurant
         {rows.length === 0 ? <div className={styles.empty}><span><Icon name="receipt" size={36} /></span><h3>{hasFilters ? 'Nenhum gasto com esses filtros.' : 'Tudo começa com o primeiro registro.'}</h3><p>{hasFilters ? 'Tente outra categoria, situação ou termo de busca.' : 'Registre um gasto para começar a enxergar os números da sua casa.'}</p><button className="button" onClick={() => setForm('new')}><Icon name="plus" size={17} />Lançar um gasto</button></div> : <>
           <div className={styles.tableWrap}><table className={styles.expenseTable}><caption className={styles.srOnly}>Gastos do restaurante no período selecionado</caption><thead><tr><th>Gasto</th><th>Categoria</th><th>Data</th><th>Situação</th><th>Valor</th><th><span className={styles.srOnly}>Ações</span></th></tr></thead><tbody>{rows.map(expense => {
             const category = EXPENSE_CATEGORIES.find(category => category.id === expense.category)!;
-            return <tr key={expense.id}><td><strong>{expense.description}</strong><span>{expense.merchant || 'Local não informado'}</span><small>Por {expense.authorName}</small>{expense.notes && <details className={styles.rowNotes}><summary>Observações</summary><p>{expense.notes}</p></details>}</td><td><span className={styles.categoryChip}><i style={{ background: category.color }} />{category.label}</span></td><td>{displayDate(expense.date)}</td><td><span className={expense.status === 'paid' ? styles.paid : styles.pending}>{expense.status === 'paid' ? 'Pago' : 'A pagar'}</span></td><td className={styles.amount}>{money(expense.amountCents)}</td><td><div className={styles.rowActions}>{expense.canManage ? <><button className={styles.iconButton} aria-label={`Editar ${expense.description}`} onClick={() => { setError(''); setForm(expense); }}><Icon name="edit" size={18} /></button><button className={styles.iconButton} aria-label={`Excluir ${expense.description}`} onClick={() => setDeleting(expense)}><Icon name="trash" size={18} /></button></> : <span className={styles.readOnly}>Somente leitura</span>}</div></td></tr>;
+            return <tr key={expense.id}><td data-label="Gasto"><strong>{expense.description}</strong><span>{expense.merchant || 'Local não informado'}</span><small className={styles.authorship}>Lançado por <b>{expense.authorName}</b></small>{expense.isDemo && <span className={styles.demoBadge}>Exemplo</span>}{expense.notes && <details className={styles.rowNotes}><summary>Observações</summary><p>{expense.notes}</p></details>}</td><td data-label="Categoria"><span className={styles.categoryChip}><i style={{ background: category.color }} />{category.label}</span></td><td data-label="Data">{displayDate(expense.date)}</td><td data-label="Situação"><span className={expense.status === 'paid' ? styles.paid : styles.pending}>{expense.status === 'paid' ? 'Pago' : 'A pagar'}</span></td><td data-label="Valor" className={styles.amount}>{money(expense.amountCents)}</td><td data-label="Ações"><div className={styles.rowActions}>{expense.canManage ? <><button className={styles.iconButton} aria-label={`Editar ${expense.description}`} onClick={() => { setError(''); setForm(expense); }}><Icon name="edit" size={18} /></button><button className={styles.iconButton} aria-label={`Excluir ${expense.description}`} onClick={() => setDeleting(expense)}><Icon name="trash" size={18} /></button></> : <span className={styles.readOnly}>Somente leitura</span>}</div></td></tr>;
           })}</tbody></table></div>
           {view === 'expenses' && <div className={styles.pagination}><span>{(data.filters.page - 1) * data.pageSize + 1}–{Math.min(data.filters.page * data.pageSize, data.count)} de {data.count} gastos</span><div><button onClick={() => void load({ ...data.filters, page: data.filters.page - 1 })} disabled={loading || data.filters.page === 1}>Anterior</button><span>{data.filters.page} / {data.pages}</span><button onClick={() => void load({ ...data.filters, page: data.filters.page + 1 })} disabled={loading || data.filters.page >= data.pages}>Próxima</button></div></div>}
         </>}

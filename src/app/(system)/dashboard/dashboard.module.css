@@ -28,3 +28,24 @@
   .teamGrid { grid-template-columns: 1fr; }
   .future { flex-wrap: wrap; }
 }
+
+.main { min-width: 0; width: 100%; }
+.heading > div, .teamGrid > section, .welcome > div { min-width: 0; }
+.selectLabel, .select { min-width: 0; max-width: 100%; }
+.memberActions { margin-left: auto; display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
+.removeMember { display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 6px; background: #faeee6; color: #a45137; padding: 8px 10px; font-size: 12px; min-height: 44px; }
+.removeMember:hover { background: #f2ddd0; }
+.teamNotice { border-radius: 7px; padding: 12px; background: #edf3e3; color: #4e733c; font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .main { padding-inline: 16px; }
+  .heading h1, .heading p, .welcome p { overflow-wrap: anywhere; }
+  .memberList li { display: grid; grid-template-columns: 35px minmax(0,1fr); }
+  .memberActions { grid-column: 2; justify-content: space-between; margin-left: 0; flex-wrap: wrap; }
+  .memberActions .role { margin-left: 0; }
+  .pendingList li { flex-wrap: wrap; }
+  .pendingList li > div { flex: 1 1 140px; }
+  .inviteCard input, .select { font-size: 16px; }
+  .welcome { align-items: flex-start; }
+  .welcome > div { flex: 1 1 150px; }
+  .teamCard, .inviteCard { padding: 20px; }
+}

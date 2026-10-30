@@ -14,7 +14,7 @@ A central financeira reúne o resumo dos gastos, valores pagos e a pagar, média
 
 Em **Novo gasto**, informe descrição, valor, data e categoria. Você também pode registrar o local de compra ou favorecido, a forma de pagamento e observações. Há categorias para alimentos, funcionários, produtos, bebidas, embalagens, contas, manutenção, impostos e outros gastos.
 
-Na área **Lançamentos**, consulte e exporte os dados filtrados em CSV. Funcionários podem editar e excluir os próprios gastos; o dono pode administrar todos os lançamentos do restaurante. A área **Equipe** mantém os convites e os acessos individuais.
+Na área **Lançamentos**, consulte e exporte os dados filtrados em CSV. Funcionários podem editar e excluir os próprios gastos; o dono pode administrar todos os lançamentos do restaurante. A área **Equipe** mantém os convites e os acessos individuais. O dono pode remover funcionários: o acesso ao restaurante é revogado e os gastos anteriores continuam identificados com o nome de quem os lançou.
 
 ## Como iniciar o projeto
 
@@ -62,3 +62,7 @@ Conecte o celular à mesma rede Wi-Fi do computador e abra `http://IP_DO_COMPUTA
 Para compartilhar convites com o celular, gere os links acessando o sistema por esse mesmo endereço. Não use `localhost` no link compartilhado, pois ele aponta para o próprio dispositivo.
 
 Se o IP do computador mudar, reinicie a aplicação. Para parar o servidor, pressione `Ctrl+C`; para iniciá-lo novamente, execute `npm run dev`.
+
+### Testar com dados de exemplo
+
+Com `ENABLE_DEMO_DATA=true` no `.env`, o dono vê os controles **Restaurar exemplos** e **Excluir exemplos** no painel e na lista de lançamentos. São 54 gastos fictícios entre o mês atual e o anterior, identificados com a etiqueta **Exemplo**. Restaurar recompõe os exemplos e desfaz alterações feitas neles; excluir retira somente esses registros. Os gastos reais são preservados. Para ocultar os controles, defina `ENABLE_DEMO_DATA=false` e reinicie a aplicação.
