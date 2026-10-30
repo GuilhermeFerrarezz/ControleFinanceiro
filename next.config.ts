@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
+import { localDevelopmentOrigins } from './src/lib/dev-origins';
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: process.env.NODE_ENV === 'development' ? localDevelopmentOrigins() : [],
+  // A separate output directory lets development checks run without touching
+  // the regular dev server's cache or lock.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   serverExternalPackages: ['sequelize', 'sqlite3'],
   async headers() {
     return [{ source: '/(.*)', headers: [

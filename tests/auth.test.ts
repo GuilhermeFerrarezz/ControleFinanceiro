@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
+import { request as httpRequest } from 'node:http';
 import sqlite3 from 'sqlite3';
 import { migrateDatabase } from '../src/lib/migrations';
 
@@ -58,7 +59,7 @@ test('migrações e autenticação HTTP com banco isolado', { timeout: 180_000 }
   await new Promise<void>(resolve => portServer.close(() => resolve()));
   const origin = `http://127.0.0.1:${port}`;
   const server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '-p', String(port), '-H', '127.0.0.1'], {
-    env: { ...process.env, NODE_ENV: 'production', DATABASE_STORAGE: storage, APP_ORIGIN: origin }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
+    env: { ...process.env, NODE_ENV: 'production', DATABASE_STORAGE: storage, APP_ORIGIN: '' }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
   });
   let output = '';
   server.stdout.on('data', chunk => { output = (output + chunk.toString()).slice(-8000); });
@@ -258,6 +259,35 @@ test('migrações e autenticação HTTP com banco isolado', { timeout: 180_000 }
     assert.equal(memberships.length, 2);
     await post('/auth/logout', {}, employeeCookie);
     await post('/auth/logout', {}, otherCookie);
+  });
+  await t.test('convite e cadastro pelo IP da rede usam a origem visível no celular', async () => {
+    const lanHost = `192.168.1.50:${port}`;
+    const lanOrigin = `http://${lanHost}`;
+    // Preserve Host exactly: Node fetch can replace it with the connection target.
+    const phonePost = (path: string, body: unknown, cookie = '', requestOrigin = lanOrigin) => new Promise<Response>((resolve, reject) => {
+      const request = httpRequest(`${origin}/api/v1${path}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Host: lanHost, Origin: requestOrigin, Cookie: cookie, 'Sec-Fetch-Site': 'same-origin' },
+      }, response => {
+        const chunks: Buffer[] = [];
+        response.on('data', chunk => chunks.push(Buffer.from(chunk)));
+        response.on('end', () => resolve(new Response(Buffer.concat(chunks), { status: response.statusCode })));
+        response.on('error', reject);
+      });
+      request.on('error', reject);
+      request.end(JSON.stringify(body));
+    });
+    const invitation = await phonePost('/invitations', { email: 'phone@example.com' }, secondCookie);
+    assert.equal(invitation.status, 201, await invitation.clone().text());
+    const { path } = await invitation.json();
+    const token = path.split('/').at(-1);
+    const page = await fetch(`${origin}/register?invite=${token}`, { headers: { Host: lanHost, 'User-Agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36' } });
+    assert.equal(page.status, 200); assert.match(await page.text(), /phone@example.com/);
+    const signup = { nomeUsuario: 'Pessoa no celular', email: 'phone@example.com', senha: 'abc123', invitationToken: token };
+    assert.equal((await phonePost('/auth/register', signup, '', 'https://hostil.invalid')).status, 403);
+    const response = await phonePost('/auth/register', signup);
+    assert.equal(response.status, 201, await response.clone().text());
+    const [member] = await query<{ role: string }>(storage, "SELECT role FROM restaurant_members WHERE userId=(SELECT id FROM usuarios WHERE email='phone@example.com')");
+    assert.equal(member.role, 'employee');
   });
   await t.test('expiração e limitação de tentativas são aplicadas', async () => {
     await query(storage, `UPDATE "refresh-tokens" SET expiresAt = '2000-01-01 00:00:00.000 +00:00'`);

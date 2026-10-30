@@ -7,6 +7,7 @@ import { Usuario } from '../models/Usuario';
 import { Empresa } from '../models/Empresa';
 import { Membership } from '../models/Membership';
 import { userRestaurants, type RestaurantRole } from './restaurants';
+export { trustedOrigin } from './request-origin';
 
 export const SESSION_COOKIE = 'session';
 export const cookieOptions = { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' as const, path: '/' };
@@ -44,11 +45,6 @@ export function clearSession(response: NextResponse) {
   response.cookies.set(SESSION_COOKIE, '', { ...cookieOptions, maxAge: 0 });
   response.cookies.set('refreshToken', '', { ...cookieOptions, maxAge: 0 });
   return response;
-}
-export function trustedOrigin(request: Request) {
-  const origin = request.headers.get('origin');
-  const expected = process.env.APP_ORIGIN || new URL(request.url).origin;
-  return (!origin || origin === expected) && request.headers.get('sec-fetch-site') !== 'cross-site';
 }
 export function jsonError(erro: string, status: number) {
   return NextResponse.json({ erro }, { status, headers: { 'Cache-Control': 'no-store' } });

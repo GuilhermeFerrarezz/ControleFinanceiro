@@ -14,7 +14,8 @@ Copie `.env.example` para `.env` e ajuste os valores:
 
 ```dotenv
 DATABASE_STORAGE=./database.sqlite
-APP_ORIGIN=http://localhost:3000
+# Opcional em produção, quando houver domínio público/proxy:
+# APP_ORIGIN=https://financeiro.exemplo.com
 ```
 
 Em seguida:
@@ -79,3 +80,11 @@ A página inicial apresenta o Controle Financeiro. O dono cria seu restaurante n
 Depois de atualizar o projeto, execute `npm run db:migrate` antes de iniciá-lo. A migração 002 preserva os vínculos existentes e cria a estrutura de membros e convites.
 
 Veja [a arquitetura de contas, restaurantes e convites](docs/architecture.md). O lançamento de gastos permanece fora desta etapa.
+
+### Convites pelo celular na mesma rede Wi-Fi
+
+Inicie a aplicação e abra, no celular, `http://IP_DO_COMPUTADOR:3000`. Gere e compartilhe o convite usando esse mesmo endereço; `localhost` no celular aponta para o próprio celular. Em desenvolvimento local, deixe `APP_ORIGIN` sem definição para aceitar a origem do endereço acessado. Se houver um domínio público ou proxy em produção, defina `APP_ORIGIN` com a origem HTTPS exata.
+
+A validação compara a origem do navegador com o header `Host` da requisição, pois a URL interna do Next.js pode continuar sendo localhost ao acessar pelo IP. Headers `X-Forwarded-Host` enviados por clientes não ampliam as origens aceitas.
+
+O modo de desenvolvimento também permite automaticamente o HMR nos IPs privados das interfaces de rede do próprio computador, por meio de `allowedDevOrigins`. Isso evita o recarregamento contínuo ao abrir convites pelo Wi-Fi. Se o IP mudar ou você alterar `next.config.ts`, pare e inicie novamente `npm run dev`. A permissão é limitada aos endereços locais detectados e não usa curingas para liberar qualquer origem.
