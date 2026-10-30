@@ -1,22 +1,14 @@
-import { QueryTypes } from 'sequelize';
 import { createHash } from 'node:crypto';
-import { sequelize } from './db';
+import { db } from './db';
 export async function consumeLimit(key: string, limit: number, windowMs: number) {
   const now = Date.now();
-  if (key.endsWith(':global')) {
-    await sequelize.query('DELETE FROM auth_rate_limits WHERE windowStart < :cutoff', { replacements: { cutoff: now - 24 * 60 * 60_000 } });
-  }
+  if (key.endsWith(':global')) await db.query('DELETE FROM auth_rate_limits WHERE window_start < $1', [now - 24 * 60 * 60_000]);
   const hashedKey = createHash('sha256').update(key).digest('hex');
-  await sequelize.query(
-    `INSERT INTO auth_rate_limits (key, count, windowStart) VALUES (:key, 1, :now)
-     ON CONFLICT(key) DO UPDATE SET
-       count = CASE WHEN windowStart <= :cutoff THEN 1 ELSE count + 1 END,
-       windowStart = CASE WHEN windowStart <= :cutoff THEN :now ELSE windowStart END`,
-    { replacements: { key: hashedKey, now, cutoff: now - windowMs }, type: QueryTypes.INSERT });
-  // Sequelize 6's SQLite driver does not support INSERT ... RETURNING.
-  // Concurrent increments may conservatively deny more requests, never increase the quota.
-  const [row] = await sequelize.query<{ count: number }>('SELECT count FROM auth_rate_limits WHERE key = :key', {
-    replacements: { key: hashedKey }, type: QueryTypes.SELECT,
-  });
-  return row.count <= limit;
+  const { rows } = await db.query<{ count: number }>(
+    `INSERT INTO auth_rate_limits (key,count,window_start) VALUES ($1,1,$2)
+     ON CONFLICT (key) DO UPDATE SET
+       count=CASE WHEN auth_rate_limits.window_start <= $3 THEN 1 ELSE auth_rate_limits.count+1 END,
+       window_start=CASE WHEN auth_rate_limits.window_start <= $3 THEN $2 ELSE auth_rate_limits.window_start END
+     RETURNING count`, [hashedKey, now, now - windowMs]);
+  return rows[0].count <= limit;
 }

@@ -1,26 +1,21 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
 import { randomUUID } from 'node:crypto';
-import sqlite3 from 'sqlite3';
-import { migrateDatabase } from '../src/lib/migrations';
+import { isolatedDatabase, query } from './postgres-fixture';
 
 test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async t => {
-  const dir = await mkdtemp(join(tmpdir(), 'restaurante-expenses-'));
+  const fixture = await isolatedDatabase();
   let stop = async () => {};
-  t.after(async () => { await stop(); assert.equal(dirname(resolve(dir)), resolve(tmpdir())); await rm(dir, { recursive: true, force: true }); });
-  const storage = join(dir, 'expenses.sqlite'); await migrateDatabase(storage); await migrateDatabase(storage);
+  t.after(async () => { try { await stop(); } finally { await fixture.cleanup(); } });
   const portServer = createServer(); portServer.listen(0, '127.0.0.1'); await once(portServer, 'listening');
   const address = portServer.address(); assert.ok(address && typeof address === 'object');
   const origin = `http://127.0.0.1:${address.port}`;
   await new Promise<void>(resolve => portServer.close(() => resolve()));
   const server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '-p', String(address.port), '-H', '127.0.0.1'], {
-    env: { ...process.env, NODE_ENV: 'production', DATABASE_STORAGE: storage, APP_ORIGIN: origin }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, NODE_ENV: 'production', DATABASE_URL: fixture.connectionString, APP_ORIGIN: origin }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = ''; server.stdout.on('data', data => { output = (output + data.toString()).slice(-5000); }); server.stderr.on('data', data => { output = (output + data.toString()).slice(-5000); });
   stop = async () => { if (server.exitCode === null) { const closed = once(server, 'exit'); server.kill(); await closed; } };
@@ -101,11 +96,8 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal((await api(`/expenses/${employeeId}`, employee, 'DELETE', { version: 3 })).status, 200);
     assert.equal((await list()).count, 1); assert.equal((await list()).summary.totalCents, 13000);
     assert.equal((await api(`/expenses/${employeeId}`, owner, 'DELETE', { version: 3 })).status, 404);
-    const db = new sqlite3.Database(storage, sqlite3.OPEN_READONLY);
-    try {
-      const audit = await new Promise<{ action: string }[]>((resolve, reject) => db.all('SELECT action FROM expense_audit WHERE expenseId=? ORDER BY createdAt', [employeeId], (error, rows) => error ? reject(error) : resolve(rows as { action: string }[])));
-      assert.deepEqual(audit.map(row => row.action), ['created', 'updated', 'updated', 'deleted']);
-    } finally { db.close(); }
+    const audit = await query<{ action: string }>(fixture.pool, 'SELECT action FROM expense_audit WHERE expense_id=$1 ORDER BY created_at', [employeeId]);
+    assert.deepEqual(audit.map(row => row.action), ['created', 'updated', 'updated', 'deleted']);
   });
   await t.test('paginação mantém totais globais e CSV exporta os registros filtrados com segurança', async () => {
     for (let i = 0; i < 17; i++) assert.equal((await create(owner, { description: `Gasto adicional ${i}`, amountCents: 1, category: 'outros' })).status, 201);
@@ -114,8 +106,34 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal(first.count, 19); assert.equal(first.expenses.length, 15); assert.equal(second.expenses.length, 4);
     assert.equal(first.summary.totalCents, 13118); assert.equal(second.summary.totalCents, first.summary.totalCents);
     assert.equal((await list(owner, `${period}&page=999`)).filters.page, 2);
+    const page = await fetch(`${origin}/dashboard/expenses?${period}`, { headers: { Cookie: owner } });
+    assert.equal(page.status, 200);
+    assert.match(await page.text(), /Gasto adicional 16/);
     const response = await api(`/expenses?${period}&format=csv`, owner); assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type') || '', /text\/csv/);
     const csv = await response.text(); assert.match(csv, /"'=HYPERLINK\(""teste""\)"/); assert.match(csv, /"'@Fornecedor"/); assert.match(csv, /0,01/); assert.match(csv, /Gasto adicional 16/);
   });
+  await t.test('criação concorrente com a mesma chave gera um único gasto e uma auditoria', async () => {
+    const requestId = randomUUID();
+    const responses = await Promise.all([create(owner, { requestId }), create(owner, { requestId })]);
+    assert.deepEqual(responses.map(response => response.status).sort(), [200, 201]);
+    const ids = await Promise.all(responses.map(response => response.json().then(data => data.id)));
+    assert.equal(ids[0], ids[1]);
+    const audit = await query(fixture.pool, 'SELECT id FROM expense_audit WHERE expense_id=$1', [ids[0]]);
+    assert.equal(audit.length, 1);
+  });
+  await t.test('aspas e comandos SQL em campos e buscas são tratados como dados', async () => {
+    const payload = "Fornecedor d'Ávila'); DROP TABLE expenses; --";
+    const created = await create(owner, { merchant: payload, description: 'Compra com aspas', amountCents: 9999999999 });
+    assert.equal(created.status, 201);
+    const id = (await created.json()).id;
+    const data = await list(owner, `${period}&q=${encodeURIComponent(payload)}`);
+    assert.equal(data.count, 1); assert.equal(data.expenses[0].id, id);
+    assert.equal(data.expenses[0].amountCents, 9999999999);
+    assert.equal((await list(owner, `${period}&q=${encodeURIComponent("' OR 1=1 --")}`)).count, 0);
+    assert.equal((await list(owner, `${period}&q=${encodeURIComponent('\\')}`)).count, 0);
+    assert.equal((await api(`/expenses?${period}&category=${encodeURIComponent("' OR 1=1 --")}`, owner)).status, 400);
+    assert.ok((await list()).count > 1);
+  });
+
 });

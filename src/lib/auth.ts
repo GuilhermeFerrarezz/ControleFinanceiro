@@ -1,12 +1,8 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { Op } from 'sequelize';
-import { RefreshToken } from '../models/RefreshToken';
-import { Usuario } from '../models/Usuario';
-import { Empresa } from '../models/Empresa';
-import { Membership } from '../models/Membership';
-import { userRestaurants, type RestaurantRole } from './restaurants';
+import { createRefreshToken, deleteRefreshToken, removeExpiredSessions, sessionIdentity } from '../models/RefreshToken';
+import { userRestaurants } from './restaurants';
 export { trustedOrigin } from './request-origin';
 
 export const SESSION_COOKIE = 'session';
@@ -17,29 +13,22 @@ export async function createSession(userId: string, remember: boolean) {
   const token = randomBytes(32).toString('base64url');
   const lifetime = remember ? 7 * 24 * 60 * 60 : 8 * 60 * 60;
   const restaurants = await userRestaurants(userId);
-  await RefreshToken.destroy({ where: { expiresAt: { [Op.lte]: new Date() } } });
-  await RefreshToken.create({ token: hashToken(token), userId, empresaId: restaurants[0]?.id || null, expiresAt: new Date(Date.now() + lifetime * 1000) });
+  await removeExpiredSessions();
+  await createRefreshToken(hashToken(token), userId, restaurants[0]?.id || null, new Date(Date.now() + lifetime * 1000));
   return { token, lifetime };
 }
 
 export async function findSession(token?: string) {
   if (!token || !/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
-  const session = await RefreshToken.findOne({ where: { token: hashToken(token), expiresAt: { [Op.gt]: new Date() } } });
-  if (!session) return null;
-  const user = await Usuario.findByPk(session.get('userId') as string, { attributes: ['id', 'nome', 'email', 'papel', 'empresaId'] });
+  const user = await sessionIdentity(hashToken(token));
   if (!user) return null;
-  const empresaId = session.get('empresaId') as string | null;
-  const empresa = empresaId ? await Empresa.findByPk(empresaId) : null;
-  if (empresaId && (!empresa || !empresa.get('ativo'))) return null;
-  const membership = empresaId ? await Membership.findOne({ where: { userId: user.get('id'), empresaId } }) : null;
-  if (empresaId && !membership) return null;
-  const role = membership?.get('role') as RestaurantRole | undefined;
-  return { id: user.get('id') as string, nome: user.get('nome') as string, email: user.get('email') as string,
-    role, papel: role === 'owner' ? 'admin' : 'colaborador', empresaId, empresaNome: empresa?.get('nome') as string | undefined };
+  const role = user.role ?? undefined;
+  return { id: user.id, nome: user.nome, email: user.email, role,
+    papel: role === 'owner' ? 'admin' : 'colaborador', empresaId: user.empresaId, empresaNome: user.empresaNome ?? undefined };
 }
 export async function currentUser() { return findSession((await cookies()).get(SESSION_COOKIE)?.value); }
 export async function revokeSession(token?: string) {
-  if (token) await RefreshToken.destroy({ where: { token: hashToken(token) } });
+  if (token) await deleteRefreshToken(hashToken(token));
 }
 export function clearSession(response: NextResponse) {
   response.cookies.set(SESSION_COOKIE, '', { ...cookieOptions, maxAge: 0 });

@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
   // A separate output directory lets development checks run without touching
   // the regular dev server's cache or lock.
   distDir: process.env.NEXT_DIST_DIR || '.next',
-  serverExternalPackages: ['sequelize', 'sqlite3'],
+  serverExternalPackages: ['pg'],
   async headers() {
     return [{ source: '/(.*)', headers: [
       { key: 'X-Content-Type-Options', value: 'nosniff' },

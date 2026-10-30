@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server';
-import { UniqueConstraintError, fn, col, where, Transaction } from 'sequelize';
 import bcrypt from 'bcryptjs';
-import { sequelize } from '@/src/lib/db';
-import { Usuario } from '@/src/models/Usuario';
-import { Empresa } from '@/src/models/Empresa';
+import { inTransaction, isUniqueViolation } from '@/src/lib/postgres';
+import { createUsuario, findUsuarioByEmail } from '@/src/models/Usuario';
+import { createEmpresa } from '@/src/models/Empresa';
 import { jsonError, trustedOrigin } from '@/src/lib/auth';
 import { emailValue, InputError, passwordValue, readBody, textValue } from '@/src/lib/validation';
 import { consumeLimit } from '@/src/lib/rate-limit';
-import { Membership } from '@/src/models/Membership';
+import { createMembership } from '@/src/models/Membership';
 import { InvitationError, joinInvitation } from '@/src/lib/invitations';
 
 export async function POST(request: Request) {
@@ -20,24 +19,24 @@ export async function POST(request: Request) {
     const empresaNome = invited ? null : textValue(body.nomeEmpresa, 'O nome do restaurante');
     const email = emailValue(body.email);
     const senha = passwordValue(body.senha, true);
-    const existing = await Usuario.findOne({ where: where(fn('lower', fn('trim', col('email'))), email) });
+    const existing = await findUsuarioByEmail(email);
     if (existing) return jsonError('Este e-mail já está registrado.', 409);
     const senhaHash = await bcrypt.hash(senha, 10);
-    await sequelize.transaction({ type: Transaction.TYPES.IMMEDIATE }, async transaction => {
+    await inTransaction(async transaction => {
       if (invited) {
-        const user = await Usuario.create({ nome, email, senha: senhaHash, papel: 'colaborador' }, { transaction });
-        await joinInvitation(body.invitationToken, user.get('id') as string, email, transaction);
+        const user = await createUsuario({ nome, email, senha: senhaHash, papel: 'colaborador' }, transaction);
+        await joinInvitation(body.invitationToken, user.id, email, transaction);
         return;
       }
-      const empresa = await Empresa.create({ nome: empresaNome }, { transaction });
-      const user = await Usuario.create({ nome, email, senha: senhaHash, papel: 'admin', empresaId: empresa.get('id') }, { transaction });
-      await Membership.create({ userId: user.get('id'), empresaId: empresa.get('id'), role: 'owner' }, { transaction });
+      const empresa = await createEmpresa(empresaNome!, transaction);
+      const user = await createUsuario({ nome, email, senha: senhaHash, papel: 'admin', empresaId: empresa.id }, transaction);
+      await createMembership(user.id, empresa.id, 'owner', transaction);
     });
     return NextResponse.json({ message: invited ? 'Conta criada e convite aceito!' : 'Conta e restaurante criados com sucesso!' }, { status: 201 });
   } catch (error) {
     if (error instanceof InputError) return jsonError(error.message, 400);
     if (error instanceof InvitationError) return jsonError(error.message, error.status);
-    if (error instanceof UniqueConstraintError) return jsonError('Este e-mail já está registrado.', 409);
+    if (isUniqueViolation(error)) return jsonError('Este e-mail já está registrado.', 409);
     return jsonError('Não foi possível criar a conta. Tente novamente.', 500);
   }
 }

@@ -1,25 +1,13 @@
 import { migrateDatabase } from '../src/lib/migrations';
-import sqlite3 from 'sqlite3';
-import { existsSync } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { db } from '../src/lib/db';
 
 async function main() {
-  const storage = process.env.DATABASE_STORAGE || './database.sqlite';
-  if (storage !== ':memory:' && existsSync(storage)) {
-    const backupDir = join(dirname(resolve(storage)), '.backups');
-    await mkdir(backupDir, { recursive: true });
-    const backup = join(backupDir, `database-${new Date().toISOString().replace(/[:.]/g, '-')}.sqlite`);
-    const db = new sqlite3.Database(storage);
-    try {
-      await new Promise<void>((resolve, reject) => db.run('VACUUM INTO ?', [backup], error => error ? reject(error) : resolve()));
-    } finally {
-      await new Promise<void>((resolve, reject) => db.close(error => error ? reject(error) : resolve()));
-    }
-    console.log(`Backup criado em ${backup}`);
-  }
-  await migrateDatabase(storage);
+  if (!process.env.DATABASE_URL) throw new Error('Defina DATABASE_URL no arquivo .env.');
+  await migrateDatabase();
+  console.log('Schema PostgreSQL aplicado com sucesso.');
 }
-main()
-  .then(() => console.log('Migrações aplicadas com sucesso.'))
-  .catch(error => { console.error(error instanceof Error ? error.message : 'Falha na migração.'); process.exitCode = 1; });
+main().catch(() => {
+  // Never print connection strings or database error details that may contain data.
+  console.error('Não foi possível preparar o PostgreSQL. Confira DATABASE_URL, a conexão e as permissões para criar tabelas.');
+  process.exitCode = 1;
+}).finally(() => db.end());

@@ -1,36 +1,10 @@
-import { DataTypes, Model } from 'sequelize'
-import { sequelize } from '../lib/db'
-import { UUID } from 'crypto';
-
-export class Empresa extends Model {
-    declare id: UUID;
-    declare nome: string;
-    declare cnpj: string | null;
-    declare ativo: boolean;
+import { db } from '../lib/db';
+import type { Queryable } from '../lib/postgres';
+export interface IEmpresa { id: string; nome: string; cnpj: string | null; ativo: boolean }
+export async function createEmpresa(nome: string, client: Queryable = db): Promise<IEmpresa> {
+  const { rows } = await client.query<IEmpresa>('INSERT INTO empresas (nome) VALUES ($1) RETURNING id, nome, cnpj, ativo', [nome]);
+  return rows[0];
 }
-Empresa.init(
-    {
-        id: {
-            type: DataTypes.UUID,
-            defaultValue: DataTypes.UUIDV4,
-            primaryKey: true,
-        },
-        nome: {
-            type: DataTypes.STRING,
-            allowNull: false,
-        },
-        cnpj: {
-            type: DataTypes.STRING,
-            allowNull: true,
-            unique: true,
-        },
-        ativo: {
-            type: DataTypes.BOOLEAN,
-            defaultValue: true,
-        },
-    },
-    {
-        sequelize,
-        tableName: 'empresas',
-    }
-);
+export async function findEmpresa(id: string, client: Queryable = db) {
+  return (await client.query<IEmpresa>('SELECT id, nome, cnpj, ativo FROM empresas WHERE id = $1', [id])).rows[0] ?? null;
+}

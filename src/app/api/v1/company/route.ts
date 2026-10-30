@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { currentUser, hashToken, jsonError, SESSION_COOKIE, trustedOrigin } from '@/src/lib/auth';
 import { cookies } from 'next/headers';
-import { Membership } from '@/src/models/Membership';
-import { RefreshToken } from '@/src/models/RefreshToken';
+import { createMembership } from '@/src/models/Membership';
+import { setSessionEmpresa } from '@/src/models/RefreshToken';
 import { InputError, readBody, textValue } from '@/src/lib/validation';
-import { sequelize } from '@/src/lib/db';
-import { Empresa } from '@/src/models/Empresa';
-import { Usuario } from '@/src/models/Usuario';
+import { inTransaction } from '@/src/lib/postgres';
+import { createEmpresa } from '@/src/models/Empresa';
+import { assignFirstEmpresa } from '@/src/models/Usuario';
 export async function POST(request: Request) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
   const user = await currentUser();
@@ -15,12 +15,12 @@ export async function POST(request: Request) {
   try {
     const nome = textValue((await readBody(request)).nomeEmpresa, 'O nome do restaurante');
     const token = (await cookies()).get(SESSION_COOKIE)?.value;
-    await sequelize.transaction(async transaction => {
-      const empresa = await Empresa.create({ nome }, { transaction });
-      const [updated] = await Usuario.update({ empresaId: empresa.get('id'), papel: 'admin' }, { where: { id: user.id, empresaId: null }, transaction });
+    await inTransaction(async transaction => {
+      const empresa = await createEmpresa(nome, transaction);
+      const updated = await assignFirstEmpresa(user.id, empresa.id, transaction);
       if (!updated) throw new InputError('Sua conta já possui um restaurante.');
-      await Membership.create({ userId: user.id, empresaId: empresa.get('id'), role: 'owner' }, { transaction });
-      await RefreshToken.update({ empresaId: empresa.get('id') }, { where: { token: hashToken(token || ''), userId: user.id }, transaction });
+      await createMembership(user.id, empresa.id, 'owner', transaction);
+      if (!await setSessionEmpresa(hashToken(token || ''), user.id, empresa.id, transaction)) throw new InputError('Sessão expirada. Entre novamente.');
     });
     return NextResponse.json({ message: 'Restaurante criado.' }, { status: 201 });
   } catch (error) {

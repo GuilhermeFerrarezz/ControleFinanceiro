@@ -13,6 +13,6 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
   const next = `/invite/${token}`;
   const login = `/login?next=${encodeURIComponent(next)}`;
   const register = `/register?invite=${token}`;
-  const email = valid.invitation.get('email') as string;
+  const email = valid.invitation.email;
   return <AuthShell mode="invite" loginHref={login} registerHref={register}><span className="eyebrow">Um convite para fazer parte</span><h1>Sua equipe<br />está esperando.</h1><p className={styles.intro}>Você foi convidado para participar de <strong>{valid.empresa.nome}</strong> como funcionário.</p><div className={styles.ownerNote}><span>Convite pessoal para <strong>{email}</strong>Válido por 7 dias a partir da criação.</span></div>{user ? user.email === email ? <AcceptInvitation token={token} /> : <><p className={styles.error}>Você está conectado como {user.email}. Este convite pertence a outro e-mail.</p><p className={styles.intro}>Saia da conta atual pelo painel e entre com o e-mail indicado no convite.</p><Link className="button" href="/dashboard">Ir ao meu painel</Link></> : <div className={styles.form}><Link className="button" href={register}>Criar minha conta e participar</Link><Link className="button button-outline" href={login}>Já tenho conta. Entrar</Link></div>}</AuthShell>;
 }

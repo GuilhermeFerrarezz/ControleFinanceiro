@@ -22,6 +22,7 @@ Na área **Lançamentos**, consulte e exporte os dados filtrados em CSV. Funcion
 
 - Node.js 22.16 ou superior.
 - npm.
+- PostgreSQL 14 ou superior, com um banco criado e o serviço em execução.
 
 Execute os comandos na pasta do projeto.
 
@@ -41,7 +42,7 @@ if (-not (Test-Path -LiteralPath .env)) {
 }
 ```
 
-A configuração padrão usa um banco SQLite local em `database.sqlite`. Para acessar pelo computador e pelo celular na mesma rede, deixe `APP_ORIGIN` sem definição no `.env`.
+No `.env`, configure `DATABASE_URL` com a conexão do seu banco PostgreSQL, por exemplo `postgresql://usuario:senha@localhost:5432/controle_financeiro`. Se a senha contiver caracteres especiais, codifique-os para uso em uma URL. Para acessar pelo computador e pelo celular na mesma rede, deixe `APP_ORIGIN` sem definição no `.env`.
 
 ### 3. Preparar o banco e iniciar a aplicação
 
@@ -50,7 +51,7 @@ npm run db:migrate
 npm run dev
 ```
 
-O comando de migração cria o banco na primeira execução e atualiza sua estrutura nas próximas, preservando os dados existentes.
+O comando aplica o `schema.sql` ao banco informado em `DATABASE_URL`, criando as tabelas e os índices que ainda não existem. Ele não cria o banco PostgreSQL nem importa dados de arquivos SQLite antigos. Se o schema já foi aplicado, você pode executar o comando novamente.
 
 Abra [http://localhost:3000](http://localhost:3000), crie a conta do dono e cadastre o restaurante. Depois, use o painel para convidar os funcionários.
 

@@ -1,29 +1,80 @@
-import { DataTypes, Model } from 'sequelize';
-import { sequelize } from '../lib/db';
-export class Expense extends Model {}
-Expense.init({
-  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-  empresaId: { type: DataTypes.UUID, allowNull: false },
-  createdBy: { type: DataTypes.UUID, allowNull: false },
-  updatedBy: { type: DataTypes.UUID, allowNull: false },
-  requestId: { type: DataTypes.UUID, allowNull: false },
-  description: { type: DataTypes.STRING(120), allowNull: false },
-  amountCents: { type: DataTypes.BIGINT, allowNull: false },
-  date: { type: DataTypes.DATEONLY, allowNull: false },
-  category: { type: DataTypes.STRING, allowNull: false },
-  merchant: { type: DataTypes.STRING(120), allowNull: false, defaultValue: '' },
-  status: { type: DataTypes.STRING, allowNull: false, defaultValue: 'paid' },
-  paymentMethod: { type: DataTypes.STRING, allowNull: false, defaultValue: 'not_informed' },
-  notes: { type: DataTypes.TEXT, allowNull: false, defaultValue: '' },
-  version: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
-}, { sequelize, tableName: 'expenses', paranoid: true });
-export class ExpenseAudit extends Model {}
-ExpenseAudit.init({
-  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-  expenseId: { type: DataTypes.UUID, allowNull: false },
-  empresaId: { type: DataTypes.UUID, allowNull: false },
-  actorId: { type: DataTypes.UUID, allowNull: false },
-  action: { type: DataTypes.STRING, allowNull: false },
-  before: { type: DataTypes.TEXT, allowNull: true },
-  after: { type: DataTypes.TEXT, allowNull: true },
-}, { sequelize, tableName: 'expense_audit', updatedAt: false });
+import { db } from '../lib/db';
+import type { Queryable } from '../lib/postgres';
+import type { ExpenseInput, ExpenseFilters } from '../lib/expense-shared';
+
+export interface IExpense extends ExpenseInput {
+  id: string; empresaId: string; createdBy: string; updatedBy: string; requestId: string;
+  version: number; createdAt: string; deletedAt: Date | null; authorName: string;
+}
+export interface IExpenseAudit { id: string; expenseId: string; empresaId: string; actorId: string; action: 'created' | 'updated' | 'deleted'; before: Record<string, unknown> | null; after: Record<string, unknown> | null; createdAt: Date }
+const columns = `e.id,e.empresa_id AS "empresaId",e.created_by AS "createdBy",e.updated_by AS "updatedBy",e.request_id AS "requestId",
+  e.description,e.amount_cents AS "amountCents",to_char(e.date,'YYYY-MM-DD') AS date,e.category,e.merchant,e.status,
+  e.payment_method AS "paymentMethod",e.notes,e.version,e.created_at AS "createdAt",e.deleted_at AS "deletedAt"`;
+export function integer(value: unknown) {
+  const number = Number(value);
+  if (!Number.isSafeInteger(number)) throw new Error('Valor agregado fora do intervalo seguro.');
+  return number;
+}
+function expenseRow(row: IExpense & { createdAt: string | Date }) {
+  return { ...row, amountCents: integer(row.amountCents), createdAt: new Date(row.createdAt).toISOString() } as IExpense;
+}
+export async function findExpense(id: string, empresaId: string, client: Queryable) {
+  const { rows } = await client.query<IExpense>(`SELECT ${columns} FROM expenses e WHERE e.id=$1 AND e.empresa_id=$2 AND e.deleted_at IS NULL FOR UPDATE`, [id, empresaId]);
+  return rows[0] ? expenseRow(rows[0]) : null;
+}
+export async function insertExpense(empresaId: string, userId: string, requestId: string, input: ExpenseInput, client: Queryable) {
+  const { rows } = await client.query<{ id: string }>(`INSERT INTO expenses
+    (empresa_id,created_by,updated_by,request_id,description,amount_cents,date,category,merchant,status,payment_method,notes)
+    VALUES ($1,$2,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT (empresa_id,request_id) DO NOTHING RETURNING id`,
+    [empresaId,userId,requestId,input.description,input.amountCents,input.date,input.category,input.merchant,input.status,input.paymentMethod,input.notes]);
+  const created = !!rows[0];
+  // A concurrent INSERT with the same key commits before this SELECT runs.
+  const result = await client.query<IExpense>(`SELECT ${columns} FROM expenses e WHERE e.empresa_id=$1 AND e.request_id=$2 FOR UPDATE`, [empresaId, requestId]);
+  return { expense: expenseRow(result.rows[0]), created };
+}
+export async function updateExpense(id: string, empresaId: string, userId: string, input: ExpenseInput | null, client: Queryable) {
+  if (input) await client.query(`UPDATE expenses SET description=$1,amount_cents=$2,date=$3,category=$4,merchant=$5,status=$6,payment_method=$7,notes=$8,
+    updated_by=$9,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=$10 AND empresa_id=$11`,
+    [input.description,input.amountCents,input.date,input.category,input.merchant,input.status,input.paymentMethod,input.notes,userId,id,empresaId]);
+  else await client.query(`UPDATE expenses SET deleted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP,updated_by=$1,version=version+1 WHERE id=$2 AND empresa_id=$3`, [userId,id,empresaId]);
+  const result = await client.query<IExpense>(`SELECT ${columns} FROM expenses e WHERE e.id=$1 AND e.empresa_id=$2`, [id,empresaId]);
+  return expenseRow(result.rows[0]);
+}
+export async function insertExpenseAudit(expense: IExpense, actorId: string, action: IExpenseAudit['action'], before: Record<string, unknown> | null, after: Record<string, unknown>, client: Queryable) {
+  await client.query('INSERT INTO expense_audit (expense_id,empresa_id,actor_id,action,before,after) VALUES ($1,$2,$3,$4,$5,$6)', [expense.id,expense.empresaId,actorId,action,before,after]);
+}
+function scope(empresaId: string, filters: ExpenseFilters) {
+  const values: unknown[] = [empresaId,filters.start,filters.end];
+  const conditions = ['e.empresa_id=$1', 'e.deleted_at IS NULL', 'e.date BETWEEN $2::date AND $3::date'];
+  if (filters.category) { values.push(filters.category); conditions.push(`e.category=$${values.length}`); }
+  if (filters.status) { values.push(filters.status); conditions.push(`e.status=$${values.length}`); }
+  if (filters.q) {
+    values.push(`%${filters.q.replace(/[\\%_]/g, '\\$&')}%`);
+    conditions.push(`(e.description ILIKE $${values.length} ESCAPE E'\\\\' OR e.merchant ILIKE $${values.length} ESCAPE E'\\\\')`);
+  }
+  return { clause: conditions.join(' AND '), values };
+}
+export async function expenseTotals(empresaId: string, filters: ExpenseFilters, client: Queryable) {
+  const { clause, values } = scope(empresaId,filters);
+  const { rows } = await client.query<{ totalCents: string; paidCents: string; pendingCents: string; count: string }>(`SELECT COALESCE(SUM(e.amount_cents),0) AS "totalCents",COUNT(*) AS count,
+    COALESCE(SUM(e.amount_cents) FILTER (WHERE e.status='paid'),0) AS "paidCents",COALESCE(SUM(e.amount_cents) FILTER (WHERE e.status='pending'),0) AS "pendingCents"
+    FROM expenses e WHERE ${clause}`, values);
+  const row=rows[0];
+  return { totalCents: integer(row.totalCents), paidCents: integer(row.paidCents), pendingCents: integer(row.pendingCents), count: integer(row.count) };
+}
+export async function listExpenses(empresaId: string, filters: ExpenseFilters, limit: number, offset = 0, client: Queryable = db) {
+  const { clause, values } = scope(empresaId,filters);
+  const { rows } = await client.query<IExpense>(`SELECT ${columns},u.nome AS "authorName" FROM expenses e JOIN usuarios u ON u.id=e.created_by
+    WHERE ${clause} ORDER BY e.date DESC,e.created_at DESC,e.id DESC LIMIT $${values.length+1} OFFSET $${values.length+2}`, [...values,limit,offset]);
+  return rows.map(expenseRow);
+}
+export async function expenseCategories(empresaId: string, filters: ExpenseFilters, client: Queryable) {
+  const { clause, values } = scope(empresaId,filters);
+  return (await client.query<{ category: ExpenseInput['category']; totalCents: string; count: string }>(`SELECT e.category,SUM(e.amount_cents) AS "totalCents",COUNT(*) AS count
+    FROM expenses e WHERE ${clause} GROUP BY e.category ORDER BY SUM(e.amount_cents) DESC,e.category`,values)).rows.map(row=>({...row,totalCents:integer(row.totalCents),count:integer(row.count)}));
+}
+export async function expenseDaily(empresaId: string, filters: ExpenseFilters, client: Queryable) {
+  const { clause, values } = scope(empresaId,filters);
+  return (await client.query<{ date: string; totalCents: string }>(`SELECT to_char(e.date,'YYYY-MM-DD') AS date,SUM(e.amount_cents) AS "totalCents"
+    FROM expenses e WHERE ${clause} GROUP BY e.date ORDER BY e.date`,values)).rows.map(row=>({...row,totalCents:integer(row.totalCents)}));
+}

@@ -1,11 +1,10 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { Op, Transaction } from 'sequelize';
 import { currentUser, hashToken, jsonError, SESSION_COOKIE, trustedOrigin } from '@/src/lib/auth';
 import { InputError, readBody } from '@/src/lib/validation';
 import { InvitationError, joinInvitation } from '@/src/lib/invitations';
-import { sequelize } from '@/src/lib/db';
-import { RefreshToken } from '@/src/models/RefreshToken';
+import { inTransaction } from '@/src/lib/postgres';
+import { setSessionEmpresa } from '@/src/models/RefreshToken';
 export async function POST(request: Request) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
   const user = await currentUser();
@@ -13,11 +12,9 @@ export async function POST(request: Request) {
   try {
     const { token } = await readBody(request);
     const session = (await cookies()).get(SESSION_COOKIE)?.value || '';
-    // Serialize SQLite writers before reading the invitation, avoiding a lock
-    // upgrade race when two requests try to consume the same token.
-    await sequelize.transaction({ type: Transaction.TYPES.IMMEDIATE }, async transaction => {
+    await inTransaction(async transaction => {
       const empresaId = await joinInvitation(token, user.id, user.email, transaction);
-      const [updated] = await RefreshToken.update({ empresaId }, { where: { token: hashToken(session), userId: user.id, expiresAt: { [Op.gt]: new Date() } }, transaction });
+      const updated = await setSessionEmpresa(hashToken(session), user.id, empresaId, transaction);
       if (!updated) throw new InvitationError('Sessão expirada. Entre novamente.', 401);
     });
     return NextResponse.json({ message: 'Você agora faz parte da equipe.' });
