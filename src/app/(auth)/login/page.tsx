@@ -1,13 +1,8 @@
-import styles from './login.module.css';
+import AuthShell from '@/src/components/AuthShell';
 import FormLogin from './FormLogin';
-
-export default function LoginPage() {
-    return (
-        <div className={styles.container}>
-            <div className={styles.wrapper}>
-                <h1 className={styles.titulo}>Sistema de gestão financeira</h1>
-                <FormLogin />
-            </div>
-        </div>
-    );
+import { inviteDestination } from '@/src/lib/restaurants';
+export const metadata = { title: 'Entrar | Controle Financeiro' };
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+  const next = inviteDestination((await searchParams).next);
+  return <AuthShell registerHref={next.startsWith('/invite/') ? `/register?invite=${next.slice(8)}` : '/register'}><FormLogin next={next} /></AuthShell>;
 }

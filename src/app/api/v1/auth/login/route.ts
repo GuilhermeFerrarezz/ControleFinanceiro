@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { Op, fn, col, where } from 'sequelize';
 import { Usuario } from '@/src/models/Usuario';
-import { Empresa } from '@/src/models/Empresa';
+import { Membership } from '@/src/models/Membership';
+import { userRestaurants } from '@/src/lib/restaurants';
 import { cookieOptions, createSession, jsonError, revokeSession, SESSION_COOKIE, trustedOrigin } from '@/src/lib/auth';
 import { cookies } from 'next/headers';
 import { emailValue, InputError, passwordValue, readBody } from '@/src/lib/validation';
@@ -22,10 +23,8 @@ export async function POST(request: Request) {
     const usuario = await Usuario.findOne({ where: { [Op.and]: [where(fn('lower', fn('trim', col('email'))), email)] } });
     const valid = await bcrypt.compare(senha, usuario ? usuario.get('senha') as string : dummyHash);
     if (!usuario || !valid) return jsonError('Credenciais inválidas.', 401);
-    if (usuario.get('empresaId')) {
-      const empresa = await Empresa.findByPk(usuario.get('empresaId') as string);
-      if (!empresa || !empresa.get('ativo')) return jsonError('Conta indisponível. Contate o responsável pelo restaurante.', 403);
-    }
+    const restaurants = await userRestaurants(usuario.get('id') as string);
+    if (!restaurants.length && await Membership.count({ where: { userId: usuario.get('id') } })) return jsonError('Conta indisponível. Contate o responsável pelo restaurante.', 403);
     const cookieStore = await cookies();
     const session = await createSession(usuario.get('id') as string, body.remember === true);
     await revokeSession(cookieStore.get(SESSION_COOKIE)?.value);

@@ -42,6 +42,27 @@ export async function migrateDatabase(storage: string) {
         CREATE TABLE IF NOT EXISTS auth_rate_limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, windowStart INTEGER NOT NULL);
         INSERT INTO schema_migrations(version) VALUES ('001-auth-sessions');`);
     }
+    if (!applied.some(row => row.version === '002-restaurant-memberships')) {
+      await exec(`CREATE TABLE restaurant_members (
+        id UUID PRIMARY KEY NOT NULL, userId UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+        empresaId UUID NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+        role TEXT NOT NULL CHECK(role IN ('owner','employee')),
+        createdAt DATETIME NOT NULL, updatedAt DATETIME NOT NULL, UNIQUE(userId,empresaId));
+        INSERT INTO restaurant_members (id,userId,empresaId,role,createdAt,updatedAt)
+          SELECT id,id,empresaId,CASE WHEN papel='admin' THEN 'owner' ELSE 'employee' END,createdAt,updatedAt
+          FROM usuarios WHERE empresaId IS NOT NULL;
+        CREATE INDEX members_company ON restaurant_members(empresaId);
+        ALTER TABLE "refresh-tokens" ADD COLUMN empresaId UUID REFERENCES empresas(id) ON DELETE SET NULL;
+        UPDATE "refresh-tokens" SET empresaId = (SELECT empresaId FROM usuarios WHERE usuarios.id = "refresh-tokens".userId);
+        CREATE TABLE restaurant_invitations (
+          id UUID PRIMARY KEY NOT NULL, empresaId UUID NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+          invitedBy UUID NOT NULL REFERENCES usuarios(id), email TEXT NOT NULL, tokenHash TEXT NOT NULL UNIQUE,
+          expiresAt DATETIME NOT NULL, acceptedAt DATETIME, revokedAt DATETIME,
+          createdAt DATETIME NOT NULL, updatedAt DATETIME NOT NULL);
+        CREATE INDEX invitation_company ON restaurant_invitations(empresaId);
+        CREATE UNIQUE INDEX invitation_pending_email ON restaurant_invitations(empresaId,email) WHERE acceptedAt IS NULL AND revokedAt IS NULL;
+        INSERT INTO schema_migrations(version) VALUES ('002-restaurant-memberships');`);
+    }
     const broken = await all('PRAGMA foreign_key_check');
     if (broken.length) throw new Error('Há relacionamentos inválidos no banco. Migração cancelada.');
     await exec('COMMIT; PRAGMA foreign_keys = ON;');

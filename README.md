@@ -58,9 +58,9 @@ O arquivo SQLite e os backups ficam fora do Git. Remover o arquivo do índice n�
 - Proxy faz os redirecionamentos e remove cookies inválidos. Páginas e endpoints protegidos verificam novamente a sessão no servidor. Identidade e restaurante nunca são aceitos de headers, corpo ou armazenamento do navegador.
 - Requisições de escrita verificam `Origin` e `Sec-Fetch-Site`. Configure `APP_ORIGIN` com a origem pública exata em produção, por exemplo `https://financeiro.exemplo.com`, e use HTTPS.
 - Login: até 5 tentativas por e-mail normalizado em 15 minutos e 100 tentativas globais por minuto. Cadastro: até 20 requisições globais por hora. Os contadores são persistidos no SQLite; não dependem de headers de IP que um cliente possa falsificar. Limites globais incluem requisições inválidas. Em uma implantação pública maior, complemente com limitação de tráfego no proxy de entrada.
-- Senhas novas exigem 12 caracteres e no máximo 72 bytes UTF-8 (limite do bcrypt). Senhas antigas continuam funcionando. Payloads JSON são limitados a 8 KiB.
-- O cadastro público sempre cria uma nova empresa e seu administrador. Não permite escolher papel ou entrar em empresa alheia. Convites de colaboradores, recuperação de senha e provedores sociais ainda não estão implementados e não aparecem como ações disponíveis.
-- Novas operações financeiras devem obter o usuário com `currentUser()`, exigir empresa vinculada, filtrar toda consulta por `empresaId` da sessão e verificar `papel` conforme a operação. O endpoint privado atual retorna apenas a identidade autenticada, sem dados financeiros.
+- Senhas novas exigem 6 caracteres e no máximo 72 bytes UTF-8 (limite do bcrypt). Senhas antigas continuam funcionando. Payloads JSON são limitados a 8 KiB.
+- O cadastro público sempre cria uma nova empresa e seu administrador. Não permite escolher papel ou entrar em empresa alheia. O dono gera convites pessoais por link para funcionários. Recuperação de senha e provedores sociais ainda não estão implementados e não aparecem como ações disponíveis.
+- Novas operações financeiras devem obter o usuário com `currentUser()`, exigir empresa vinculada, filtrar toda consulta por `empresaId` da sessão e verificar `papel` conforme a operação. O endpoint privado atual retorna apenas a identidade autenticada, sem dados financeiros. O papel vem de `restaurant_members`, não dos campos antigos do usuário.
 
 ## Produção
 
@@ -71,3 +71,11 @@ Instale as dependências de desenvolvimento no estágio de build; elas podem ser
 As dependências foram atualizadas para corrigir os avisos do npm audit. O override `sequelize > uuid@11.1.1` evita a versão vulnerável e mantém CommonJS; [uuid 12 remove esse suporte](https://github.com/uuidjs/uuid). Reavalie o override ao atualizar o Sequelize.
 
 Não registre senhas, hashes ou identificadores de sessão. Use backups protegidos e revise periodicamente `npm audit`.
+
+## Restaurante e equipe
+
+A página inicial apresenta o Controle Financeiro. O dono cria seu restaurante no cadastro e administra os convites no painel. Funcionários entram pelo link pessoal, criam uma conta ou usam a existente, e passam a participar do restaurante. Os links são copiados e compartilhados manualmente; não há envio de e-mail automático. Uma pessoa pode participar de mais de um restaurante e alternar o contexto no painel.
+
+Depois de atualizar o projeto, execute `npm run db:migrate` antes de iniciá-lo. A migração 002 preserva os vínculos existentes e cria a estrutura de membros e convites.
+
+Veja [a arquitetura de contas, restaurantes e convites](docs/architecture.md). O lançamento de gastos permanece fora desta etapa.

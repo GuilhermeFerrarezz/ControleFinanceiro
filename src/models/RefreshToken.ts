@@ -27,6 +27,7 @@ RefreshToken.init(
         },
 
 
+        empresaId: { type: DataTypes.UUID, allowNull: true },
         expiresAt: {
             type: DataTypes.DATE,
             allowNull: false,

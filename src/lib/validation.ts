@@ -31,8 +31,8 @@ export function textValue(value: unknown, label: string) {
   return value.trim();
 }
 export function passwordValue(value: unknown, registration = false) {
-  if (typeof value !== 'string' || !value.length || Buffer.byteLength(value, 'utf8') > 72 || (registration && value.length < 12)) {
-    throw new InputError(registration ? 'A senha deve ter pelo menos 12 caracteres e no máximo 72 bytes.' : 'Informe uma senha válida (máximo de 72 bytes).');
-  }
+  if (typeof value !== 'string' || !value.length) throw new InputError('Informe sua senha.');
+  if (Buffer.byteLength(value, 'utf8') > 72) throw new InputError('A senha é muito longa. Use uma senha menor.');
+  if (registration && value.length < 6) throw new InputError('Use uma senha com pelo menos 6 caracteres.');
   return value;
 }

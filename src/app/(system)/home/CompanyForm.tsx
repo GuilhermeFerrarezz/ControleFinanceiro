@@ -15,7 +15,7 @@ export default function CompanyForm() {
     catch (error) { setMessage(errorMessage(error)); setLoading(false); }
   }
   return <form className={styles.form} onSubmit={submit} aria-busy={loading}>
-    <h1>Cadastre seu restaurante</h1><p>Vincule sua conta a um restaurante para continuar.</p>
+    <span className="eyebrow">Um novo começo para a sua casa</span><h1 className="serif" style={{ fontSize: 38, lineHeight: 1.15 }}>Vamos preparar seu restaurante?</h1><p className={styles.intro}>Crie o seu restaurante como dono. Se você é funcionário, abra o link de convite enviado pelo dono para entrar na equipe.</p>
     <label className={styles.field} htmlFor="nomeEmpresa">Nome do restaurante<input className={styles.input} id="nomeEmpresa" name="nomeEmpresa" minLength={2} maxLength={120} required /></label>
     <button className={styles.button} disabled={loading}>{loading ? 'Salvando...' : 'Continuar'}</button>
     {message && <p className={styles.error} role="alert">{message}</p>}

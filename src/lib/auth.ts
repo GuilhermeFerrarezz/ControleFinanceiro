@@ -5,6 +5,8 @@ import { Op } from 'sequelize';
 import { RefreshToken } from '../models/RefreshToken';
 import { Usuario } from '../models/Usuario';
 import { Empresa } from '../models/Empresa';
+import { Membership } from '../models/Membership';
+import { userRestaurants, type RestaurantRole } from './restaurants';
 
 export const SESSION_COOKIE = 'session';
 export const cookieOptions = { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' as const, path: '/' };
@@ -13,8 +15,9 @@ export const hashToken = (token: string) => createHash('sha256').update(token).d
 export async function createSession(userId: string, remember: boolean) {
   const token = randomBytes(32).toString('base64url');
   const lifetime = remember ? 7 * 24 * 60 * 60 : 8 * 60 * 60;
+  const restaurants = await userRestaurants(userId);
   await RefreshToken.destroy({ where: { expiresAt: { [Op.lte]: new Date() } } });
-  await RefreshToken.create({ token: hashToken(token), userId, expiresAt: new Date(Date.now() + lifetime * 1000) });
+  await RefreshToken.create({ token: hashToken(token), userId, empresaId: restaurants[0]?.id || null, expiresAt: new Date(Date.now() + lifetime * 1000) });
   return { token, lifetime };
 }
 
@@ -24,11 +27,14 @@ export async function findSession(token?: string) {
   if (!session) return null;
   const user = await Usuario.findByPk(session.get('userId') as string, { attributes: ['id', 'nome', 'email', 'papel', 'empresaId'] });
   if (!user) return null;
-  const empresaId = user.get('empresaId') as string | null;
+  const empresaId = session.get('empresaId') as string | null;
   const empresa = empresaId ? await Empresa.findByPk(empresaId) : null;
   if (empresaId && (!empresa || !empresa.get('ativo'))) return null;
+  const membership = empresaId ? await Membership.findOne({ where: { userId: user.get('id'), empresaId } }) : null;
+  if (empresaId && !membership) return null;
+  const role = membership?.get('role') as RestaurantRole | undefined;
   return { id: user.get('id') as string, nome: user.get('nome') as string, email: user.get('email') as string,
-    papel: user.get('papel') as string, empresaId, empresaNome: empresa?.get('nome') as string | undefined };
+    role, papel: role === 'owner' ? 'admin' : 'colaborador', empresaId, empresaNome: empresa?.get('nome') as string | undefined };
 }
 export async function currentUser() { return findSession((await cookies()).get(SESSION_COOKIE)?.value); }
 export async function revokeSession(token?: string) {
