@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { UniqueConstraintError, fn, col, where } from 'sequelize';
+import { UniqueConstraintError, fn, col, where, Transaction } from 'sequelize';
 import bcrypt from 'bcryptjs';
 import { sequelize } from '@/src/lib/db';
 import { Usuario } from '@/src/models/Usuario';
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     const existing = await Usuario.findOne({ where: where(fn('lower', fn('trim', col('email'))), email) });
     if (existing) return jsonError('Este e-mail já está registrado.', 409);
     const senhaHash = await bcrypt.hash(senha, 10);
-    await sequelize.transaction(async transaction => {
+    await sequelize.transaction({ type: Transaction.TYPES.IMMEDIATE }, async transaction => {
       if (invited) {
         const user = await Usuario.create({ nome, email, senha: senhaHash, papel: 'colaborador' }, { transaction });
         await joinInvitation(body.invitationToken, user.get('id') as string, email, transaction);

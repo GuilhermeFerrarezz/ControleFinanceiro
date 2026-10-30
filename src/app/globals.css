@@ -27,3 +27,11 @@ button, a { touch-action:manipulation; }
 .skip-link { position:fixed; top:-100px; left:12px; z-index:100; background:var(--lime); padding:15px; }.skip-link:focus { top:12px; }
 @media(max-width:380px) { .brand { font-size:14px; gap:8px; }.brand-symbol { width:34px; height:36px; border-radius:9px; } }
 @media(prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } *,*::before,*::after { animation:none!important; transition:none!important; } }
+
+/* Readable type and controls on tablet and desktop layouts. */
+@media (min-width: 761px) {
+  .brand { font-size: 20px; }
+  .brand-symbol { width: 46px; height: 48px; }
+  .button { font-size: 16px; min-height: 54px; }
+  .eyebrow { font-size: 13px; letter-spacing: 1.7px; }
+}

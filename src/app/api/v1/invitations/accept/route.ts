@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { Op } from 'sequelize';
+import { Op, Transaction } from 'sequelize';
 import { currentUser, hashToken, jsonError, SESSION_COOKIE, trustedOrigin } from '@/src/lib/auth';
 import { InputError, readBody } from '@/src/lib/validation';
 import { InvitationError, joinInvitation } from '@/src/lib/invitations';
@@ -13,7 +13,9 @@ export async function POST(request: Request) {
   try {
     const { token } = await readBody(request);
     const session = (await cookies()).get(SESSION_COOKIE)?.value || '';
-    await sequelize.transaction(async transaction => {
+    // Serialize SQLite writers before reading the invitation, avoiding a lock
+    // upgrade race when two requests try to consume the same token.
+    await sequelize.transaction({ type: Transaction.TYPES.IMMEDIATE }, async transaction => {
       const empresaId = await joinInvitation(token, user.id, user.email, transaction);
       const [updated] = await RefreshToken.update({ empresaId }, { where: { token: hashToken(session), userId: user.id, expiresAt: { [Op.gt]: new Date() } }, transaction });
       if (!updated) throw new InvitationError('Sessão expirada. Entre novamente.', 401);

@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { Op, type Transaction } from 'sequelize';
+import { Op, Transaction } from 'sequelize';
 import { Invitation } from '../models/Invitation';
 import { Membership } from '../models/Membership';
 import { Empresa } from '../models/Empresa';
@@ -35,7 +35,7 @@ export async function joinInvitation(token: unknown, userId: string, email: stri
 
 export async function createInvitation(ownerId: string, empresaId: string, email: string) {
   const token = randomBytes(32).toString('base64url');
-  await sequelize.transaction(async transaction => {
+  await sequelize.transaction({ type: Transaction.TYPES.IMMEDIATE }, async transaction => {
     const owner = await Membership.findOne({ where: { userId: ownerId, empresaId, role: 'owner' }, transaction });
     if (!owner) throw new InvitationError('Apenas o dono pode convidar funcionários.', 403);
     const existingUser = await Usuario.findOne({ where: { email }, transaction });

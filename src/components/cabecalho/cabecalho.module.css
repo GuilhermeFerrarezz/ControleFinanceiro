@@ -1,2 +1,12 @@
 .header { background:#fcfbf7; border-bottom:1px solid var(--line); }.inner { max-width:1280px; margin:auto; padding:20px 40px; display:flex; align-items:center; gap:35px; }.restaurant { display:flex; align-items:center; gap:9px; border-left:1px solid var(--line); padding-left:30px; font-size:12px; color:#77826a; max-width:370px; overflow-wrap:anywhere; }.account { margin-left:auto; position:relative; }.accountButton { display:flex; align-items:center; gap:11px; border:0; background:transparent; color:var(--ink); text-align:left; padding:0; min-height:44px; }.avatar { width:37px; height:37px; border-radius:50%; background:#e7ecd7; display:grid; place-items:center; font-size:11px; flex-shrink:0; }.accountName { font-size:12px; max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.accountName small { display:block; color:#7f8972; font-size:9px; margin-top:5px; }.dropdown { position:absolute; right:0; top:55px; width:250px; padding:20px; border:1px solid var(--line); border-radius:10px; box-shadow:0 10px 30px #203d3115; background:#fffefa; z-index:5; overflow-wrap:anywhere; }.dropdown>strong { display:block; font-size:13px; }.dropdown>span { display:block; margin-top:7px; font-size:11px; color:#7a846d; }.dropdown button { display:flex; gap:10px; align-items:center; border:0; border-top:1px solid var(--line); background:none; color:#a85437; padding:17px 0 0; margin-top:16px; width:100%; font-size:12px; min-height:44px; }.dropdown p { font-size:11px; color:#a85437; }
 @media(max-width:700px) { .inner { padding:17px 22px; gap:14px; flex-wrap:wrap; }.accountName { display:none; }.restaurant { order:3; width:100%; border-left:0; border-top:1px solid var(--line); padding:12px 0 0; max-width:none; }.accountButton { gap:7px; } }
+
+@media (min-width: 761px) {
+  .restaurant, .accountName { font-size: 16px; }
+  .accountName { max-width: 200px; }
+  .accountName small { font-size: 12px; }
+  .avatar { width: 44px; height: 44px; font-size: 14px; }
+  .dropdown { width: 300px; }
+  .dropdown > strong, .dropdown button { font-size: 16px; }
+  .dropdown > span, .dropdown p { font-size: 14px; }
+}

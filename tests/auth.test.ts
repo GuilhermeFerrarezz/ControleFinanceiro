@@ -228,6 +228,37 @@ test('migrações e autenticação HTTP com banco isolado', { timeout: 180_000 }
     assert.equal((await fetch(`${origin}/api/v1/invitations/${row.id}`, { method: 'DELETE', headers: { Cookie: cookie, Origin: origin } })).status, 404);
     await post('/auth/logout', {}, cookie);
   });
+  await t.test('reenviar convite normaliza e-mail e invalida o link anterior', async () => {
+    const first = await post('/invitations', { email: 'resend@example.com' }, secondCookie);
+    const second = await post('/invitations', { email: ' RESEND@EXAMPLE.COM ' }, secondCookie);
+    assert.equal(first.status, 201); assert.equal(second.status, 201);
+    const oldPath = (await first.json()).path;
+    const newPath = (await second.json()).path;
+    assert.notEqual(oldPath, newPath);
+    const signup = { nomeUsuario: 'Novo funcionário', email: 'resend@example.com', senha: 'abc123' };
+    assert.equal((await post('/auth/register', { ...signup, invitationToken: oldPath.split('/').at(-1) })).status, 410);
+    assert.equal((await post('/auth/register', { ...signup, invitationToken: newPath.split('/').at(-1) })).status, 201);
+    assert.equal((await post('/invitations', { email: signup.email }, secondCookie)).status, 409);
+    const pending = await query(storage, "SELECT id FROM restaurant_invitations WHERE email='resend@example.com' AND acceptedAt IS NULL AND revokedAt IS NULL");
+    assert.equal(pending.length, 0);
+  });
+  await t.test('aceitação simultânea consome o convite uma única vez', async () => {
+    const employeeLogin = await post('/auth/login', { email: 'employee@example.com', senha: 'abc123' });
+    assert.equal(employeeLogin.status, 200);
+    const employeeCookie = (employeeLogin.headers.get('set-cookie') || '').split(';')[0];
+    const otherLogin = await post('/auth/login', { ...credentials, email: 'legacy@example.com' });
+    assert.equal(otherLogin.status, 200);
+    const otherCookie = (otherLogin.headers.get('set-cookie') || '').split(';')[0];
+    const invite = await post('/invitations', { email: 'employee@example.com' }, otherCookie);
+    assert.equal(invite.status, 201);
+    const token = (await invite.json()).path.split('/').at(-1);
+    const results = await Promise.all([post('/invitations/accept', { token }, employeeCookie), post('/invitations/accept', { token }, employeeCookie)]);
+    assert.deepEqual(results.map(result => result.status).sort(), [200, 410]);
+    const memberships = await query(storage, "SELECT id FROM restaurant_members WHERE userId=(SELECT id FROM usuarios WHERE email='employee@example.com')");
+    assert.equal(memberships.length, 2);
+    await post('/auth/logout', {}, employeeCookie);
+    await post('/auth/logout', {}, otherCookie);
+  });
   await t.test('expiração e limitação de tentativas são aplicadas', async () => {
     await query(storage, `UPDATE "refresh-tokens" SET expiresAt = '2000-01-01 00:00:00.000 +00:00'`);
     assert.equal((await fetch(`${origin}/api/v1/private`, { headers: { Cookie: secondCookie } })).status, 401);
