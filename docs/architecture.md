@@ -41,9 +41,15 @@ Uma sessão válida não é autorização para todos os restaurantes. Toda opera
 
 Funcionários veem o próprio acesso e podem aceitar seus convites. Apenas donos carregam a lista de nomes/e-mails da equipe e os convites pendentes no painel.
 
-## Evolução financeira
+## Gastos e central financeira
 
-Nenhum lançamento de gastos foi implementado nesta etapa. A futura entidade de gasto deverá conter `empresaId`, `createdBy`, categoria, valor em centavos e datas de criação/competência. Tanto donos quanto funcionários poderão registrar gastos de seu restaurante; permissões para alteração, aprovação e exclusão devem ser definidas antes de implementar essas operações. Os registros não devem confiar em `empresaId` ou autor enviados pelo navegador.
+Os gastos são persistidos em `expenses`, sempre vinculados ao restaurante e ao autor da sessão. Valores são inteiros em centavos e datas de gasto são datas de calendário, sem conversão de fuso. Categoria, pagamento e situação usam valores validados. Totais, distribuição por categoria, série diária e comparação com o período anterior são calculados no servidor para todos os registros filtrados, independentemente da paginação.
+
+Donos e funcionários podem criar gastos e consultar a central do restaurante ativo. Funcionários só alteram os próprios registros; donos podem alterar todos. Toda consulta e mutação inclui `empresaId` da sessão. A sessão e a origem são validadas novamente nos endpoints.
+
+Cada criação recebe um identificador de envio único por restaurante para evitar duplicidade em uma nova tentativa de rede. Edições e exclusões exigem a versão atual, com transações de escrita serializadas no SQLite. Exclusões são lógicas e não entram nos gráficos. `expense_audit` mantém autor, ação e valores anteriores/posteriores de cada operação; não há endpoint público para apagar esse histórico.
+
+A migração `003-expenses` adiciona as tabelas e índices. A interface tem Visão geral, Lançamentos e Equipe, com um formulário compartilhado para criação/edição, gráficos SVG e exportação CSV que neutraliza fórmulas em texto fornecido por usuários.
 
 ## Migração e operação
 

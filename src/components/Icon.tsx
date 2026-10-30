@@ -1,5 +1,8 @@
 import type { CSSProperties } from 'react';
 const paths = {
+  edit: 'm15 4 5 5M4 20l5-1L21 7a2 2 0 0 0-5-5L4 14l-1 7Z',
+  trash: 'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7',
+  download: 'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',
   arrow: 'M4 12h15m-6-6 6 6-6 6', check: 'm5 12 4 4L19 6',
   chart: 'M4 20V10m8 10V4m8 16v-7', team: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.87M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8m8-7.87a4 4 0 0 1 0 7.75',
   leaf: 'M20 4C6 2 2 10 6 16s16 5 14-12ZM4 21 16 9',

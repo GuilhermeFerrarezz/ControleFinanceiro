@@ -63,6 +63,28 @@ export async function migrateDatabase(storage: string) {
         CREATE UNIQUE INDEX invitation_pending_email ON restaurant_invitations(empresaId,email) WHERE acceptedAt IS NULL AND revokedAt IS NULL;
         INSERT INTO schema_migrations(version) VALUES ('002-restaurant-memberships');`);
     }
+    if (!applied.some(row => row.version === '003-expenses')) {
+      await exec(`CREATE TABLE expenses (
+        id UUID PRIMARY KEY NOT NULL, empresaId UUID NOT NULL REFERENCES empresas(id),
+        createdBy UUID NOT NULL REFERENCES usuarios(id), updatedBy UUID NOT NULL REFERENCES usuarios(id),
+        requestId UUID NOT NULL, description VARCHAR(120) NOT NULL,
+        amountCents BIGINT NOT NULL CHECK(amountCents > 0 AND amountCents <= 9999999999),
+        date TEXT NOT NULL, category TEXT NOT NULL CHECK(category IN ('alimentos','funcionarios','produtos','bebidas','embalagens','contas','manutencao','impostos','outros')),
+        merchant VARCHAR(120) NOT NULL DEFAULT '', status TEXT NOT NULL CHECK(status IN ('paid','pending')),
+        paymentMethod TEXT NOT NULL CHECK(paymentMethod IN ('not_informed','pix','cash','debit','credit','transfer','boleto')),
+        notes TEXT NOT NULL DEFAULT '', version INTEGER NOT NULL DEFAULT 1,
+        createdAt DATETIME NOT NULL, updatedAt DATETIME NOT NULL, deletedAt DATETIME,
+        UNIQUE(empresaId,requestId));
+        CREATE INDEX expenses_company_date ON expenses(empresaId,date) WHERE deletedAt IS NULL;
+        CREATE INDEX expenses_company_category ON expenses(empresaId,category,date) WHERE deletedAt IS NULL;
+        CREATE TABLE expense_audit (
+          id UUID PRIMARY KEY NOT NULL, expenseId UUID NOT NULL REFERENCES expenses(id),
+          empresaId UUID NOT NULL REFERENCES empresas(id), actorId UUID NOT NULL REFERENCES usuarios(id),
+          action TEXT NOT NULL CHECK(action IN ('created','updated','deleted')),
+          before TEXT, after TEXT, createdAt DATETIME NOT NULL);
+        CREATE INDEX audit_expense ON expense_audit(empresaId,expenseId);
+        INSERT INTO schema_migrations(version) VALUES ('003-expenses');`);
+    }
     const broken = await all('PRAGMA foreign_key_check');
     if (broken.length) throw new Error('Há relacionamentos inválidos no banco. Migração cancelada.');
     await exec('COMMIT; PRAGMA foreign_keys = ON;');

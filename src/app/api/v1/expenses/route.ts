@@ -1,0 +1,28 @@
+import { NextResponse } from 'next/server';
+import { currentUser, jsonError, trustedOrigin } from '@/src/lib/auth';
+import { InputError, readBody } from '@/src/lib/validation';
+import { createExpense, expenseDashboard, expenseFilters, exportExpenses, ExpenseError, uuidValue, validateExpense } from '@/src/lib/expenses';
+export async function GET(request: Request) {
+  const user = await currentUser();
+  if (!user) return jsonError('Entre na sua conta para continuar.', 401);
+  if (!user.empresaId) return jsonError('Selecione um restaurante para continuar.', 403);
+  try {
+    const params = new URL(request.url).searchParams;
+    const filters = expenseFilters(params);
+    if (params.get('format') === 'csv') return new Response(await exportExpenses({ ...user, empresaId: user.empresaId }, filters), { headers: {
+      'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="gastos-${filters.start}-${filters.end}.csv"`, 'Cache-Control': 'no-store',
+    } });
+    return NextResponse.json(await expenseDashboard({ ...user, empresaId: user.empresaId }, filters), { headers: { 'Cache-Control': 'no-store' } });
+  } catch (error) { return jsonError(error instanceof InputError || error instanceof ExpenseError ? error.message : 'Não foi possível carregar os gastos.', error instanceof ExpenseError ? error.status : error instanceof InputError ? 400 : 500); }
+}
+export async function POST(request: Request) {
+  if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
+  const user = await currentUser();
+  if (!user) return jsonError('Entre na sua conta para continuar.', 401);
+  if (!user.empresaId) return jsonError('Selecione um restaurante para continuar.', 403);
+  try {
+    const body = await readBody(request);
+    const result = await createExpense({ ...user, empresaId: user.empresaId }, validateExpense(body), uuidValue(body.requestId));
+    return NextResponse.json(result, { status: result.replayed ? 200 : 201 });
+  } catch (error) { return jsonError(error instanceof InputError || error instanceof ExpenseError ? error.message : 'Não foi possível salvar o gasto. Tente novamente.', error instanceof ExpenseError ? error.status : error instanceof InputError ? 400 : 500); }
+}
