@@ -49,14 +49,21 @@ export function selectedPeriodYear(period: { start: string; end: string }, today
   const expected = yearPeriod(year, today);
   return period.start === expected.start && period.end === expected.end ? String(year) : '';
 }
-export function expenseTrend(daily: { date: string; totalCents: number }[]) {
-  if (daily.length <= 90) return { monthly: false, series: daily };
-  const months = new Map<string, number>();
-  for (const day of daily) {
-    const month = `${day.date.slice(0,7)}-01`;
-    months.set(month,(months.get(month) || 0)+day.totalCents);
+export function buildExpenseSeries(daily:{date:string;totalCents:number}[],start:string,end:string) {
+  const duration=daysBetween(start,end);
+  const seriesInterval:'day'|'month'|'year'=duration<=90?'day':duration<=366*5?'month':'year';
+  const periodKey=(date:string)=>seriesInterval==='day'?date:seriesInterval==='month'?`${date.slice(0,7)}-01`:`${date.slice(0,4)}-01-01`;
+  const byPeriod=new Map<string,number>();
+  for(const day of daily){const key=periodKey(day.date);byPeriod.set(key,(byPeriod.get(key)||0)+day.totalCents);}
+  const series=[];
+  for(let date=periodKey(start);date<=end;){
+    series.push({date,totalCents:byPeriod.get(date)||0});
+    if(seriesInterval==='day')date=addDays(date,1);
+    else {const next=new Date(`${date}T12:00:00Z`);if(seriesInterval==='month')next.setUTCMonth(next.getUTCMonth()+1);else next.setUTCFullYear(next.getUTCFullYear()+1);date=next.toISOString().slice(0,10);}
   }
-  return { monthly: true, series: Array.from(months,([date,totalCents])=>({date,totalCents})) };
+  const positive=daily.filter(day=>day.totalCents>0);
+  const peakDay=positive.reduce<(typeof daily)[number]|null>((peak,day)=>!peak||day.totalCents>peak.totalCents?day:peak,null);
+  return {seriesInterval,series,peakDay,daysWithExpenses:positive.length};
 }
 export function newExpenseRequestId() {
   // getRandomValues works on LAN HTTP too; randomUUID requires a secure context.
@@ -72,5 +79,13 @@ export type ExpenseDashboardData = {
   filters: ExpenseFilters; expenses: ExpenseRecord[]; count: number; pages: number; pageSize: number; demoCount: number; years: number[];
   summary: { totalCents: number; paidCents: number; pendingCents: number; count: number; averageDailyCents: number; previousTotalCents: number; changePercent: number | null };
   categories: { category: ExpenseCategory; totalCents: number; count: number }[];
+  seriesInterval: 'day' | 'month' | 'year';
+  peakDay: {date:string;totalCents:number} | null; daysWithExpenses:number; availablePeriod:{start:string;end:string}|null;
   series: { date: string; totalCents: number }[];
 };
+
+export function trendPeriodLabel(date:string,interval:'day'|'month'|'year',short=false) {
+  if(interval==='year')return date.slice(0,4);
+  if(interval==='day')return short?displayDate(date).slice(0,5):displayDate(date);
+  return short?`${date.slice(5,7)}/${date.slice(2,4)}`:new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(`${date}T12:00:00Z`));
+}

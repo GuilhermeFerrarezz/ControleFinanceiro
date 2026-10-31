@@ -6,6 +6,7 @@ import { createServer } from 'node:net';
 import { randomUUID } from 'node:crypto';
 import { isolatedDatabase, query } from './postgres-fixture';
 import { demoSamples } from '../src/lib/demo-data';
+import ExcelJS from 'exceljs';
 
 test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async t => {
   const fixture = await isolatedDatabase();
@@ -137,6 +138,49 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.ok((await list()).count > 1);
   });
 
+
+  await t.test('importação CSV tem prévia, autoria da sessão e reenvio sem duplicação',async()=>{
+    const csv='Data;Descrição;Valor;Categoria;Lançado por\n12/01/2030;Compra importada;99,90;Alimentos;Dono falso\n10/11/2031;Limpeza importada;80,10;Produtos e limpeza;Outro dono';
+    assert.equal((await api('/expenses/import','','POST',{csv,mode:'preview'})).status,401);
+    assert.equal((await api('/expenses/import',owner,'POST',{csv,mode:'import'},'https://hostil.invalid')).status,403);
+    const preview=await api('/expenses/import',employee,'POST',{csv,mode:'preview'});assert.equal(preview.status,200,await preview.clone().text());
+    const plan=await preview.json();assert.equal(plan.ready,2);assert.equal(plan.totalErrors,0);assert.equal(plan.totalCents,18000);
+    const first=await api('/expenses/import',employee,'POST',{csv,mode:'import',empresaId:'forged',createdBy:ownerUser.id});
+    assert.equal(first.status,200,await first.clone().text());assert.equal((await first.json()).imported,2);
+    const data=await list(owner,'start=2030-01-01&end=2031-12-31');assert.equal(data.count,2);assert.equal(data.summary.totalCents,18000);
+    assert.equal(data.seriesInterval,'month');assert.equal(data.series.length,24);assert.equal(data.daysWithExpenses,2);
+    assert.ok(data.expenses.every((row:{createdBy:string})=>row.createdBy===employeeUser.id));
+    const repeated=await Promise.all([api('/expenses/import',owner,'POST',{csv,mode:'import'}),api('/expenses/import',employee,'POST',{csv,mode:'import'})]);
+    for(const result of repeated){assert.equal(result.status,200);assert.equal((await result.json()).imported,0);}
+    assert.equal((await list(other,'start=2030-01-01&end=2031-12-31')).count,0);
+    const bad='Data;Descrição;Valor;Categoria\n12/01/2030;Não salvar parcial;5,00;Alimentos\n31/02/2030;Inválido;10,00;Alimentos';
+    const errors=await (await api('/expenses/import',employee,'POST',{csv:bad,mode:'preview'})).json();assert.equal(errors.totalErrors,1);assert.equal(errors.errors[0].line,3);
+    assert.equal((await api('/expenses/import',employee,'POST',{csv:bad,mode:'import'})).status,400);
+    assert.equal((await list(owner,'start=2030-01-01&end=2031-12-31')).count,2);
+    const exported=await (await api('/expenses?start=2030-01-01&end=2031-12-31&format=csv',owner)).text();
+    assert.match(exported,/Data: 12\/01\/2030/);
+    const roundTrip=await (await api('/expenses/import',owner,'POST',{csv:exported,mode:'preview'})).json();assert.equal(roundTrip.ready,0);assert.equal(roundTrip.duplicates,2);
+  });
+  await t.test('falha durante importação reverte os gastos e a auditoria do arquivo inteiro',async()=>{
+    await query(fixture.pool,`CREATE FUNCTION reject_test_csv() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.description='Bloquear de propósito' THEN RAISE EXCEPTION 'Falha simulada'; END IF; RETURN NEW; END $$`);
+    await query(fixture.pool,'CREATE TRIGGER reject_test_csv BEFORE INSERT ON expenses FOR EACH ROW EXECUTE FUNCTION reject_test_csv()');
+    try{
+      const csv='Data;Descrição;Valor;Categoria\n01/01/2032;Linha que deve reverter;10;Alimentos\n02/01/2032;Bloquear de propósito;10;Alimentos';
+      assert.equal((await api('/expenses/import',owner,'POST',{csv,mode:'import'})).status,500);
+      assert.equal((await list(owner,'start=2032-01-01&end=2032-12-31')).count,0);
+    }finally{await query(fixture.pool,'DROP TRIGGER reject_test_csv ON expenses');await query(fixture.pool,'DROP FUNCTION reject_test_csv()');}
+  });
+  await t.test('planilha formatada, PDF e gráficos aceitam períodos de vários anos',async()=>{
+    const range='start=2000-01-01&end=2100-12-31';
+    const all=await list(owner,range);assert.equal(all.seriesInterval,'year');assert.equal(all.series.length,101);
+    assert.equal(all.series.reduce((sum:number,row:{totalCents:number})=>sum+row.totalCents,0),all.summary.totalCents);
+    const workbookResponse=await api('/expenses?start=2030-01-01&end=2031-12-31&format=xlsx',owner);assert.equal(workbookResponse.status,200);
+    const workbook=new ExcelJS.Workbook();await workbook.xlsx.load(await workbookResponse.arrayBuffer());
+    const sheet=workbook.getWorksheet('Lançamentos')!;assert.ok(sheet.getColumn(1).width!>=16);assert.equal(sheet.getCell('A2').numFmt,'dd/mm/yyyy');
+    assert.ok(sheet.getCell('A2').value instanceof Date);assert.equal(sheet.getCell('C2').type,ExcelJS.ValueType.Number);
+    assert.equal((await api('/expenses/report?'+range)).status,401);
+    for(const cookie of [owner,other]){const pdf=await api('/expenses/report?'+range,cookie);assert.equal(pdf.status,200,await pdf.clone().text());assert.match(pdf.headers.get('content-type')||'',/application\/pdf/);const bytes=Buffer.from(await pdf.arrayBuffer());assert.equal(bytes.subarray(0,5).toString(),'%PDF-');}
+  });
   await t.test('exemplos só podem ser gerenciados pelo dono e preservam os gastos reais', async () => {
     assert.equal((await api('/demo-data','','POST',{action:'restore'})).status,401);
     assert.equal((await api('/demo-data',employee,'POST',{action:'restore'})).status,403);
@@ -159,13 +203,13 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     const demo = await list(owner,''); assert.equal(demo.demoCount,expectedDemoCount);
     const annual = await list(owner,'year=2025');
     assert.equal(annual.count,216); assert.equal(annual.filters.start,'2025-01-01'); assert.equal(annual.filters.end,'2025-12-31');
-    assert.equal(annual.series.length,365); assert.ok(annual.years.includes(2025));
+    assert.equal(annual.series.length,12); assert.equal(annual.seriesInterval,'month'); assert.ok(annual.years.includes(2025));
     assert.ok(annual.expenses.every((row:{date:string;isDemo:boolean})=>row.date.startsWith('2025-') && row.isDemo));
     assert.equal(annual.categories.reduce((sum:number,row:{totalCents:number})=>sum+row.totalCents,0),annual.summary.totalCents);
     assert.equal((await list(other,'year=2025')).count,0);
     assert.equal((await api('/expenses?year=2025%20OR%201=1',owner)).status,400);
     const csv2025=await (await api('/expenses?year=2025&format=csv',owner)).text();
-    assert.match(csv2025, /2025-01-/); assert.doesNotMatch(csv2025, /"2026-/);
+    assert.match(csv2025, /Data: \d{2}\/01\/2025/); assert.doesNotMatch(csv2025, /Data: \d{2}\/\d{2}\/2026/);
 
     assert.equal(demo.categories.length,9); assert.ok(demo.expenses.some((row:{isDemo:boolean})=>row.isDemo));
     assert.equal((await list(other,'')).demoCount,0);

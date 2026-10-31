@@ -1,5 +1,5 @@
 export class InputError extends Error {}
-export async function readBody(request: Request): Promise<Record<string, unknown>> {
+export async function readBody(request: Request, maxBytes = 8192): Promise<Record<string, unknown>> {
   if (!request.body) throw new InputError('Informe os dados da solicitação.');
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -9,7 +9,7 @@ export async function readBody(request: Request): Promise<Record<string, unknown
       const { done, value } = await reader.read();
       if (done) break;
       size += value.length;
-      if (size > 8192) { await reader.cancel(); throw new InputError('Solicitação muito grande.'); }
+      if (size > maxBytes) { await reader.cancel(); throw new InputError('Solicitação muito grande.'); }
       chunks.push(value);
     }
     const body: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));

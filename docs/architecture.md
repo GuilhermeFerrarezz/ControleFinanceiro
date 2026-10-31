@@ -74,4 +74,13 @@ A coluna `expenses.demo_key` identifica exclusivamente os exemplos; um índice �
 
 O filtro `year` é validado no servidor e convertido em datas: anos anteriores usam janeiro a dezembro; o ano atual termina na data de hoje em São Paulo. A lista de anos vem dos gastos ativos do restaurante, incluindo sempre o ano atual. Exemplos usam chaves por mês (`v2-AAAA-MM-N`), permitindo acrescentar meses sem mover registros antigos. Restaurar aposenta por exclusão lógica os exemplos da versão anterior, preservando gastos reais e auditoria.
 
-A série financeira permanece diária na API; o gráfico agrupa por mês ao exibir mais de 90 dias, preservando os valores em centavos. O gráfico de categorias usa segmentos SVG interativos e uma legenda selecionável, com operação por toque, mouse e teclado.
+A série financeira é agrupada no servidor: diária até 90 dias, mensal até cinco anos e anual para períodos maiores. Totais, dia de pico e dias com gastos são calculados sobre os registros completos, preservando os valores em centavos e os dias sem gasto. Não há limite de duração do período dentro das datas válidas do sistema. O gráfico de categorias usa segmentos SVG interativos e uma legenda selecionável, com operação por toque, mouse e teclado.
+
+
+## Arquivos de lançamentos e PDF
+
+A exportação CSV usa UTF-8 com BOM, ponto e vírgula e datas com prefixo textual para evitar conversão automática para datas com largura insuficiente na planilha. Textos que poderiam ser interpretados como fórmulas são neutralizados. A alternativa XLSX usa células tipadas e larguras explícitas.
+
+A importação CSV faz validação no servidor com `csv-parse`, prévia e confirmação separadas. A confirmação revalida o arquivo, bloqueia o vínculo do ator, usa SQL parametrizado e realiza gravação e auditoria em uma única transação. Limites por arquivo: 2 MB e 2.000 registros. IDs existentes são consultados somente no restaurante da sessão. IDs de envio determinísticos e um bloqueio transacional por restaurante impedem duplicatas em reenvios concorrentes. A autoria de novos gastos vem exclusivamente da sessão.
+
+O relatório PDF é gerado no servidor com PDFKit, gráficos vetoriais e fontes Noto Sans incluídas no projeto sob licença OFL. O arquivo usa o mesmo resumo e os mesmos filtros do painel, sem capturar conteúdo arbitrário de navegador ou fazer requisições externas. As fontes são incluídas no rastreamento de arquivos do Next para implantação.

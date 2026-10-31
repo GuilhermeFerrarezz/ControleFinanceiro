@@ -7,8 +7,8 @@ export async function createMembership(userId: string, empresaId: string, role: 
   // Invitation retries must never downgrade an existing owner's membership.
   await client.query('INSERT INTO restaurant_members (user_id,empresa_id,role) VALUES ($1,$2,$3) ON CONFLICT (user_id,empresa_id) DO NOTHING', [userId, empresaId, role]);
 }
-export async function findMembership(userId: string, empresaId: string, client: Queryable = db) {
-  return (await client.query<IMembership>('SELECT id,user_id AS "userId",empresa_id AS "empresaId",role FROM restaurant_members WHERE user_id=$1 AND empresa_id=$2', [userId, empresaId])).rows[0] ?? null;
+export async function findMembership(userId: string, empresaId: string, client: Queryable = db, lock = false) {
+  return (await client.query<IMembership>(`SELECT id,user_id AS "userId",empresa_id AS "empresaId",role FROM restaurant_members WHERE user_id=$1 AND empresa_id=$2 ${lock ? 'FOR KEY SHARE' : ''}`, [userId, empresaId])).rows[0] ?? null;
 }
 export async function hasMemberships(userId: string) {
   return (await db.query<{ exists: boolean }>('SELECT EXISTS (SELECT 1 FROM restaurant_members WHERE user_id=$1)', [userId])).rows[0].exists;

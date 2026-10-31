@@ -176,3 +176,20 @@
 @media (min-width: 851px) and (max-width: 1250px) { .charts { grid-template-columns: 1fr; } }
 @media (max-width: 600px) { .interactiveDonut { width: 210px; }.pieDetails { margin-top: 16px; }.filters .filterField:first-of-type { grid-column: 1 / -1; } }
 @media (prefers-reduced-motion: reduce) { .donutSlice { transition: none; } }
+
+.listActions { flex-wrap: wrap; gap: 10px 18px; }
+.headingActions { flex-wrap: wrap; }
+.importDialog { width: min(780px,calc(100% - 24px)); }
+.importHint { font-size: 12px; color: #7d8a6e; line-height: 1.8; margin: 12px 0; }
+.importReview { margin-top: 22px; min-width: 0; }
+.importReview h3 { font-size: 16px; overflow-wrap: anywhere; }
+.importReview > p { color: #748366; font-size: 14px; line-height: 1.7; }
+.importRows { list-style: none; margin: 18px 0; padding: 0; }
+.importRows li { display: flex; justify-content: space-between; gap: 15px; padding: 12px 0; border-top: 1px solid #e5eadd; }
+.importRows li > div { min-width: 0; }
+.importRows strong { font-size: 14px; overflow-wrap: anywhere; }
+.importRows li > strong { flex-shrink: 0; }
+.importRows span,.importRows small { display: block; font-size: 12px; color: #7c8b6c; line-height: 1.7; margin-top: 5px; }
+.importReview ul { padding-left: 0; }
+.importReview .error ul { padding-left: 18px; }
+@media (max-width: 600px) { .importRows li > strong { font-size: 12px; }.headingActions { align-items: stretch; }.listActions { justify-content: flex-start; }.field input[type='file'] { font-size: 13px; } }

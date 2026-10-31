@@ -7,6 +7,8 @@ import RestaurantSwitcher from '@/src/app/(system)/dashboard/RestaurantSwitcher'
 import ExpenseCharts from './ExpenseCharts';
 import DemoDataControls from './DemoDataControls';
 import ExpenseForm from './ExpenseForm';
+import ImportExpenses from './ImportExpenses';
+import { downloadBlob } from '@/src/lib/browser-download';
 import Icon from './Icon';
 import styles from './finance.module.css';
 
@@ -26,6 +28,8 @@ export default function FinancialDashboard({ initialData, view, user, restaurant
   const [deleting, setDeleting] = useState<ExpenseRecord | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
+  const [pdfBusy,setPdfBusy] = useState(false);
+  const [importing,setImporting] = useState(false);
   const controller = useRef<AbortController | null>(null);
   const deleteDialog = useRef<HTMLDialogElement>(null);
   useEffect(() => () => controller.current?.abort(), []);
@@ -57,27 +61,31 @@ export default function FinancialDashboard({ initialData, view, user, restaurant
   function preset(value: string) {
     const today = todayInSaoPaulo();
     let period = monthPeriod(today);
+    if (value === 'all') period = data.availablePeriod || monthPeriod(today);
     if (value === 'week') period = { start: addDays(today, -6), end: today };
     if (value === 'previous') { const end = addDays(`${today.slice(0, 7)}-01`, -1); period = { start: `${end.slice(0, 7)}-01`, end }; }
     const filters = { ...draft, ...period, page: 1 };
     setDraft(filters); setNotice(''); void load(filters);
   }
-  async function download() {
+  async function download(format:'csv'|'xlsx'='csv') {
     setExportBusy(true); setError('');
     try {
-      const params = filterParams(data.filters); params.set('format', 'csv');
-      const response = await api.get(`/expenses?${params}`, { responseType: 'blob' });
-      const url = URL.createObjectURL(response.data);
-      const link = document.createElement('a'); link.href = url; link.download = `gastos-${data.filters.start}-${data.filters.end}.csv`; link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      const params = filterParams(data.filters); params.set('format', format);
+      const response = await api.get(`/expenses?${params}`, { responseType: 'blob', timeout:60000 });
+      downloadBlob(response.data,`gastos-${data.filters.start}-${data.filters.end}.${format}`);
     } catch { setError('Não foi possível exportar os gastos. Tente reduzir o período ou aplicar mais filtros.'); }
     finally { setExportBusy(false); }
+  }
+  async function report() {
+    setPdfBusy(true);setError('');
+    try{const response=await api.get(`/expenses/report?${filterParams(data.filters)}`,{responseType:'blob',timeout:60000});downloadBlob(response.data,`resumo-${data.filters.start}-${data.filters.end}.pdf`);}
+    catch{setError('Não foi possível gerar o PDF. Tente novamente.');}finally{setPdfBusy(false);}
   }
   const summary = data.summary;
   const rows = view === 'overview' ? data.expenses.slice(0, 5) : data.expenses;
   const hasFilters = !!(data.filters.category || data.filters.status || data.filters.q);
   return <>
-    <div className={styles.heading}><div><span className="eyebrow">{view === 'overview' ? 'Um olhar atento para o seu negócio' : 'A rotina da casa, organizada'}</span><h1>{view === 'overview' ? 'Cada gasto, mais clareza.' : 'Todos os gastos, em um lugar.'}</h1><p>{view === 'overview' ? `Olá, ${user.nome.split(' ')[0]}. Acompanhe os custos e cuide dos próximos passos.` : 'Registre, encontre e acompanhe os lançamentos do seu restaurante.'}</p></div><div className={styles.headingActions}><RestaurantSwitcher restaurants={restaurants} selected={selectedRestaurant} /><button className="button" onClick={() => { setNotice(''); setForm('new'); }}><Icon name="plus" size={19} />Novo gasto</button></div></div>
+    <div className={styles.heading}><div><span className="eyebrow">{view === 'overview' ? 'Um olhar atento para o seu negócio' : 'A rotina da casa, organizada'}</span><h1>{view === 'overview' ? 'Cada gasto, mais clareza.' : 'Todos os gastos, em um lugar.'}</h1><p>{view === 'overview' ? `Olá, ${user.nome.split(' ')[0]}. Acompanhe os custos e cuide dos próximos passos.` : 'Registre, encontre e acompanhe os lançamentos do seu restaurante.'}</p></div><div className={styles.headingActions}><RestaurantSwitcher restaurants={restaurants} selected={selectedRestaurant} /><button className="button button-outline" disabled={pdfBusy||loading} onClick={report}><Icon name="download" size={17}/>{pdfBusy?'Gerando PDF...':'Gerar PDF'}</button><button className="button" onClick={() => { setNotice(''); setForm('new'); }}><Icon name="plus" size={19} />Novo gasto</button></div></div>
     {notice && <div className={styles.notice} role="status"><Icon name="check" size={18} /><span>{notice}</span><button aria-label="Fechar mensagem" onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}
     {error && <div className={styles.error} role="alert">{error} <button className={styles.textButton} onClick={() => void load()}>Atualizar lista</button></div>}
     {demoEnabled && <DemoDataControls count={data.demoCount} onChanged={async action => {
@@ -85,7 +93,7 @@ export default function FinancialDashboard({ initialData, view, user, restaurant
       await load(action === 'restore' ? { ...data.filters,...monthPeriod(),category:'',status:'',q:'',page:1 } : data.filters);
     }} />}
     <section className={styles.filtersCard} aria-label="Filtros do período"><form onSubmit={apply} className={styles.filters}>
-      <div className={styles.periodShortcuts}><span>Ver período</span><div><button type="button" onClick={() => preset('month')}>Mês atual</button><button type="button" onClick={() => preset('previous')}>Mês anterior</button><button type="button" onClick={() => preset('week')}>Últimos 7 dias</button></div></div>
+      <div className={styles.periodShortcuts}><span>Ver período</span><div><button type="button" onClick={() => preset('all')}>Todo o período</button><button type="button" onClick={() => preset('month')}>Mês atual</button><button type="button" onClick={() => preset('previous')}>Mês anterior</button><button type="button" onClick={() => preset('week')}>Últimos 7 dias</button></div></div>
       <label className={styles.filterField} htmlFor="filter-year">Ano<select id="filter-year" value={selectedPeriodYear(draft)} disabled={loading} onChange={event=>{
         if(!event.target.value) return;
         const filters={...draft,...yearPeriod(Number(event.target.value)),page:1};
@@ -107,7 +115,7 @@ export default function FinancialDashboard({ initialData, view, user, restaurant
         <article className={styles.stat}><span><Icon name="chart" size={18} />Média por dia</span><strong>{money(summary.averageDailyCents)}</strong><small>Considera todos os dias do período</small></article>
       </section>
       {view === 'overview' && <ExpenseCharts key={`${data.filters.start}-${data.filters.end}`} data={data} />}
-      <section className={styles.listCard} aria-labelledby="expense-list-title"><div className={styles.listHeading}><div><h2 id="expense-list-title">{view === 'overview' ? 'Últimos lançamentos' : 'Lançamentos do período'}</h2><p>{view === 'overview' ? 'Os registros mais recentes da sua equipe.' : user.role === 'owner' ? 'Você pode administrar todos os gastos deste restaurante.' : 'Você pode editar e excluir os gastos que lançou.'}</p></div><div className={styles.listActions}><button className={styles.textButton} onClick={download} disabled={exportBusy || data.count === 0}>{exportBusy ? 'Exportando...' : 'Exportar CSV'} <Icon name="download" size={16} /></button>{view === 'overview' && <Link href={`/dashboard/expenses?${filterParams({ ...data.filters, page: 1 })}`} className={styles.textButton}>Ver todos <Icon name="arrow" size={16} /></Link>}</div></div>
+      <section className={styles.listCard} aria-labelledby="expense-list-title"><div className={styles.listHeading}><div><h2 id="expense-list-title">{view === 'overview' ? 'Últimos lançamentos' : 'Lançamentos do período'}</h2><p>{view === 'overview' ? 'Os registros mais recentes da sua equipe.' : user.role === 'owner' ? 'Você pode administrar todos os gastos deste restaurante.' : 'Você pode editar e excluir os gastos que lançou.'}</p></div><div className={styles.listActions}><button className={styles.textButton} onClick={()=>setImporting(true)}>Importar CSV</button><button className={styles.textButton} onClick={()=>void download('xlsx')} disabled={exportBusy||data.count===0}>Excel formatado <Icon name="download" size={16}/></button><button className={styles.textButton} onClick={()=>void download('csv')} disabled={exportBusy || data.count === 0}>{exportBusy ? 'Exportando...' : 'Exportar CSV'} <Icon name="download" size={16} /></button>{view === 'overview' && <Link href={`/dashboard/expenses?${filterParams({ ...data.filters, page: 1 })}`} className={styles.textButton}>Ver todos <Icon name="arrow" size={16} /></Link>}</div></div>
         {rows.length === 0 ? <div className={styles.empty}><span><Icon name="receipt" size={36} /></span><h3>{hasFilters ? 'Nenhum gasto com esses filtros.' : 'Tudo começa com o primeiro registro.'}</h3><p>{hasFilters ? 'Tente outra categoria, situação ou termo de busca.' : 'Registre um gasto para começar a enxergar os números da sua casa.'}</p><button className="button" onClick={() => setForm('new')}><Icon name="plus" size={17} />Lançar um gasto</button></div> : <>
           <div className={styles.tableWrap}><table className={styles.expenseTable}><caption className={styles.srOnly}>Gastos do restaurante no período selecionado</caption><thead><tr><th>Gasto</th><th>Categoria</th><th>Data</th><th>Situação</th><th>Valor</th><th><span className={styles.srOnly}>Ações</span></th></tr></thead><tbody>{rows.map(expense => {
             const category = EXPENSE_CATEGORIES.find(category => category.id === expense.category)!;
@@ -118,6 +126,10 @@ export default function FinancialDashboard({ initialData, view, user, restaurant
       </section>
     </div>
     <p className={styles.bottomNote}><Icon name="shield" size={15} />Os dados pertencem ao restaurante ativo. Donos administram todos os lançamentos; funcionários, os próprios.</p>
+    {importing && <ImportExpenses onClose={()=>setImporting(false)} onImported={async result=>{
+      setImporting(false);setNotice(`${result.imported} lançamentos importados. ${result.duplicates} repetidos foram ignorados.`);
+      await load({...data.filters,...result.period,category:'',status:'',q:'',page:1});
+    }}/>}
     {form && <ExpenseForm expense={form === 'new' ? undefined : form} onClose={() => setForm(null)} onSaved={saved} />}
     <dialog ref={deleteDialog} className={`${styles.dialog} ${styles.confirmDialog}`} aria-labelledby="delete-title" onCancel={event => { event.preventDefault(); if (!deleteBusy) setDeleting(null); }}><div className={styles.dialogInner}><span className={styles.deleteIcon}><Icon name="trash" size={27} /></span><h2 id="delete-title">Excluir este gasto?</h2><p>“{deleting?.description}” será removido da lista e dos gráficos. O histórico da operação será preservado.</p><div className={styles.formActions}><button className="button button-outline" disabled={deleteBusy} onClick={() => setDeleting(null)}>Manter gasto</button><button className={styles.dangerButton} disabled={deleteBusy} onClick={remove}>{deleteBusy ? 'Excluindo...' : 'Excluir gasto'}</button></div></div></dialog>
   </>;

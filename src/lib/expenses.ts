@@ -1,7 +1,7 @@
-import { countDemoExpenses, expenseYears, expenseCategories, expenseDaily, expenseTotals, findExpense, insertExpense, insertExpenseAudit, listExpenses, updateExpense, type IExpense } from '../models/Expense';
+import { countDemoExpenses, expenseBounds, expenseYears, expenseCategories, expenseDaily, expenseTotals, findExpense, insertExpense, insertExpenseAudit, listExpenses, updateExpense, type IExpense } from '../models/Expense';
 import { inTransaction } from './postgres';
 import { InputError } from './validation';
-import { addDays, daysBetween, EXPENSE_CATEGORIES, MAX_AMOUNT_CENTS, monthPeriod, yearPeriod, todayInSaoPaulo, PAYMENT_METHODS, type ExpenseDashboardData, type ExpenseFilters, type ExpenseInput, type ExpenseRecord } from './expense-shared';
+import { addDays, buildExpenseSeries, daysBetween, EXPENSE_CATEGORIES, MAX_AMOUNT_CENTS, monthPeriod, yearPeriod, todayInSaoPaulo, PAYMENT_METHODS, type ExpenseDashboardData, type ExpenseFilters, type ExpenseInput, type ExpenseRecord } from './expense-shared';
 
 export type ExpenseActor = { id: string; empresaId: string; role?: string };
 export class ExpenseError extends Error {
@@ -43,7 +43,7 @@ export function expenseFilters(params = new URLSearchParams()): ExpenseFilters {
   const defaults = year === null ? monthPeriod() : yearPeriod(Number(year));
   const start = dateValue(year === null ? params.get('start') || defaults.start : defaults.start);
   const end = dateValue(year === null ? params.get('end') || defaults.end : defaults.end);
-  if (start > end || daysBetween(start, end) > 366) throw new InputError('Escolha um período de até 366 dias, com início anterior ao fim.');
+  if (start > end) throw new InputError('A data inicial deve ser anterior ou igual à data final.');
   const category = params.get('category') || '';
   const status = params.get('status') || '';
   const q = (params.get('q') || '').trim();
@@ -93,19 +93,15 @@ export async function expenseDashboard(actor: ExpenseActor,filters: ExpenseFilte
     const daily = await expenseDaily(actor.empresaId,filters,client);
     const duration=daysBetween(filters.start,filters.end), previousEnd=addDays(filters.start,-1);
     const previous = await expenseTotals(actor.empresaId,{...filters,start:addDays(previousEnd,-(duration-1)),end:previousEnd},client);
-    const byDate=new Map(daily.map(day=>[day.date,day.totalCents]));
-    const series=Array.from({length:duration},(_,index)=>{const date=addDays(filters.start,index);return {date,totalCents:byDate.get(date)||0};});
+    const trend=buildExpenseSeries(daily,filters.start,filters.end);
+    const availablePeriod=await expenseBounds(actor.empresaId,client);
     return { filters:{...filters,page},expenses:expenses.map(row=>toRecord(row,actor)),count:totals.count,pages,pageSize,demoCount,years,
       summary:{...totals,averageDailyCents:Math.round(totals.totalCents/duration),previousTotalCents:previous.totalCents,
-        changePercent:previous.totalCents>0 ? Math.round((totals.totalCents-previous.totalCents)/previous.totalCents*1000)/10 : null},categories,series };
+        changePercent:previous.totalCents>0 ? Math.round((totals.totalCents-previous.totalCents)/previous.totalCents*1000)/10 : null},categories,...trend,availablePeriod };
   },true);
 }
-export async function exportExpenses(actor: ExpenseActor,filters: ExpenseFilters) {
+export async function expensesForExport(actor: ExpenseActor,filters: ExpenseFilters) {
   const rows=await listExpenses(actor.empresaId,filters,10001);
   if(rows.length>10000) throw new InputError('A exportação permite até 10 mil gastos. Reduza o período ou use mais filtros.');
-  const cell = (value: string) => `"${(/^[\s]*[=+@\-\t\r]/.test(value) ? "'" : '') + value.replaceAll('"', '""')}"`;
-  const lines = [['Data', 'Descrição', 'Categoria', 'Local / favorecido', 'Valor (R$)', 'Situação', 'Pagamento', 'Lançado por', 'Observações'], ...rows.map(row => [row.date, row.description,
-    EXPENSE_CATEGORIES.find(category => category.id === row.category)?.label || row.category, row.merchant, (row.amountCents / 100).toFixed(2).replace('.', ','), row.status === 'paid' ? 'Pago' : 'A pagar',
-    PAYMENT_METHODS.find(method => method.id === row.paymentMethod)?.label || '', row.authorName, row.notes])];
-  return '\uFEFF' + lines.map(line => line.map(cell).join(';')).join('\r\n');
+  return rows;
 }

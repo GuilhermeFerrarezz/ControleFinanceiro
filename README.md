@@ -14,7 +14,7 @@ A central financeira reúne o resumo dos gastos, valores pagos e a pagar, média
 
 Em **Novo gasto**, informe descrição, valor, data e categoria. Você também pode registrar o local de compra ou favorecido, a forma de pagamento e observações. Há categorias para alimentos, funcionários, produtos, bebidas, embalagens, contas, manutenção, impostos e outros gastos.
 
-Na área **Lançamentos**, consulte e exporte os dados filtrados em CSV. Funcionários podem editar e excluir os próprios gastos; o dono pode administrar todos os lançamentos do restaurante. A área **Equipe** mantém os convites e os acessos individuais. O dono pode remover funcionários: o acesso ao restaurante é revogado e os gastos anteriores continuam identificados com o nome de quem os lançou.
+Na área **Lançamentos**, consulte e exporte os dados filtrados em CSV ou Excel. O CSV apresenta datas como texto legível (`Data: 30/10/2026`); a planilha Excel tem datas, valores e larguras de coluna formatados. Funcionários podem editar e excluir os próprios gastos; o dono pode administrar todos os lançamentos do restaurante. A área **Equipe** mantém os convites e os acessos individuais. O dono pode remover funcionários: o acesso ao restaurante é revogado e os gastos anteriores continuam identificados com o nome de quem os lançou.
 
 ## Como iniciar o projeto
 
@@ -66,3 +66,9 @@ Se o IP do computador mudar, reinicie a aplicação. Para parar o servidor, pres
 ### Testar com dados de exemplo
 
 Com `ENABLE_DEMO_DATA=true` no `.env`, o dono vê os controles **Restaurar exemplos** e **Excluir exemplos** no painel e na lista de lançamentos. São 18 gastos fictícios por mês, de janeiro de 2025 até a data atual, identificados com a etiqueta **Exemplo**. Restaurar recompõe os exemplos e desfaz alterações feitas neles; excluir retira somente esses registros. Os gastos reais são preservados. Para ocultar os controles, defina `ENABLE_DEMO_DATA=false` e reinicie a aplicação.
+
+### Importar lançamentos e gerar um resumo
+
+Use **Importar CSV** para baixar um modelo, escolher seu arquivo e conferir a prévia. As colunas Data, Descrição, Valor e Categoria são obrigatórias; local, situação, pagamento e observações são opcionais. São aceitos ponto e vírgula, vírgula e tabulação como separadores, datas em `dd/mm/aaaa` ou `aaaa-mm-dd` e valores como `125,90`. O arquivo pode conter até 2.000 lançamentos e 2 MB. Corrija os erros indicados por linha antes de confirmar. Os novos gastos serão registrados em seu nome; reenvios do mesmo arquivo e IDs já identificados são ignorados. A importação adiciona registros e preserva os existentes.
+
+O botão **Gerar PDF** baixa um resumo do período e dos filtros aplicados, com totais, pagamentos, evolução dos gastos e distribuição por categoria. Não há limite de 366 dias para consultar o painel: use **Todo o período** ou defina as datas. Os gráficos usam dias, meses ou anos conforme o intervalo para manter a leitura simples.

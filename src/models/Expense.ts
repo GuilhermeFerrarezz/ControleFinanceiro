@@ -95,3 +95,28 @@ export async function countDemoExpenses(empresaId: string, client: Queryable) {
 export async function expenseYears(empresaId: string, client: Queryable) {
   return (await client.query<{ year:number }>('SELECT DISTINCT EXTRACT(YEAR FROM date)::integer AS year FROM expenses WHERE empresa_id=$1 AND deleted_at IS NULL ORDER BY year DESC',[empresaId])).rows.map(row=>row.year);
 }
+
+export async function expenseBounds(empresaId: string,client: Queryable) {
+  const {rows}=await client.query<{start:string|null;end:string|null}>("SELECT to_char(min(date),'YYYY-MM-DD') AS start,to_char(max(date),'YYYY-MM-DD') AS end FROM expenses WHERE empresa_id=$1 AND deleted_at IS NULL",[empresaId]);
+  return rows[0].start && rows[0].end ? {start:rows[0].start,end:rows[0].end} : null;
+}
+export async function existingImportKeys(empresaId: string,ids: string[],keys: string[],client: Queryable) {
+  return (await client.query<{id:string;requestId:string}>('SELECT id,request_id AS "requestId" FROM expenses WHERE empresa_id=$1 AND (id=ANY($2::uuid[]) OR request_id=ANY($3::uuid[]))',[empresaId,ids,keys])).rows;
+}
+
+export async function insertImportedExpenses(empresaId:string,userId:string,items:{requestId:string;input:ExpenseInput}[],client:Queryable) {
+  if(!items.length)return 0;
+  const payload=items.map(({requestId,input})=>({request_id:requestId,description:input.description,amount_cents:input.amountCents,date:input.date,category:input.category,merchant:input.merchant,status:input.status,payment_method:input.paymentMethod,notes:input.notes}));
+  const {rows}=await client.query<{imported:number}>(`WITH source AS (
+    SELECT * FROM jsonb_to_recordset($3::jsonb) AS r(request_id uuid,description text,amount_cents bigint,date date,category text,merchant text,status text,payment_method text,notes text)
+  ), inserted AS (
+    INSERT INTO expenses (empresa_id,created_by,updated_by,request_id,description,amount_cents,date,category,merchant,status,payment_method,notes)
+    SELECT $1,$2,$2,request_id,description,amount_cents,date,category,merchant,status,payment_method,notes FROM source
+    ON CONFLICT (empresa_id,request_id) DO NOTHING RETURNING *
+  ), audited AS (
+    INSERT INTO expense_audit (expense_id,empresa_id,actor_id,action,after)
+    SELECT id,$1,$2,'created',jsonb_build_object('description',description,'amountCents',amount_cents,'date',to_char(date,'YYYY-MM-DD'),'category',category,'merchant',merchant,'status',status,'paymentMethod',payment_method,'notes',notes,'version',version,'source','csv') FROM inserted
+    RETURNING id
+  ) SELECT count(*)::integer AS imported FROM audited`,[empresaId,userId,JSON.stringify(payload)]);
+  return rows[0].imported;
+}

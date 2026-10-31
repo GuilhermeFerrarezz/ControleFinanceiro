@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addDays, daysBetween, monthPeriod, yearPeriod, selectedPeriodYear, expenseTrend, newExpenseRequestId, parseMoneyInput } from '../src/lib/expense-shared';
+import { addDays, daysBetween, monthPeriod, yearPeriod, selectedPeriodYear, buildExpenseSeries, newExpenseRequestId, parseMoneyInput } from '../src/lib/expense-shared';
 import { dateValue, expenseFilters, validateExpense } from '../src/lib/expenses';
 
 test('valores em reais são convertidos para centavos sem arredondamento binário', () => {
@@ -14,7 +14,7 @@ test('datas de calendário, anos bissextos e período anterior são consistentes
   assert.equal(daysBetween('2024-01-01', '2024-12-31'), 366);
   assert.deepEqual(monthPeriod('2026-10-30'), { start: '2026-10-01', end: '2026-10-30' });
   assert.throws(() => expenseFilters(new URLSearchParams('start=2026-10-30&end=2026-10-01')));
-  assert.throws(() => expenseFilters(new URLSearchParams('start=2024-01-01&end=2026-01-01')));
+  assert.equal(expenseFilters(new URLSearchParams('start=2024-01-01&end=2026-01-01')).start,'2024-01-01');
 });
 test('validação rejeita valores fracionários em centavos e categorias arbitrárias', () => {
   const body = { description: 'Compra', amountCents: 12345, date: '2026-10-01', category: 'alimentos' };
@@ -41,10 +41,17 @@ test('períodos anuais abrangem o ano completo e limitam o ano atual a hoje', ()
 
 test('o gráfico anual agrupa por mês preservando centavos e dias sem gasto',()=>{
   const daily=Array.from({length:366},(_,index)=>({date:addDays('2024-01-01',index),totalCents:index===0?101:index===59?250:0}));
-  const result=expenseTrend(daily);
-  assert.equal(result.monthly,true);assert.equal(result.series.length,12);
+  const result=buildExpenseSeries(daily,'2024-01-01','2024-12-31');
+  assert.equal(result.seriesInterval,'month');assert.equal(result.series.length,12);
   assert.equal(result.series[0].totalCents,101);assert.equal(result.series[1].totalCents,250);
   assert.equal(result.series[2].totalCents,0);
   assert.equal(result.series.reduce((sum,row)=>sum+row.totalCents,0),351);
-  assert.equal(expenseTrend(daily.slice(0,30)).monthly,false);
+  assert.equal(buildExpenseSeries(daily.slice(0,30),'2024-01-01','2024-01-30').seriesInterval,'day');
+});
+
+test('intervalos extensos usam pontos anuais sem perder totais ou inflar dias com gastos',()=>{
+  const result=buildExpenseSeries([{date:'2025-03-10',totalCents:101},{date:'2030-12-01',totalCents:999}], '2000-01-01','2100-12-31');
+  assert.equal(result.seriesInterval,'year');assert.equal(result.series.length,101);
+  assert.equal(result.series.reduce((sum,row)=>sum+row.totalCents,0),1100);
+  assert.equal(result.daysWithExpenses,2);assert.equal(result.peakDay?.date,'2030-12-01');
 });
