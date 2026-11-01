@@ -27,7 +27,7 @@ export function emailValue(value: unknown) {
   return email;
 }
 export function textValue(value: unknown, label: string) {
-  if (typeof value !== 'string' || value.trim().length < 2 || value.trim().length > 120) throw new InputError(`${label} deve ter entre 2 e 120 caracteres.`);
+  if (typeof value !== 'string' || value.includes('\0') || value.trim().length < 2 || value.trim().length > 120) throw new InputError(`${label} deve ter entre 2 e 120 caracteres, sem caracteres nulos.`);
   return value.trim();
 }
 export function passwordValue(value: unknown, registration = false) {

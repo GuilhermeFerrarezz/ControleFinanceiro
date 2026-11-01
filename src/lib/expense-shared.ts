@@ -19,7 +19,8 @@ export const PAYMENT_METHODS = [
 export type PaymentMethod = typeof PAYMENT_METHODS[number]['id'];
 export type ExpenseStatus = 'paid' | 'pending';
 export const MAX_AMOUNT_CENTS = 9_999_999_999;
-export const money = (cents: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cents / 100);
+const currencyFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+export const money = (cents: number) => currencyFormatter.format(cents / 100);
 export function todayInSaoPaulo() {
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
   const part = (type: string) => parts.find(item => item.type === type)?.value;

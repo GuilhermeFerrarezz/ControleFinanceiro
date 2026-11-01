@@ -2,6 +2,7 @@
 import { useEffect,useRef,useState } from 'react';
 import { api,errorMessage } from '@/src/lib/api';
 import { downloadBlob } from '@/src/lib/browser-download';
+import { decodeCsv } from '@/src/lib/csv-encoding';
 import { displayDate,EXPENSE_CATEGORIES,money,type ExpenseInput } from '@/src/lib/expense-shared';
 import Icon from './Icon';
 import styles from './finance.module.css';
@@ -15,7 +16,7 @@ export default function ImportExpenses({onClose,onImported}:{onClose:()=>void;on
     if(!file)return;
     if(file.size>2*1024*1024){setError('Selecione um arquivo de até 2 MB.');return;}
     setBusy(true);
-    try {const bytes=await file.arrayBuffer();let text;try{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch{text=new TextDecoder('windows-1252').decode(bytes);}setCsv(text);}
+    try {setCsv(decodeCsv(await file.arrayBuffer()));}
     catch{setError('Não foi possível ler o arquivo. Selecione-o novamente.');}finally{setBusy(false);}
   }
   async function check() {

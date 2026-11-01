@@ -1,6 +1,7 @@
 import { countDemoExpenses, expenseBounds, expenseYears, expenseCategories, expenseDaily, expenseTotals, findExpense, insertExpense, insertExpenseAudit, listExpenses, updateExpense, type IExpense } from '../models/Expense';
 import { inTransaction } from './postgres';
 import { InputError } from './validation';
+import { findMembership } from '../models/Membership';
 import { addDays, buildExpenseSeries, daysBetween, EXPENSE_CATEGORIES, MAX_AMOUNT_CENTS, monthPeriod, yearPeriod, todayInSaoPaulo, PAYMENT_METHODS, type ExpenseDashboardData, type ExpenseFilters, type ExpenseInput, type ExpenseRecord } from './expense-shared';
 
 export type ExpenseActor = { id: string; empresaId: string; role?: string };
@@ -15,7 +16,7 @@ export function dateValue(value: unknown) {
 }
 function text(value: unknown, label: string, max: number, required = false) {
   if (value === undefined && !required) return '';
-  if (typeof value !== 'string' || value.trim().length > max || (required && value.trim().length < 2)) throw new InputError(`${label}: ${required ? 'informe pelo menos 2 caracteres e ' : 'use '}no máximo ${max} caracteres.`);
+  if (typeof value !== 'string' || value.includes('\0') || value.trim().length > max || (required && value.trim().length < 2)) throw new InputError(`${label}: ${required ? 'informe pelo menos 2 caracteres e ' : 'use '}no máximo ${max} caracteres, sem caracteres nulos.`);
   return value.trim();
 }
 export function validateExpense(body: Record<string, unknown>): ExpenseInput {
@@ -56,6 +57,7 @@ export function expenseFilters(params = new URLSearchParams()): ExpenseFilters {
 const inputSnapshot = (expense: IExpense) => Object.fromEntries(['description','amountCents','date','category','merchant','status','paymentMethod','notes','version','deletedAt'].map(field => [field, expense[field as keyof IExpense]]));
 export async function createExpense(actor: ExpenseActor, input: ExpenseInput, requestId: string) {
   return inTransaction(async client => {
+    if (!await findMembership(actor.id,actor.empresaId,client,true)) throw new ExpenseError('Você não tem mais acesso a este restaurante.',403);
     const { expense, created } = await insertExpense(actor.empresaId,actor.id,requestId,input,client);
     if (!created) {
       const matches = expense.createdBy === actor.id && !expense.deletedAt && Object.entries(input).every(([field,value]) => expense[field as keyof IExpense] === value);
@@ -68,9 +70,11 @@ export async function createExpense(actor: ExpenseActor, input: ExpenseInput, re
 }
 export async function changeExpense(actor: ExpenseActor,id: string,version: number,input: ExpenseInput | null) {
   await inTransaction(async client => {
+    const membership = await findMembership(actor.id,actor.empresaId,client,true);
+    if (!membership) throw new ExpenseError('Você não tem mais acesso a este restaurante.',403);
     const expense = await findExpense(id,actor.empresaId,client);
     if (!expense) throw new ExpenseError('Lançamento não encontrado.',404);
-    if (actor.role !== 'owner' && expense.createdBy !== actor.id) throw new ExpenseError('Você pode alterar apenas os seus próprios lançamentos.',403);
+    if (membership.role !== 'owner' && expense.createdBy !== actor.id) throw new ExpenseError('Você pode alterar apenas os seus próprios lançamentos.',403);
     if (expense.version !== version) throw new ExpenseError('Este lançamento foi alterado por outra pessoa. Atualize a lista e tente novamente.',409);
     const updated = await updateExpense(id,actor.empresaId,actor.id,input,client);
     await insertExpenseAudit(updated,actor.id,input ? 'updated' : 'deleted',inputSnapshot(expense),inputSnapshot(updated),client);

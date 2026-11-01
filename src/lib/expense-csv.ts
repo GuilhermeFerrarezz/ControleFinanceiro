@@ -11,7 +11,8 @@ import { findMembership } from '../models/Membership';
 export const MAX_IMPORT_ROWS=2000;
 export const MAX_CSV_BYTES=2*1024*1024;
 export const CSV_HEADERS=['Data do gasto','Descrição','Valor (R$)','Categoria','Local de compra / favorecido','Situação','Forma de pagamento','Lançado por','Observações','ID do lançamento'];
-export const csvCell=(value:string)=>`"${(/^[\s]*[=+@\-\t\r]/.test(value)?"'":'')+value.replaceAll('"','""')}"`;
+const escapedCsvText = /^[\s]*[=+@\-\t\r\n']/;
+export const csvCell=(value:string)=>`"${(escapedCsvText.test(value)?"'":'')+value.replaceAll('"','""')}"`;
 export function expenseCsv(rows:IExpense[]) {
   const lines=[CSV_HEADERS,...rows.map(row=>[
     `Data: ${displayDate(row.date)}`,row.description,(row.amountCents/100).toFixed(2).replace('.',','),
@@ -34,7 +35,7 @@ const headerAliases:Record<string,string>={
   situacao:'status',status:'status',pagamento:'paymentMethod',formadepagamento:'paymentMethod',paymentmethod:'paymentMethod',
   observacoes:'notes',notes:'notes',iddolancamento:'sourceId',id:'sourceId',
 };
-export interface ImportRow { line:number; input:ExpenseInput; requestId:string; sourceId:string | null }
+export interface ImportRow { line:number; input:ExpenseInput; requestId:string; legacyRequestId?:string; sourceId:string | null }
 export interface CsvIssue { line:number; message:string }
 function importDate(value:string) {
   const text=value.trim().replace(/^'/,'').replace(/^data:\s*/i,'');
@@ -72,12 +73,17 @@ export function parseExpenseCsv(csv:unknown,empresaId:string) {
   if(new Set(fields).size!==fields.length)throw new InputError('O CSV possui colunas repetidas. Use uma coluna para cada campo.');
   if(records.length<2)throw new InputError('O CSV não contém lançamentos.');
   if(records.length-1>MAX_IMPORT_ROWS)throw new InputError(`Importe até ${MAX_IMPORT_ROWS} lançamentos por arquivo.`);
+  const systemExport=records[0].record.length===CSV_HEADERS.length && records[0].record.every((header,index)=>header===CSV_HEADERS[index]);
   const rows:ImportRow[]=[],issues:CsvIssue[]=[],occurrences=new Map<string,number>();
   for(const {record,info} of records.slice(1)) {
     if(record.every(value=>!value.trim()))continue;
     try {
       if(record.length!==mapping.length)throw new InputError('A quantidade de campos é diferente do cabeçalho. Confira os separadores e as aspas.');
       const data:Record<string,string>={};mapping.forEach((name,index)=>{if(name)data[name]=record[index].trim();});
+      // Only undo our reversible text escaping for the system's export format.
+      if(systemExport)for(const name of ['description','merchant','notes']) {
+        if(data[name]?.startsWith("'") && escapedCsvText.test(data[name].slice(1)))data[name]=data[name].slice(1);
+      }
       const category=EXPENSE_CATEGORIES.find(item=>normalize(item.id)===normalize(data.category)||normalize(item.label)===normalize(data.category));
       if(!category)throw new InputError('Categoria desconhecida. Use uma das categorias do modelo.');
       const status=normalize(data.status||'Pago');
@@ -89,16 +95,21 @@ export function parseExpenseCsv(csv:unknown,empresaId:string) {
       const sourceId=data.sourceId?.toLowerCase()||null;
       if(sourceId&&!/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(sourceId))throw new InputError('ID do lançamento inválido. Deixe vazio para criar um novo gasto.');
       const canonical=JSON.stringify(input),occurrence=occurrences.get(canonical)||0;occurrences.set(canonical,occurrence+1);
-      rows.push({line:info.lines,input,sourceId,requestId:requestUuid(`csv:v1:${empresaId}:${canonical}:${occurrence}`)});
+      const legacyRequestId=requestUuid(`csv:v1:${empresaId}:${canonical}:${occurrence}`);
+      rows.push({line:info.lines,input,sourceId,legacyRequestId,requestId:sourceId?requestUuid(`csv:source:${empresaId}:${sourceId}`):legacyRequestId});
     } catch(error) {issues.push({line:info.lines,message:error instanceof InputError?error.message:'Dados inválidos nesta linha.'});}
   }
   if(!rows.length&&!issues.length)throw new InputError('O CSV não contém lançamentos.');
   return {rows,issues};
 }
 async function classify(rows:ImportRow[],empresaId:string,client:Queryable) {
-  const existing=await existingImportKeys(empresaId,rows.flatMap(row=>row.sourceId?[row.sourceId]:[]),rows.map(row=>row.requestId),client);
+  const existing=await existingImportKeys(empresaId,rows.flatMap(row=>row.sourceId?[row.sourceId]:[]),rows.flatMap(row=>row.legacyRequestId?[row.requestId,row.legacyRequestId]:[row.requestId]),client);
   const ids=new Set(existing.map(row=>row.id)),keys=new Set(existing.map(row=>row.requestId));
-  return rows.map(row=>({...row,duplicate:!!(row.sourceId&&ids.has(row.sourceId))||keys.has(row.requestId)}));
+  return rows.map(row=>{
+    const duplicate=!!(row.sourceId&&ids.has(row.sourceId))||keys.has(row.requestId)||!!(row.legacyRequestId&&keys.has(row.legacyRequestId));
+    keys.add(row.requestId);
+    return {...row,duplicate};
+  });
 }
 export async function previewExpenseCsv(actor:ExpenseActor,csv:unknown) {
   const parsed=parseExpenseCsv(csv,actor.empresaId),rows=await classify(parsed.rows,actor.empresaId,db);

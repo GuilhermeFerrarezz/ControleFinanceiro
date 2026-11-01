@@ -226,6 +226,44 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal((await api('/demo-data',owner,'POST',{action:'restore'})).status,200);
     assert.equal((await list(owner,'')).demoCount,expectedDemoCount);
   });
+  await t.test('importação identifica IDs repetidos, inclusive após alterar o conteúdo',async()=>{
+    const id=randomUUID();
+    const csv=`Data;Descrição;Valor;Categoria;ID\n01/01/2033;Importação com ID externo;10;Alimentos;${id}\n01/01/2033;Importação com ID externo;20;Alimentos;${id}`;
+    const preview=await (await api('/expenses/import',owner,'POST',{csv,mode:'preview'})).json();
+    assert.equal(preview.ready,1);assert.equal(preview.duplicates,1);assert.equal(preview.totalCents,1000);
+    const imported=await api('/expenses/import',owner,'POST',{csv,mode:'import'});
+    assert.equal(imported.status,200);assert.equal((await imported.json()).imported,1);
+    const replay=await api('/expenses/import',owner,'POST',{csv:csv.replaceAll(';10;',';30;'),mode:'import'});
+    assert.equal(replay.status,200);assert.equal((await replay.json()).imported,0);
+    assert.equal((await list(owner,'year=2033')).count,1);
+  });
+  await t.test('revogação concorrente impede criar, editar ou excluir gastos com acesso antigo',async()=>{
+    const created=await create(employee,{description:'Teste de revogação concorrente'});
+    assert.equal(created.status,201);const id=(await created.json()).id;
+    for(const operation of [()=>create(employee),()=>api(`/expenses/${id}`,employee,'PATCH',{...body,version:1}),()=>api(`/expenses/${id}`,employee,'DELETE',{version:1})]) {
+      const client=await fixture.pool.connect();
+      let pending:Promise<Response>|undefined;
+      try {
+        await client.query('BEGIN');
+        await client.query('DELETE FROM restaurant_members WHERE user_id=$1 AND empresa_id=$2',[employeeUser.id,ownerUser.empresaId]);
+        pending=operation();
+        let waiting=false;
+        for(let attempt=0;attempt<100;attempt++) {
+          const rows=await query(fixture.pool,"SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%FROM restaurant_members WHERE user_id=$1%' ");
+          if(rows.length){waiting=true;break;}
+          await new Promise(resolve=>setTimeout(resolve,20));
+        }
+        assert.ok(waiting,'a gravação deve aguardar a decisão sobre o vínculo');
+        await client.query('COMMIT');
+        assert.equal((await pending).status,403);
+      } finally {
+        await client.query('ROLLBACK');client.release();
+        await pending;
+        await query(fixture.pool,"INSERT INTO restaurant_members (user_id,empresa_id,role) VALUES ($1,$2,'employee') ON CONFLICT DO NOTHING",[employeeUser.id,ownerUser.empresaId]);
+      }
+    }
+    assert.equal((await list(owner,`${period}&q=revogação`)).expenses[0].version,1);
+  });
   await t.test('remoção revoga acesso, protege donos e preserva a autoria e outros restaurantes', async () => {
     const members = await query<{id:string;userId:string;role:string}>(fixture.pool,'SELECT id,user_id AS "userId",role FROM restaurant_members WHERE empresa_id=$1',[ownerUser.empresaId]);
     const employeeMember = members.find(row=>row.userId===employeeUser.id)!;

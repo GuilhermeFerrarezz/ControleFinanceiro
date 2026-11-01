@@ -6,8 +6,10 @@ import CategoryPie from './CategoryPie';
 import styles from './finance.module.css';
 
 export default function ExpenseCharts({ data }: { data: ExpenseDashboardData }) {
-  const [active, setActive] = useState<number | null>(null);
+  const [activeDate, setActiveDate] = useState<string | null>(null);
   const series=data.series;
+  const activeIndex=series.findIndex(day=>day.date===activeDate);
+  const active=activeIndex>=0?activeIndex:null;
   const monthly=data.seriesInterval==='month';
   const yearly=data.seriesInterval==='year';
   const periodLabel=(date:string)=>trendPeriodLabel(date,data.seriesInterval);
@@ -21,13 +23,14 @@ export default function ExpenseCharts({ data }: { data: ExpenseDashboardData }) 
   function inspect(event: PointerEvent<SVGSVGElement>) {
     const bounds = event.currentTarget.getBoundingClientRect();
     const point = (event.clientX - bounds.left) / bounds.width * 720;
-    setActive(Math.max(0, Math.min(series.length - 1, Math.round((point - left) / (right - left) * (series.length - 1)))));
+    const index=Math.max(0, Math.min(series.length - 1, Math.round((point - left) / (right - left) * (series.length - 1))));
+    setActiveDate(series[index]?.date ?? null);
   }
   return <div className={styles.charts}>
     <section className={styles.chartCard} aria-labelledby="trend-title"><div className={styles.cardHeading}><div><h2 id="trend-title">O ritmo dos gastos</h2><p>{yearly ? 'Evolução anual no período selecionado' : monthly ? 'Evolução mensal no período selecionado' : 'Evolução diária no período selecionado'}</p></div><span className={styles.chartBadge}><span />Gastos</span></div>
       {data.count === 0 ? <div className={styles.chartEmpty}><Icon name="chart" size={36} /><strong>Seu gráfico começa no primeiro gasto.</strong><p>Os lançamentos deste período aparecerão aqui.</p></div> : <>
         <div className={styles.chartReadout} aria-live="polite">{active !== null ? <><span>{periodLabel(series[active].date)}</span><strong>{money(series[active].totalCents)}</strong></> : <><span>Total do período</span><strong>{money(data.summary.totalCents)}</strong></>}</div>
-        <svg className={styles.lineChart} viewBox="0 0 720 270" role="img" aria-label={`Gastos ${yearly ? 'anuais' : monthly ? 'mensais' : 'diários'} de ${displayDate(data.filters.start)} a ${displayDate(data.filters.end)}. Total de ${money(data.summary.totalCents)}. Valores disponíveis na tabela abaixo.`} onPointerMove={inspect} onPointerLeave={() => setActive(null)} onPointerDown={inspect}>
+        <svg className={styles.lineChart} viewBox="0 0 720 270" role="img" aria-label={`Gastos ${yearly ? 'anuais' : monthly ? 'mensais' : 'diários'} de ${displayDate(data.filters.start)} a ${displayDate(data.filters.end)}. Total de ${money(data.summary.totalCents)}. Valores disponíveis na tabela abaixo.`} onPointerMove={inspect} onPointerLeave={() => setActiveDate(null)} onPointerDown={inspect}>
           <defs><linearGradient id="expense-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#829d62" stopOpacity="0.28" /><stop offset="100%" stopColor="#829d62" stopOpacity="0.01" /></linearGradient></defs>
           {[0, .25, .5, .75, 1].map(fraction => <g key={fraction}><line x1={left} x2={right} y1={y(max * fraction)} y2={y(max * fraction)} stroke="#e8ebdf" strokeDasharray="4 4" /><text x={left - 10} y={y(max * fraction) + 4} textAnchor="end" fill="#7d8870" fontSize="11">{new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 }).format(max * fraction / 100)}</text></g>)}
           <path d={`${line} L${x(series.length - 1)},${bottom} L${x(0)},${bottom} Z`} fill="url(#expense-area)" /><path d={line} fill="none" stroke="#42694d" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
