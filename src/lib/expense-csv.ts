@@ -5,7 +5,7 @@ import { dateValue, validateExpense, type ExpenseActor } from './expenses';
 import { displayDate, EXPENSE_CATEGORIES, PAYMENT_METHODS, parseMoneyInput, type ExpenseInput } from './expense-shared';
 import { db } from './db';
 import { inTransaction, type Queryable } from './postgres';
-import { existingImportKeys, insertImportedExpenses, type IExpense } from '../models/Expense';
+import { existingImportKeys, insertImportedExpenses, restoreImportedExpense, type IExpense } from '../models/Expense';
 import { findMembership } from '../models/Membership';
 
 export const MAX_IMPORT_ROWS=2000;
@@ -102,29 +102,40 @@ export function parseExpenseCsv(csv:unknown,empresaId:string) {
   if(!rows.length&&!issues.length)throw new InputError('O CSV não contém lançamentos.');
   return {rows,issues};
 }
-async function classify(rows:ImportRow[],empresaId:string,client:Queryable) {
-  const existing=await existingImportKeys(empresaId,rows.flatMap(row=>row.sourceId?[row.sourceId]:[]),rows.flatMap(row=>row.legacyRequestId?[row.requestId,row.legacyRequestId]:[row.requestId]),client);
-  const ids=new Set(existing.map(row=>row.id)),keys=new Set(existing.map(row=>row.requestId));
+async function classify(rows:ImportRow[],actor:ExpenseActor,client:Queryable,lock=false) {
+  const existing=await existingImportKeys(actor.empresaId,rows.flatMap(row=>row.sourceId?[row.sourceId]:[]),rows.flatMap(row=>row.legacyRequestId?[row.requestId,row.legacyRequestId]:[row.requestId]),client,lock);
+  const ids=new Map(existing.map(row=>[row.id,row])),keys=new Map(existing.map(row=>[row.requestId,row]));
+  const seen=new Set<string>();
   return rows.map(row=>{
-    const duplicate=!!(row.sourceId&&ids.has(row.sourceId))||keys.has(row.requestId)||!!(row.legacyRequestId&&keys.has(row.legacyRequestId));
-    keys.add(row.requestId);
-    return {...row,duplicate};
+    const matches=[row.sourceId?ids.get(row.sourceId):undefined,keys.get(row.requestId),row.legacyRequestId?keys.get(row.legacyRequestId):undefined].filter(item=>item!==undefined);
+    const target=matches.find(item=>!item.deletedAt)||matches[0];
+    const identity=target?.id||row.requestId;
+    const duplicate=!!(target&&!target.deletedAt)||seen.has(identity)||seen.has(row.requestId);
+    seen.add(identity);seen.add(row.requestId);
+    const restoreId=!duplicate&&target?.deletedAt?target.id:null;
+    const forbidden=!!restoreId&&actor.role!=='owner'&&target?.createdBy!==actor.id;
+    return {...row,duplicate,restoreId,forbidden};
   });
 }
 export async function previewExpenseCsv(actor:ExpenseActor,csv:unknown) {
-  const parsed=parseExpenseCsv(csv,actor.empresaId),rows=await classify(parsed.rows,actor.empresaId,db);
-  return { total:rows.length+parsed.issues.length,ready:rows.filter(row=>!row.duplicate).length,duplicates:rows.filter(row=>row.duplicate).length,
+  const parsed=parseExpenseCsv(csv,actor.empresaId),rows=await classify(parsed.rows,actor,db);
+  const total=rows.length+parsed.issues.length;
+  for(const row of rows)if(row.forbidden)parsed.issues.push({line:row.line,message:'Apenas o dono ou o autor pode restaurar este gasto excluído.'});
+  return { total,ready:rows.filter(row=>!row.duplicate&&!row.forbidden).length,duplicates:rows.filter(row=>row.duplicate).length,
     totalErrors:parsed.issues.length,errors:parsed.issues.slice(0,30),preview:rows.slice(0,10).map(row=>({line:row.line,...row.input,duplicate:row.duplicate})),
-    totalCents:rows.filter(row=>!row.duplicate).reduce((sum,row)=>sum+row.input.amountCents,0) };
+    totalCents:rows.filter(row=>!row.duplicate&&!row.forbidden).reduce((sum,row)=>sum+row.input.amountCents,0) };
 }
 export async function importExpenseCsv(actor:ExpenseActor,csv:unknown) {
   const parsed=parseExpenseCsv(csv,actor.empresaId);
   if(parsed.issues.length)throw new InputError(`Corrija o CSV antes de importar. Linha ${parsed.issues[0].line}: ${parsed.issues[0].message}`);
   return inTransaction(async client=>{
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`csv-import:${actor.empresaId}`]);
-    if(!await findMembership(actor.id,actor.empresaId,client,true))throw new InputError('Você não tem mais acesso a este restaurante.');
-    const rows=await classify(parsed.rows,actor.empresaId,client);
-    const imported=await insertImportedExpenses(actor.empresaId,actor.id,rows.filter(row=>!row.duplicate),client);
+    const member=await findMembership(actor.id,actor.empresaId,client,true);
+    if(!member)throw new InputError('Você não tem mais acesso a este restaurante.');
+    const rows=await classify(parsed.rows,{...actor,role:member.role},client,true);
+    if(rows.some(row=>row.forbidden))throw new InputError('Apenas o dono ou o autor pode restaurar um gasto excluído.');
+    let imported=await insertImportedExpenses(actor.empresaId,actor.id,rows.filter(row=>!row.duplicate&&!row.restoreId),client);
+    for(const row of rows)if(row.restoreId&&await restoreImportedExpense(row.restoreId,actor.empresaId,actor.id,row.input,client))imported++;
     const dates=rows.map(row=>row.input.date).sort();
     return {imported,duplicates:rows.length-imported,period:{start:dates[0],end:dates[dates.length-1]}};
   });

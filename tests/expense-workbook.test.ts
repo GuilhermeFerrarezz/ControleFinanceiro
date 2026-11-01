@@ -1,10 +1,23 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import ExcelJS from 'exceljs';
+import JSZip from 'jszip';
 import { expenseWorkbook } from '../src/lib/expense-workbook';
 import type { IExpense } from '../src/models/Expense';
 
 const filters={start:'2024-01-01',end:'2024-12-31',category:'',status:'',q:'',page:1};
+test('pacote XLSX tem um único filtro e não contém tabelas sobrepostas',async()=>{
+  const row={id:'id',description:'Compra',amountCents:123,date:'2024-02-29',category:'alimentos',merchant:'Loja',status:'paid',paymentMethod:'pix',notes:'',authorName:'Autor'} as IExpense;
+  for(const rows of [[],[row]]) {
+    const zip=await JSZip.loadAsync(await expenseWorkbook(rows,filters,'Restaurante'));
+    assert.ok(zip.file('[Content_Types].xml'));
+    assert.equal(Object.keys(zip.files).filter(name=>name.startsWith('xl/tables/')).length,0);
+    const xml=await zip.file('xl/worksheets/sheet1.xml')!.async('string');
+    assert.equal((xml.match(/<autoFilter\b/g)||[]).length,1);
+    assert.match(xml,new RegExp(`autoFilter ref="A1:J${rows.length+1}"`));
+    assert.doesNotMatch(xml,/<tableParts\b/);
+  }
+});
 test('XLSX vazio permanece legível com totais zerados',async()=>{
   const book=new ExcelJS.Workbook();
   await book.xlsx.load(Uint8Array.from(await expenseWorkbook([],filters,'Restaurante')).buffer);

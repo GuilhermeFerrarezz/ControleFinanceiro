@@ -100,8 +100,18 @@ export async function expenseBounds(empresaId: string,client: Queryable) {
   const {rows}=await client.query<{start:string|null;end:string|null}>("SELECT to_char(min(date),'YYYY-MM-DD') AS start,to_char(max(date),'YYYY-MM-DD') AS end FROM expenses WHERE empresa_id=$1 AND deleted_at IS NULL",[empresaId]);
   return rows[0].start && rows[0].end ? {start:rows[0].start,end:rows[0].end} : null;
 }
-export async function existingImportKeys(empresaId: string,ids: string[],keys: string[],client: Queryable) {
-  return (await client.query<{id:string;requestId:string}>('SELECT id,request_id AS "requestId" FROM expenses WHERE empresa_id=$1 AND (id=ANY($2::uuid[]) OR request_id=ANY($3::uuid[]))',[empresaId,ids,keys])).rows;
+export async function existingImportKeys(empresaId: string,ids: string[],keys: string[],client: Queryable,lock=false) {
+  return (await client.query<{id:string;requestId:string;deletedAt:Date|null;createdBy:string}>(`SELECT id,request_id AS "requestId",deleted_at AS "deletedAt",created_by AS "createdBy" FROM expenses WHERE empresa_id=$1 AND (id=ANY($2::uuid[]) OR request_id=ANY($3::uuid[])) ORDER BY id ${lock?'FOR UPDATE':''}`,[empresaId,ids,keys])).rows;
+}
+
+export async function restoreImportedExpense(id:string,empresaId:string,userId:string,input:ExpenseInput,client:Queryable) {
+  const result=await client.query<IExpense>(`SELECT ${columns} FROM expenses e WHERE e.id=$1 AND e.empresa_id=$2 AND e.deleted_at IS NOT NULL FOR UPDATE`,[id,empresaId]);
+  if(!result.rows[0])return false;
+  const before=expenseRow(result.rows[0]);
+  await client.query('UPDATE expenses SET deleted_at=NULL WHERE id=$1 AND empresa_id=$2',[id,empresaId]);
+  const after=await updateExpense(id,empresaId,userId,input,client);
+  await insertExpenseAudit(after,userId,'updated',{...before},{...after,source:'csv-restore'},client);
+  return true;
 }
 
 export async function insertImportedExpenses(empresaId:string,userId:string,items:{requestId:string;input:ExpenseInput}[],client:Queryable) {

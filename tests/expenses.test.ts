@@ -223,6 +223,21 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     const unchanged = await query(fixture.pool,'SELECT * FROM expenses WHERE empresa_id=$1 AND demo_key IS NULL ORDER BY id',[ownerUser.empresaId]);
     assert.deepEqual(unchanged,before);
     assert.equal((await list(owner,'')).demoCount,0);
+    // Reproduce downloading examples, clearing them, then importing that file.
+    const review=await (await api('/expenses/import',owner,'POST',{csv:csv2025,mode:'preview'})).json();
+    assert.equal(review.ready,216);assert.equal(review.duplicates,0);
+    assert.equal((await api('/expenses/import',employee,'POST',{csv:csv2025,mode:'import'})).status,400);
+    for(let cycle=0;cycle<2;cycle++) {
+      const imports=await Promise.all([api('/expenses/import',owner,'POST',{csv:csv2025,mode:'import'}),api('/expenses/import',owner,'POST',{csv:csv2025,mode:'import'})]);
+      const counts=[];
+      for(const response of imports){assert.equal(response.status,200);counts.push((await response.json()).imported);}
+      assert.deepEqual(counts.sort((a,b)=>a-b),[0,216]);
+      const restored=await list(owner,'year=2025');assert.equal(restored.count,216);
+      assert.ok(restored.expenses.every((row:{id:string;createdBy:string})=>examples.some(item=>item.id===row.id)&&row.createdBy===ownerUser.id));
+      const audits=await query(fixture.pool,"SELECT id FROM expense_audit WHERE empresa_id=$1 AND after->>'source'='csv-restore'",[ownerUser.empresaId]);
+      assert.equal(audits.length,(cycle+1)*216);
+      assert.equal((await api('/demo-data',owner,'POST',{action:'clear'})).status,200);
+    }
     assert.equal((await api('/demo-data',owner,'POST',{action:'restore'})).status,200);
     assert.equal((await list(owner,'')).demoCount,expectedDemoCount);
   });
@@ -236,6 +251,15 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     const replay=await api('/expenses/import',owner,'POST',{csv:csv.replaceAll(';10;',';30;'),mode:'import'});
     assert.equal(replay.status,200);assert.equal((await replay.json()).imported,0);
     assert.equal((await list(owner,'year=2033')).count,1);
+  });
+  await t.test('CSV sem IDs restaura importação excluída e conserva repetições legítimas',async()=>{
+    const csv='Data;Descrição;Valor;Categoria\n01/01/2034;Gasto para restaurar;15;Alimentos\n01/01/2034;Gasto para restaurar;15;Alimentos';
+    for(let cycle=0;cycle<2;cycle++) {
+      const preview=await (await api('/expenses/import',employee,'POST',{csv,mode:'preview'})).json();assert.equal(preview.ready,2);
+      const response=await api('/expenses/import',employee,'POST',{csv,mode:'import'});assert.equal(response.status,200);assert.equal((await response.json()).imported,2);
+      const expenses=(await list(owner,'year=2034')).expenses;assert.equal(expenses.length,2);
+      for(const row of expenses)assert.equal((await api(`/expenses/${row.id}`,employee,'DELETE',{version:row.version})).status,200);
+    }
   });
   await t.test('revogação concorrente impede criar, editar ou excluir gastos com acesso antigo',async()=>{
     const created=await create(employee,{description:'Teste de revogação concorrente'});
