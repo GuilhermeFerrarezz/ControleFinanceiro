@@ -7,7 +7,7 @@ let fonts:Promise<Buffer[]>|undefined;
 const loadFonts=()=>fonts??=Promise.all(['NotoSans-Regular.ttf','NotoSans-Bold.ttf'].map(name=>readFile(join(process.cwd(),'public','fonts',name))));
 export async function dashboardPdf(data:ExpenseDashboardData,restaurant:string,author:string) {
   const [regular,bold]=await loadFonts();
-  const doc=new PDFDocument({size:'A4',layout:'landscape',margin:0,info:{Title:'Resumo financeiro do restaurante',Author:'Controle Financeiro',Subject:`${displayDate(data.filters.start)} a ${displayDate(data.filters.end)}`}});
+  const doc=new PDFDocument({size:'A4',layout:'landscape',margin:0,bufferPages:true,info:{Title:'Resumo financeiro do restaurante',Author:'Controle Financeiro',Subject:`${displayDate(data.filters.start)} a ${displayDate(data.filters.end)}`}});
   doc.registerFont('Report',regular);doc.registerFont('ReportBold',bold);doc.font('Report');
   const chunks:Buffer[]=[];
   const output=new Promise<Buffer>((resolve,reject)=>{doc.on('data',chunk=>chunks.push(Buffer.from(chunk)));doc.on('end',()=>resolve(Buffer.concat(chunks)));doc.on('error',reject);});
@@ -73,9 +73,42 @@ export async function dashboardPdf(data:ExpenseDashboardData,restaurant:string,a
     const amount=money(row.totalCents);text(amount,668,yy,102,fit(amount,102,8),ink);
     text(new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1}).format(row.totalCents/data.summary.totalCents*100)+'%',777,yy,31,7,muted);
   });
-  doc.moveTo(36,570).lineTo(806,570).lineWidth(.6).strokeColor('#dfe4d5').stroke();
+  const detailTitle=data.seriesInterval==='day'?'Gastos por dia':data.seriesInterval==='month'?'Gastos por mês':'Gastos por ano';
+  const periodTitle=data.seriesInterval==='day'?'Data':data.seriesInterval==='month'?'Mês':'Ano';
+  const rowsPerPage=17;
+  const detailPages=Math.max(1,Math.ceil(series.length/rowsPerPage));
+  for(let page=0;page<detailPages;page++) {
+    doc.addPage();
+    doc.rect(0,0,842,595).fill(paper);
+    text('CONTROLE FINANCEIRO',36,23,420,11,green,true);
+    text('DETALHAMENTO DOS GASTOS',540,23,266,9,muted,true);
+    text(detailTitle,36,51,770,20,ink,true,30);
+    text(restaurant,36,87,770,11,ink,true);
+    text(`${displayDate(data.filters.start)} a ${displayDate(data.filters.end)}  |  ${data.count} lançamentos`,36,108,770,11,green,true);
+    text(`Filtros: ${category}  |  ${status}${data.filters.q?`  |  Busca: ${data.filters.q}`:''}`,36,132,770,9,muted,false,30);
+    doc.rect(36,169,770,24).fill(green);
+    text(periodTitle,48,174,550,9,'#ffffff',true);
+    text('Total dos gastos',650,174,144,9,'#ffffff',true);
+    const pageRows=series.slice(page*rowsPerPage,(page+1)*rowsPerPage);
+    pageRows.forEach((row,index)=>{
+      const yy=193+index*20;
+      doc.rect(36,yy,770,20).fill(index%2===0?'#fffefa':'#edf1e7');
+      text(trendPeriodLabel(row.date,data.seriesInterval),48,yy+4,570,9);
+      doc.font('Report').fontSize(9).fillColor(ink).text(money(row.totalCents),650,yy+4,{width:144,height:16,align:'right'});
+    });
+    if(page===detailPages-1) {
+      const yy=199+pageRows.length*20;
+      text('Total do período',48,yy,550,10,green,true);
+      doc.font('ReportBold').fontSize(10).fillColor(green).text(money(data.summary.totalCents),650,yy,{width:144,height:18,align:'right'});
+    }
+  }
   const generated=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'short'}).format(new Date());
-  text(`Gerado em ${generated} - ${author}`,36,578,660,7,muted);
-  text('Página 1 de 1',746,578,75,7,muted);
+  const pages=doc.bufferedPageRange();
+  for(let page=pages.start;page<pages.start+pages.count;page++) {
+    doc.switchToPage(page);
+    doc.moveTo(36,570).lineTo(806,570).lineWidth(.6).strokeColor('#dfe4d5').stroke();
+    text(`Gerado em ${generated} - ${author}`,36,578,660,7,muted);
+    text(`Página ${page+1} de ${pages.count}`,736,578,85,7,muted);
+  }
   doc.end();return new Uint8Array(await output);
 }
