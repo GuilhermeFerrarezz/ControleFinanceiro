@@ -8,6 +8,7 @@ import ExpenseCharts from './ExpenseCharts';
 import DemoDataControls from './DemoDataControls';
 import ExpenseForm from './ExpenseForm';
 import ImportExpenses from './ImportExpenses';
+import DeleteExpensePeriod from './DeleteExpensePeriod';
 import { downloadBlob } from '@/src/lib/browser-download';
 import Icon from './Icon';
 import styles from './finance.module.css';
@@ -107,6 +108,14 @@ export default function FinancialDashboard({ initialData, view, user, restaurant
       {view === 'expenses' && <label className={`${styles.filterField} ${styles.searchField}`} htmlFor="filter-search">Buscar descrição ou local<input id="filter-search" type="search" placeholder="Ex.: hortifruti, mercado, diária..." maxLength={120} value={draft.q} onChange={event => setDraft({ ...draft, q: event.target.value })} /></label>}
     </form></section>
     <div className={styles.periodLine}><span>{displayDate(data.filters.start)} a {displayDate(data.filters.end)}{hasFilters ? ' · Com filtros aplicados' : ''}</span>{hasFilters && <button className={styles.textButton} onClick={() => void load({ ...data.filters, category: '', status: '', q: '', page: 1 })}>Limpar filtros</button>}<span>{loading ? 'Atualizando os dados...' : `${data.count} ${data.count === 1 ? 'lançamento encontrado' : 'lançamentos encontrados'}`}</span></div>
+    {view === 'expenses' && user.role === 'owner' && <DeleteExpensePeriod
+      empresaId={selectedRestaurant} restaurantName={restaurants.find(restaurant => restaurant.id === selectedRestaurant)?.nome || 'Restaurante ativo'}
+      start={data.filters.start} end={data.filters.end} disabled={loading}
+      onDeleted={async count => {
+        setNotice(count ? `${count} ${count === 1 ? 'lançamento excluído' : 'lançamentos excluídos'}. Os totais foram atualizados.` : 'Nenhum lançamento encontrado no período para excluir.');
+        await load({ ...data.filters, page: 1 });
+      }}
+    />}
     <div aria-busy={loading} className={loading ? styles.refreshing : undefined}>
       <section className={styles.stats} aria-label="Resumo dos gastos">
         <article className={`${styles.stat} ${styles.totalStat}`}><span><Icon name="receipt" size={18} />Total do período</span><strong>{money(summary.totalCents)}</strong><small>{summary.changePercent === null ? 'Sem base no período anterior' : `${Math.abs(summary.changePercent).toLocaleString('pt-BR')}% ${summary.changePercent > 0 ? 'a mais' : summary.changePercent < 0 ? 'a menos' : 'de variação'} em relação ao período anterior equivalente`}</small></article>

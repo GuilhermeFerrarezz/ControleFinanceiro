@@ -1,4 +1,4 @@
-import { countDemoExpenses, expenseBounds, expenseYears, expenseCategories, expenseDaily, expenseTotals, findExpense, insertExpense, insertExpenseAudit, listExpenses, updateExpense, type IExpense } from '../models/Expense';
+import { deleteExpensesInPeriod, countDemoExpenses, expenseBounds, expenseYears, expenseCategories, expenseDaily, expenseTotals, findExpense, insertExpense, insertExpenseAudit, listExpenses, updateExpense, type IExpense } from '../models/Expense';
 import { inTransaction } from './postgres';
 import { InputError } from './validation';
 import { findMembership } from '../models/Membership';
@@ -78,6 +78,18 @@ export async function changeExpense(actor: ExpenseActor,id: string,version: numb
     if (expense.version !== version) throw new ExpenseError('Este lançamento foi alterado por outra pessoa. Atualize a lista e tente novamente.',409);
     const updated = await updateExpense(id,actor.empresaId,actor.id,input,client);
     await insertExpenseAudit(updated,actor.id,input ? 'updated' : 'deleted',inputSnapshot(expense),inputSnapshot(updated),client);
+  });
+}
+export async function deleteExpensePeriod(actor: ExpenseActor, body: Record<string, unknown>) {
+  const start = dateValue(body.start);
+  const end = dateValue(body.end);
+  if (start > end) throw new InputError('A data inicial deve ser anterior ou igual à data final.');
+  if (body.confirm !== true) throw new InputError('Confirme a exclusão dos lançamentos do período.');
+  if (body.empresaId !== actor.empresaId) throw new ExpenseError('O restaurante ativo mudou. Atualize a página.', 409);
+  return inTransaction(async client => {
+    const membership = await findMembership(actor.id, actor.empresaId, client, true);
+    if (membership?.role !== 'owner') throw new ExpenseError('Somente o admin pode excluir os lançamentos de um período.', 403);
+    return { deleted: await deleteExpensesInPeriod(actor.empresaId, actor.id, start, end, client) };
   });
 }
 function toRecord(row: IExpense,actor: ExpenseActor): ExpenseRecord {

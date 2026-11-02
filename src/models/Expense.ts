@@ -43,6 +43,23 @@ export async function updateExpense(id: string, empresaId: string, userId: strin
 export async function insertExpenseAudit(expense: IExpense, actorId: string, action: IExpenseAudit['action'], before: Record<string, unknown> | null, after: Record<string, unknown>, client: Queryable) {
   await client.query('INSERT INTO expense_audit (expense_id,empresa_id,actor_id,action,before,after) VALUES ($1,$2,$3,$4,$5,$6)', [expense.id,expense.empresaId,actorId,action,before,after]);
 }
+export async function deleteExpensesInPeriod(empresaId: string, userId: string, start: string, end: string, client: Queryable) {
+  // Lock matching active rows and audit exactly those changed by this statement.
+  const { rows } = await client.query<{ deleted: number }>(`WITH targets AS MATERIALIZED (
+    SELECT ${columns} FROM expenses e
+    WHERE e.empresa_id=$1 AND e.deleted_at IS NULL AND e.date BETWEEN $3::date AND $4::date
+    ORDER BY e.id FOR UPDATE
+  ), updated AS (
+    UPDATE expenses e SET deleted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP,updated_by=$2,version=e.version+1
+    FROM targets t WHERE e.id=t.id AND e.empresa_id=$1
+    RETURNING e.id,to_jsonb(t) AS before,
+      to_jsonb(t) || jsonb_build_object('deletedAt',e.deleted_at,'updatedBy',e.updated_by,'version',e.version,'source','period-delete') AS after
+  ), audited AS (
+    INSERT INTO expense_audit (expense_id,empresa_id,actor_id,action,before,after)
+    SELECT id,$1,$2,'deleted',before,after FROM updated RETURNING id
+  ) SELECT count(*)::integer AS deleted FROM audited`, [empresaId, userId, start, end]);
+  return rows[0].deleted;
+}
 function scope(empresaId: string, filters: ExpenseFilters) {
   const values: unknown[] = [empresaId,filters.start,filters.end];
   const conditions = ['e.empresa_id=$1', 'e.deleted_at IS NULL', 'e.date BETWEEN $2::date AND $3::date'];

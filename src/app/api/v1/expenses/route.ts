@@ -2,7 +2,7 @@ import { expenseCsv } from '@/src/lib/expense-csv';
 import { NextResponse } from 'next/server';
 import { currentUser, jsonError, trustedOrigin } from '@/src/lib/auth';
 import { InputError, readBody } from '@/src/lib/validation';
-import { createExpense, expenseDashboard, expenseFilters, expensesForExport, ExpenseError, uuidValue, validateExpense } from '@/src/lib/expenses';
+import { deleteExpensePeriod, createExpense, expenseDashboard, expenseFilters, expensesForExport, ExpenseError, uuidValue, validateExpense } from '@/src/lib/expenses';
 export async function GET(request: Request) {
   const user = await currentUser();
   if (!user) return jsonError('Entre na sua conta para continuar.', 401);
@@ -31,4 +31,16 @@ export async function POST(request: Request) {
     const result = await createExpense({ ...user, empresaId: user.empresaId }, validateExpense(body), uuidValue(body.requestId));
     return NextResponse.json(result, { status: result.replayed ? 200 : 201 });
   } catch (error) { return jsonError(error instanceof InputError || error instanceof ExpenseError ? error.message : 'Não foi possível salvar o gasto. Tente novamente.', error instanceof ExpenseError ? error.status : error instanceof InputError ? 400 : 500); }
+}
+export async function DELETE(request: Request) {
+  if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
+  const user = await currentUser();
+  if (!user) return jsonError('Entre na sua conta para continuar.', 401);
+  if (!user.empresaId || user.role !== 'owner') return jsonError('Somente o admin pode excluir os lançamentos de um período.', 403);
+  try {
+    const result = await deleteExpensePeriod({ ...user, empresaId: user.empresaId }, await readBody(request));
+    return NextResponse.json(result);
+  } catch (error) {
+    return jsonError(error instanceof InputError || error instanceof ExpenseError ? error.message : 'Não foi possível excluir os lançamentos.', error instanceof ExpenseError ? error.status : error instanceof InputError ? 400 : 500);
+  }
 }

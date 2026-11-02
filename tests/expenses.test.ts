@@ -261,6 +261,60 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
       for(const row of expenses)assert.equal((await api(`/expenses/${row.id}`,employee,'DELETE',{version:row.version})).status,200);
     }
   });
+  await t.test('admin exclui um período inteiro com confirmação, isolamento e auditoria', async () => {
+    const deletion = { empresaId: ownerUser.empresaId, start: '2038-02-01', end: '2038-02-28', confirm: true };
+    const ids: string[] = [];
+    for (let index = 0; index < 18; index++) {
+      const response = await create(index % 2 ? employee : owner, {
+        date: index % 2 ? deletion.start : deletion.end,
+        description: `Exclusão do período ${index}`, category: index % 2 ? 'outros' : 'alimentos',
+        status: index % 2 ? 'pending' : 'paid',
+      });
+      assert.equal(response.status, 201); ids.push((await response.json()).id);
+    }
+    const outside = await create(owner, { date: '2038-03-01' });
+    const outsideId = (await outside.json()).id;
+    const anotherRestaurant = await create(other, { date: deletion.start });
+    const otherId = (await anotherRestaurant.json()).id;
+    const alreadyDeleted = await create(owner, { date: deletion.start });
+    const oldId = (await alreadyDeleted.json()).id;
+    assert.equal((await api(`/expenses/${oldId}`, owner, 'DELETE', { version: 1 })).status, 200);
+    assert.equal((await api('/expenses', '', 'DELETE', deletion)).status, 401);
+    assert.equal((await api('/expenses', employee, 'DELETE', deletion)).status, 403);
+    assert.equal((await api('/expenses', other, 'DELETE', deletion)).status, 409);
+    assert.equal((await api('/expenses', owner, 'DELETE', deletion, 'https://hostil.invalid')).status, 403);
+    for (const invalid of [
+      { confirm: false }, { confirm: 'true' }, { start: '' }, { end: null },
+      { start: '2038-02-30' }, { start: '2038-03-01' },
+    ]) assert.equal((await api('/expenses', owner, 'DELETE', { ...deletion, ...invalid })).status, 400);
+    const before = await list(owner, 'start=2038-02-01&end=2038-02-28');
+    assert.equal(before.count, 18);
+    const adminPage = await (await fetch(`${origin}/dashboard/expenses`, { headers: { Cookie: owner } })).text();
+    const employeePage = await (await fetch(`${origin}/dashboard/expenses`, { headers: { Cookie: employee } })).text();
+    assert.match(adminPage, /Excluir lançamentos do período/);
+    assert.doesNotMatch(employeePage, /Excluir lançamentos do período/);
+    // Concurrent retries must not delete/audit the same record twice.
+    const responses = await Promise.all([
+      api('/expenses', owner, 'DELETE', { ...deletion, category: 'alimentos', page: 1 }),
+      api('/expenses', owner, 'DELETE', deletion),
+    ]);
+    for (const response of responses) assert.equal(response.status, 200, await response.clone().text());
+    const results = await Promise.all(responses.map(response => response.json()));
+    assert.deepEqual(results.map(result => result.deleted).sort((a, b) => a - b), [0, 18]);
+    const after = await list(owner, 'start=2038-02-01&end=2038-02-28');
+    assert.equal(after.count, 0); assert.equal(after.summary.totalCents, 0);
+    const audits = await query<{ actorId: string; before: { version: number }; after: { version: number; deletedAt: string } }>(fixture.pool,
+      `SELECT actor_id AS "actorId",before,after FROM expense_audit WHERE expense_id=ANY($1::uuid[]) AND action='deleted'`, [ids]);
+    assert.equal(audits.length, 18);
+    for (const audit of audits) {
+      assert.equal(audit.actorId, ownerUser.id); assert.equal(audit.before.version, 1);
+      assert.equal(audit.after.version, 2); assert.ok(audit.after.deletedAt);
+    }
+    assert.equal((await query(fixture.pool, "SELECT id FROM expense_audit WHERE expense_id=$1 AND action='deleted'", [oldId])).length, 1);
+    assert.equal((await query(fixture.pool, 'SELECT id FROM expenses WHERE id=ANY($1::uuid[]) AND deleted_at IS NULL', [[outsideId, otherId]])).length, 2);
+    assert.equal((await api('/expenses', owner, 'DELETE', { ...deletion, start: '2038-03-01', end: '2038-03-01' })).status, 200);
+    assert.equal((await query(fixture.pool, 'SELECT id FROM expenses WHERE id=$1 AND deleted_at IS NULL', [outsideId])).length, 0);
+  });
   await t.test('revogação concorrente impede criar, editar ou excluir gastos com acesso antigo',async()=>{
     const created=await create(employee,{description:'Teste de revogação concorrente'});
     assert.equal(created.status,201);const id=(await created.json()).id;
