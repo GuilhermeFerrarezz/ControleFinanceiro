@@ -276,6 +276,47 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     const [member] = await query<{ role: string }>(storage, "SELECT role FROM restaurant_members WHERE user_id=(SELECT id FROM usuarios WHERE email='phone@example.com')");
     assert.equal(member.role, 'employee');
   });
+  await t.test('edição e exclusão exigem admin do restaurante e senha na exclusão', async () => {
+    const account = { email: 'delete-owner@example.com', senha: 'senha-admin-123' };
+    assert.equal((await post('/auth/register', { ...account, nomeUsuario: 'Admin', nomeEmpresa: 'Excluir' })).status, 201);
+    const login = await post('/auth/login', account);
+    const cookie = (login.headers.get('set-cookie') || '').split(';')[0];
+    const identity = await (await fetch(`${origin}/api/v1/private`, { headers: { Cookie: cookie } })).json();
+    const empresaId = identity.user.empresaId;
+    const change = (method: string, body: object, auth = cookie, source = origin) => fetch(`${origin}/api/v1/company`, {
+      method, headers: { Cookie: auth, Origin: source, 'Content-Type': 'application/json' }, body: JSON.stringify({ empresaId, ...body }),
+    });
+    assert.equal((await change('PATCH', { nomeEmpresa: 'Novo nome', cnpj: '' }, '')).status, 401);
+    assert.equal((await change('PATCH', { nomeEmpresa: 'Novo nome', cnpj: '' }, cookie, 'https://hostil.invalid')).status, 403);
+    assert.equal((await change('PATCH', { nomeEmpresa: 'Novo nome', cnpj: '' }, secondCookie)).status, 409);
+    assert.equal((await change('PATCH', { nomeEmpresa: ' ', cnpj: '' })).status, 400);
+    assert.equal((await change('PATCH', { nomeEmpresa: 'Novo nome', cnpj: '12.345.678/0001-90' })).status, 200);
+    assert.deepEqual(await query(storage, 'SELECT nome,cnpj FROM empresas WHERE id=$1', [empresaId]), [{ nome: 'Novo nome', cnpj: '12345678000190' }]);
+    const invite = await post('/invitations', { email: 'delete-employee@example.com' }, cookie);
+    const token = (await invite.json()).path.split('/').at(-1);
+    assert.equal((await post('/auth/register', { email: 'delete-employee@example.com', senha: 'abc123', nomeUsuario: 'Funcionário', invitationToken: token })).status, 201);
+    const employeeLogin = await post('/auth/login', { email: 'delete-employee@example.com', senha: 'abc123' });
+    const employeeCookie = (employeeLogin.headers.get('set-cookie') || '').split(';')[0];
+    assert.equal((await change('PATCH', { nomeEmpresa: 'Proibido', cnpj: '' }, employeeCookie)).status, 403);
+    assert.equal((await change('DELETE', { senha: account.senha }, employeeCookie)).status, 403);
+    assert.equal((await change('DELETE', {})).status, 400);
+    assert.equal((await change('DELETE', { senha: 'errada' })).status, 403);
+    assert.equal((await query(storage, 'SELECT id FROM empresas WHERE id=$1', [empresaId])).length, 1);
+    const [expense] = await query<{ id: string }>(storage, `INSERT INTO expenses
+      (empresa_id,created_by,updated_by,request_id,description,amount_cents,date,category)
+      VALUES ($1,$2,$2,gen_random_uuid(),'Teste de exclusão',1000,'2026-11-01','outros') RETURNING id`, [empresaId, identity.user.id]);
+    await query(storage, "INSERT INTO expense_audit (expense_id,empresa_id,actor_id,action) VALUES ($1,$2,$3,'created')", [expense.id, empresaId, identity.user.id]);
+    assert.equal((await change('DELETE', { senha: account.senha })).status, 200);
+    for (const table of ['empresas', 'restaurant_members', 'restaurant_invitations', 'expenses', 'expense_audit']) {
+      assert.equal((await query(storage, `SELECT id FROM ${table} WHERE ${table === 'empresas' ? 'id' : 'empresa_id'}=$1`, [empresaId])).length, 0);
+    }
+    for (const auth of [cookie, employeeCookie]) {
+      const response = await fetch(`${origin}/api/v1/private`, { headers: { Cookie: auth } });
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).user.empresaId, null);
+    }
+    assert.equal((await post('/company', { nomeEmpresa: 'Recomeço' }, cookie)).status, 201);
+  });
   await t.test('expiração e limitação de tentativas são aplicadas', async () => {
     await query(storage, `UPDATE refresh_tokens SET expires_at = '2000-01-01 00:00:00.000 +00:00'`);
     assert.equal((await fetch(`${origin}/api/v1/private`, { headers: { Cookie: secondCookie } })).status, 401);

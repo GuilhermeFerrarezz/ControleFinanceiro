@@ -15,7 +15,7 @@ export default function FormCadastro({ invitation }: { invitation?: { token: str
     setLoading(true); setMessage('');
     try {
       await api.post('/auth/register', { ...Object.fromEntries(data), ...(invitation ? { invitationToken: invitation.token } : {}) });
-      setSuccess(true); setMessage(invitation ? 'Sua conta está pronta e o convite foi aceito. Entre para encontrar sua equipe.' : 'Seu restaurante já tem um lugar aqui. Entre e convide sua equipe!');
+      setSuccess(true); setMessage(invitation ? 'Sua conta está pronta e o convite foi aceito. Entre para encontrar sua equipe.' : 'Restaurante e conta criados com sucesso.!');
     } catch (error) { setMessage(errorMessage(error)); } finally { setLoading(false); }
   }
   return <><span className="eyebrow">{invitation ? 'Tem lugar para você na equipe' : 'Um novo capítulo para o seu restaurante'}</span><h1>{invitation ? <>Faça parte<br />da mesma receita.</> : <>Sua casa.<br />Mais organizada.</>}</h1><p className={styles.intro}>{invitation ? `Crie seu acesso pessoal para participar de ${invitation.restaurante}.` : 'Crie sua conta como dono. Depois, convide os funcionários que fazem tudo acontecer com você.'}</p><div className={styles.ownerNote}><Icon name={invitation ? 'team' : 'store'} /><div><strong>{invitation ? `Convite para ${invitation.restaurante}` : 'Você no comando, sua equipe junto.'}</strong>{invitation ? 'Você entrará como funcionário deste restaurante.' : 'Só você administra os convites e os acessos do restaurante.'}</div></div>
