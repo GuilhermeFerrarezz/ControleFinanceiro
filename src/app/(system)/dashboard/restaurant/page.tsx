@@ -6,7 +6,7 @@ import FinanceNav from '@/src/components/FinanceNav';
 import RestaurantForm from './RestaurantForm';
 import styles from '../dashboard.module.css';
 
-export const metadata = { title: 'Restaurante | Controle Financeiro' };
+export const metadata = { title: 'Restaurante | Saldo da Casa' };
 export default async function RestaurantPage() {
   const user = await currentUser();
   if (!user) redirect('/login');

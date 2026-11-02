@@ -9,7 +9,7 @@ import { listInvitations } from '@/src/models/Invitation';
 import TeamPanel from '../TeamPanel';
 import RestaurantSwitcher from '../RestaurantSwitcher';
 import styles from '../dashboard.module.css';
-export const metadata = { title: 'Minha equipe | Controle Financeiro' };
+export const metadata = { title: 'Minha equipe | Saldo da Casa' };
 export default async function Dashboard() {
   const user = await currentUser();
   if (!user) redirect('/login');

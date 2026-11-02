@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Controle Financeiro | Seu restaurante, mais organizado",
+  title: "Saldo da Casa | Seu restaurante, mais organizado",
   description: "Organize seu restaurante e conecte sua equipe. Uma nova receita para cuidar das finanças de quem vive a gastronomia.",
 };
 

@@ -7,7 +7,7 @@ let fonts:Promise<Buffer[]>|undefined;
 const loadFonts=()=>fonts??=Promise.all(['NotoSans-Regular.ttf','NotoSans-Bold.ttf'].map(name=>readFile(join(process.cwd(),'public','fonts',name))));
 export async function dashboardPdf(data:ExpenseDashboardData,restaurant:string,author:string) {
   const [regular,bold]=await loadFonts();
-  const doc=new PDFDocument({size:'A4',layout:'landscape',margin:0,bufferPages:true,info:{Title:'Resumo financeiro do restaurante',Author:'Controle Financeiro',Subject:`${displayDate(data.filters.start)} a ${displayDate(data.filters.end)}`}});
+  const doc=new PDFDocument({size:'A4',layout:'landscape',margin:0,bufferPages:true,info:{Title:'Resumo financeiro do restaurante',Author:'Saldo da Casa',Subject:`${displayDate(data.filters.start)} a ${displayDate(data.filters.end)}`}});
   doc.registerFont('Report',regular);doc.registerFont('ReportBold',bold);doc.font('Report');
   const chunks:Buffer[]=[];
   const output=new Promise<Buffer>((resolve,reject)=>{doc.on('data',chunk=>chunks.push(Buffer.from(chunk)));doc.on('end',()=>resolve(Buffer.concat(chunks)));doc.on('error',reject);});

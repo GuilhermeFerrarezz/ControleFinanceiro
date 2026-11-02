@@ -4,7 +4,7 @@ import { validInvitation } from '@/src/lib/invitations';
 import { currentUser } from '@/src/lib/auth';
 import AcceptInvitation from './AcceptInvitation';
 import styles from '@/src/components/auth.module.css';
-export const metadata = { title: 'Convite para a equipe | Controle Financeiro', robots: { index: false, follow: false } };
+export const metadata = { title: 'Convite para a equipe | Saldo da Casa', robots: { index: false, follow: false } };
 export default async function InvitePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const valid = await validInvitation(token);

@@ -13,11 +13,10 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible { 
 button, a { touch-action:manipulation; }
 ::selection { background:var(--lime); color:var(--ink); }
 .brand { display:inline-flex; gap:10px; align-items:center; font-size:17px; font-weight:750; letter-spacing:-.6px; line-height:1.05; flex-shrink:0; }
-.brand-symbol { background:var(--green); color:var(--lime); width:42px; height:44px; border-radius:12px; display:grid; place-items:center; }
+.brand-symbol { background:var(--paper); width:48px; height:48px; border-radius:12px; display:grid; place-items:center; flex-shrink:0; }
+.brand-symbol img { width:100%; height:100%; object-fit:contain; }
 .brand-second { display:block; }
-.brand-dot { color:#769650; }
-.brand-light { color:var(--paper); }.brand-light .brand-symbol { background:var(--lime); color:var(--green); }
-.brand-light .brand-dot { color:var(--lime); }
+.brand-light { color:var(--paper); }.brand-light .brand-symbol { background:var(--paper); }
 .button { min-height:50px; padding:14px 22px; display:inline-flex; align-items:center; justify-content:center; gap:12px; border:1px solid transparent; border-radius:9px; background:var(--green); color:white; font-weight:600; font-size:14px; transition:background .2s,transform .2s; }
 .button:hover { background:#163b2a; transform:translateY(-1px); }.button-lime { background:var(--lime); color:var(--ink); }.button-lime:hover { background:#e3f1af; }
 .button-outline { border-color:var(--line); background:transparent; color:var(--ink); }.button-outline:hover { background:#eaedde; }
@@ -31,7 +30,7 @@ button, a { touch-action:manipulation; }
 /* Readable type and controls on tablet and desktop layouts. */
 @media (min-width: 761px) {
   .brand { font-size: 20px; }
-  .brand-symbol { width: 46px; height: 48px; }
+  .brand-symbol { width: 54px; height: 54px; }
   .button { font-size: 16px; min-height: 54px; }
   .eyebrow { font-size: 13px; letter-spacing: 1.7px; }
 }
