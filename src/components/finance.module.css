@@ -192,4 +192,8 @@
 .importRows span,.importRows small { display: block; font-size: 12px; color: #7c8b6c; line-height: 1.7; margin-top: 5px; }
 .importReview ul { padding-left: 0; }
 .importReview .error ul { padding-left: 18px; }
+.merchantField { position: relative; min-width: 0; }
+.merchantSuggestions { position: absolute; z-index: 5; top: 78px; left: 0; right: 0; max-height: 240px; overflow-y: auto; padding: 5px; margin: 0; list-style: none; border: 1px solid #d9e0cd; border-radius: 8px; background: #fffefa; box-shadow: 0 10px 25px #203d3120; }
+.merchantSuggestions li { padding: 12px; min-height: 44px; cursor: pointer; border-radius: 5px; overflow-wrap: anywhere; }
+.merchantSuggestions li:hover,.merchantSuggestions li[aria-selected='true'] { background: #edf3e3; }
 @media (max-width: 600px) { .importRows li > strong { font-size: 12px; }.headingActions { align-items: stretch; }.listActions { justify-content: flex-start; }.field input[type='file'] { font-size: 13px; } }

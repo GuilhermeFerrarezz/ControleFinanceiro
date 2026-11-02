@@ -9,7 +9,11 @@ export const EXPENSE_CATEGORIES = [
   { id: 'impostos', label: 'Impostos e taxas', color: '#ad716d', icon: 'receipt' },
   { id: 'outros', label: 'Outros', color: '#939889', icon: 'receipt' },
 ] as const;
-export type ExpenseCategory = typeof EXPENSE_CATEGORIES[number]['id'];
+export type ExpenseCategory = string;
+export type CategoryOption = { id: string; label: string; color: string };
+export function categoryInfo(id: string, options: readonly CategoryOption[] = EXPENSE_CATEGORIES): CategoryOption {
+  return options.find(item => item.id === id) || { id, label: 'Categoria não disponível', color: '#939889' };
+}
 export const PAYMENT_METHODS = [
   { id: 'not_informed', label: 'Não informado' }, { id: 'pix', label: 'Pix' },
   { id: 'cash', label: 'Dinheiro' }, { id: 'debit', label: 'Cartão de débito' },
@@ -77,6 +81,7 @@ export type ExpenseInput = { description: string; amountCents: number; date: str
 export type ExpenseRecord = ExpenseInput & { id: string; createdBy: string; authorName: string; version: number; createdAt: string; canManage: boolean; isDemo: boolean };
 export type ExpenseFilters = { start: string; end: string; category: string; status: string; q: string; page: number };
 export type ExpenseDashboardData = {
+  categoryOptions?: CategoryOption[];
   filters: ExpenseFilters; expenses: ExpenseRecord[]; count: number; pages: number; pageSize: number; demoCount: number; years: number[];
   summary: { totalCents: number; paidCents: number; pendingCents: number; count: number; averageDailyCents: number; previousTotalCents: number; changePercent: number | null };
   categories: { category: ExpenseCategory; totalCents: number; count: number }[];

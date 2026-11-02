@@ -30,6 +30,8 @@
 }
 
 .main { min-width: 0; width: 100%; }
+.catalogList { list-style: none; margin: 24px 0 0; padding: 0; }
+.catalogList li { padding: 14px 0; border-top: 1px solid #eceddf; font-size: 15px; line-height: 1.6; overflow-wrap: anywhere; }
 .heading > div, .teamGrid > section, .welcome > div { min-width: 0; }
 .selectLabel, .select { min-width: 0; max-width: 100%; }
 .memberActions { margin-left: auto; display: flex; align-items: center; gap: 9px; flex-shrink: 0; }

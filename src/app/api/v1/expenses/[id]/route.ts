@@ -11,6 +11,7 @@ async function mutate(request: Request, context: Context, remove: boolean) {
   try {
     const id = uuidValue((await context.params).id);
     const body = await readBody(request);
+    if (body.expectedEmpresaId !== undefined && body.expectedEmpresaId !== user.empresaId) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
     await changeExpense({ ...user, empresaId: user.empresaId }, id, versionValue(body.version), remove ? null : validateExpense(body));
     return NextResponse.json({ message: remove ? 'Gasto excluído.' : 'Gasto atualizado.' });
   } catch (error) { return jsonError(error instanceof InputError || error instanceof ExpenseError ? error.message : 'Não foi possível alterar o gasto.', error instanceof ExpenseError ? error.status : error instanceof InputError ? 400 : 500); }

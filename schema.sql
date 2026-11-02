@@ -127,4 +127,20 @@ CREATE INDEX IF NOT EXISTS audit_actor ON expense_audit (actor_id);
 ALTER TABLE expenses ADD COLUMN IF NOT EXISTS demo_key TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS expenses_demo_key ON expenses (empresa_id, demo_key) WHERE demo_key IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS restaurant_catalog (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    empresa_id UUID NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('category','merchant')),
+    name VARCHAR(120) NOT NULL,
+    normalized_name TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (empresa_id,kind,normalized_name)
+);
+-- Existing category keys remain valid; custom categories use UUID keys.
+ALTER TABLE expenses DROP CONSTRAINT IF EXISTS expenses_category_check;
+ALTER TABLE expenses ADD CONSTRAINT expenses_category_check CHECK (
+    category IN ('alimentos','funcionarios','produtos','bebidas','embalagens','contas','manutencao','impostos','outros')
+    OR category ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+);
+
 COMMIT;

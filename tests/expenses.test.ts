@@ -261,6 +261,62 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
       for(const row of expenses)assert.equal((await api(`/expenses/${row.id}`,employee,'DELETE',{version:row.version})).status,200);
     }
   });
+  await t.test('cadastros por restaurante alimentam busca, categorias, relatórios e importação', async () => {
+    const entry = { empresaId: ownerUser.empresaId, kind: 'merchant', name: 'Atacadão' };
+    assert.equal((await api('/catalog')).status, 401);
+    assert.equal((await api('/catalog', '', 'POST', entry)).status, 401);
+    assert.equal((await api('/catalog', other, 'POST', entry)).status, 409);
+    assert.equal((await api('/catalog', owner, 'POST', entry, 'https://hostil.invalid')).status, 403);
+    assert.equal((await api('/catalog', owner, 'POST', { ...entry, name: ' ' })).status, 400);
+    assert.equal((await api('/catalog', owner, 'POST', { ...entry, kind: 'invalid' })).status, 400);
+    const created = await api('/catalog', owner, 'POST', entry);
+    assert.equal(created.status, 200); const merchant = await created.json();
+    const duplicate = await api('/catalog', employee, 'POST', { ...entry, name: '  ATACADAO  ' });
+    assert.equal(duplicate.status, 200); assert.deepEqual(await duplicate.json(), merchant);
+    const parallel = await Promise.all(['Feira Local','feira local'].map(name=>api('/catalog',owner,'POST',{...entry,name})));
+    assert.equal((await parallel[0].json()).id, (await parallel[1].json()).id);
+    const categoryResponse = await api('/catalog', employee, 'POST', { ...entry, kind: 'category', name: 'Marketing digital' });
+    assert.equal(categoryResponse.status, 200); const category = await categoryResponse.json();
+    const defaultResponse = await api('/catalog', owner, 'POST', { ...entry, kind: 'category', name: 'ALIMENTOS' });
+    assert.equal((await defaultResponse.json()).id, 'alimentos');
+    const catalog = await (await api('/catalog', employee)).json();
+    assert.equal(catalog.merchants.filter((row: { name: string })=>row.name==='Atacadão').length, 1);
+    assert.ok(catalog.categories.some((row: { id: string })=>row.id===category.id));
+    const otherCatalog = await (await api('/catalog', other)).json();
+    assert.equal(otherCatalog.merchants.length, 0);
+    assert.ok(!otherCatalog.categories.some((row: { id: string })=>row.id===category.id));
+    assert.equal((await create(other,{category:category.id})).status,400);
+    assert.equal((await create(owner,{category:randomUUID()})).status,400);
+    const expense = await create(employee, { category: category.id, merchant: merchant.name, description:'Campanha de lançamento', date:'2039-01-01' });
+    assert.equal(expense.status,201); const expenseId = (await expense.json()).id;
+    assert.equal((await create(employee,{merchant:'Local avulso',date:'2039-01-02'})).status,201);
+    assert.equal((await (await api('/catalog',owner)).json()).merchants.length,2);
+    const params = `start=2039-01-01&end=2039-01-31&category=${category.id}`;
+    for (const q of ['Atac','Campanha']) {
+      const data=await list(owner,`${params}&q=${q}`);
+      assert.equal(data.count,1); assert.equal(data.categories[0].category,category.id);
+      assert.ok(data.categoryOptions.some((row:{label:string})=>row.label==='Marketing digital'));
+    }
+    const dashboard = await fetch(`${origin}/dashboard?${params}`,{headers:{Cookie:owner}});
+    assert.equal(dashboard.status,200); const html=await dashboard.text();
+    assert.match(html,/id="filter-search"/); assert.match(html,/Marketing digital/);
+    assert.equal((await fetch(`${origin}/dashboard/catalog`,{headers:{Cookie:employee}})).status,200);
+    const csv = await (await api(`/expenses?${params}&format=csv`,owner)).text();
+    assert.match(csv,/Marketing digital/);
+    const preview=await api('/expenses/import',owner,'POST',{csv,mode:'preview'});
+    assert.equal(preview.status,200); const review=await preview.json();
+    assert.equal(review.totalErrors,0); assert.equal(review.preview[0].categoryLabel,'Marketing digital');
+    const freshCsv='Data;Descrição;Valor;Categoria;Local\n02/01/2039;Anúncio novo;20;Marketing digital;Atacadão';
+    const imported=await api('/expenses/import',employee,'POST',{csv:freshCsv,mode:'import'});
+    assert.equal(imported.status,200); assert.equal((await imported.json()).imported,1);
+    const xlsx=await api(`/expenses?${params}&format=xlsx`,owner);
+    assert.equal(xlsx.status,200); const workbook=new ExcelJS.Workbook();
+    await workbook.xlsx.load(await xlsx.arrayBuffer());
+    assert.equal(workbook.getWorksheet('Lançamentos')!.getCell('D2').text,'Marketing digital');
+    assert.equal(workbook.getWorksheet('Resumo')!.getCell('B4').text,'Marketing digital');
+    assert.equal((await api(`/expenses/report?${params}`,owner)).status,200);
+    assert.equal((await api(`/expenses/${expenseId}`,employee,'PATCH',{...body,category:category.id,version:1})).status,200);
+  });
   await t.test('admin exclui um período inteiro com confirmação, isolamento e auditoria', async () => {
     const deletion = { empresaId: ownerUser.empresaId, start: '2038-02-01', end: '2038-02-28', confirm: true };
     const ids: string[] = [];

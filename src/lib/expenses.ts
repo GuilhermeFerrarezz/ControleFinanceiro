@@ -2,6 +2,7 @@ import { deleteExpensesInPeriod, countDemoExpenses, expenseBounds, expenseYears,
 import { inTransaction } from './postgres';
 import { InputError } from './validation';
 import { findMembership } from '../models/Membership';
+import { listCategories } from '../models/Catalog';
 import { addDays, buildExpenseSeries, daysBetween, EXPENSE_CATEGORIES, MAX_AMOUNT_CENTS, monthPeriod, yearPeriod, todayInSaoPaulo, PAYMENT_METHODS, type ExpenseDashboardData, type ExpenseFilters, type ExpenseInput, type ExpenseRecord } from './expense-shared';
 
 export type ExpenseActor = { id: string; empresaId: string; role?: string };
@@ -21,7 +22,7 @@ function text(value: unknown, label: string, max: number, required = false) {
 }
 export function validateExpense(body: Record<string, unknown>): ExpenseInput {
   if (!Number.isSafeInteger(body.amountCents) || Number(body.amountCents) <= 0 || Number(body.amountCents) > MAX_AMOUNT_CENTS) throw new InputError('Informe um valor válido maior que zero, com até duas casas decimais.');
-  if (!EXPENSE_CATEGORIES.some(category => category.id === body.category)) throw new InputError('Escolha uma categoria válida.');
+  if (!validCategoryKey(body.category)) throw new InputError('Escolha uma categoria válida.');
   const status = body.status ?? 'paid';
   const paymentMethod = body.paymentMethod ?? 'not_informed';
   if (status !== 'paid' && status !== 'pending') throw new InputError('Escolha uma situação de pagamento válida.');
@@ -29,6 +30,12 @@ export function validateExpense(body: Record<string, unknown>): ExpenseInput {
   return { description: text(body.description, 'Descrição', 120, true), merchant: text(body.merchant, 'Local ou favorecido', 120),
     notes: text(body.notes, 'Observações', 1000), amountCents: body.amountCents as number, date: dateValue(body.date),
     category: body.category as ExpenseInput['category'], status, paymentMethod: paymentMethod as ExpenseInput['paymentMethod'] };
+}
+function validCategoryKey(value: unknown) {
+  return typeof value === 'string' && (EXPENSE_CATEGORIES.some(category => category.id === value) || /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value));
+}
+async function requireCategory(empresaId: string, category: string, client: import('./postgres').Queryable) {
+  if (!(await listCategories(empresaId, client)).some(item => item.id === category)) throw new InputError('Categoria não cadastrada neste restaurante.');
 }
 export function uuidValue(value: unknown) {
   if (typeof value !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) throw new InputError('Identificador inválido.');
@@ -49,7 +56,7 @@ export function expenseFilters(params = new URLSearchParams()): ExpenseFilters {
   const status = params.get('status') || '';
   const q = (params.get('q') || '').trim();
   const page = Number(params.get('page') || 1);
-  if (category && !EXPENSE_CATEGORIES.some(item => item.id === category)) throw new InputError('Categoria de filtro inválida.');
+  if (category && !validCategoryKey(category)) throw new InputError('Categoria de filtro inválida.');
   if (status && !['paid', 'pending'].includes(status)) throw new InputError('Situação de filtro inválida.');
   if (q.length > 120 || !Number.isSafeInteger(page) || page < 1 || page > 100000) throw new InputError('Filtros inválidos.');
   return { start, end, category, status, q, page };
@@ -58,6 +65,7 @@ const inputSnapshot = (expense: IExpense) => Object.fromEntries(['description','
 export async function createExpense(actor: ExpenseActor, input: ExpenseInput, requestId: string) {
   return inTransaction(async client => {
     if (!await findMembership(actor.id,actor.empresaId,client,true)) throw new ExpenseError('Você não tem mais acesso a este restaurante.',403);
+    await requireCategory(actor.empresaId, input.category, client);
     const { expense, created } = await insertExpense(actor.empresaId,actor.id,requestId,input,client);
     if (!created) {
       const matches = expense.createdBy === actor.id && !expense.deletedAt && Object.entries(input).every(([field,value]) => expense[field as keyof IExpense] === value);
@@ -72,6 +80,7 @@ export async function changeExpense(actor: ExpenseActor,id: string,version: numb
   await inTransaction(async client => {
     const membership = await findMembership(actor.id,actor.empresaId,client,true);
     if (!membership) throw new ExpenseError('Você não tem mais acesso a este restaurante.',403);
+    if (input) await requireCategory(actor.empresaId, input.category, client);
     const expense = await findExpense(id,actor.empresaId,client);
     if (!expense) throw new ExpenseError('Lançamento não encontrado.',404);
     if (membership.role !== 'owner' && expense.createdBy !== actor.id) throw new ExpenseError('Você pode alterar apenas os seus próprios lançamentos.',403);
@@ -100,6 +109,7 @@ function toRecord(row: IExpense,actor: ExpenseActor): ExpenseRecord {
 }
 export async function expenseDashboard(actor: ExpenseActor,filters: ExpenseFilters): Promise<ExpenseDashboardData> {
   return inTransaction(async client => {
+    const categoryOptions = await listCategories(actor.empresaId, client);
     const totals = await expenseTotals(actor.empresaId,filters,client);
     const demoCount = await countDemoExpenses(actor.empresaId,client);
     const years = Array.from(new Set([Number(todayInSaoPaulo().slice(0,4)), ...await expenseYears(actor.empresaId,client)])).sort((a,b)=>b-a);
@@ -111,7 +121,7 @@ export async function expenseDashboard(actor: ExpenseActor,filters: ExpenseFilte
     const previous = await expenseTotals(actor.empresaId,{...filters,start:addDays(previousEnd,-(duration-1)),end:previousEnd},client);
     const trend=buildExpenseSeries(daily,filters.start,filters.end);
     const availablePeriod=await expenseBounds(actor.empresaId,client);
-    return { filters:{...filters,page},expenses:expenses.map(row=>toRecord(row,actor)),count:totals.count,pages,pageSize,demoCount,years,
+    return { categoryOptions, filters:{...filters,page},expenses:expenses.map(row=>toRecord(row,actor)),count:totals.count,pages,pageSize,demoCount,years,
       summary:{...totals,averageDailyCents:Math.round(totals.totalCents/duration),previousTotalCents:previous.totalCents,
         changePercent:previous.totalCents>0 ? Math.round((totals.totalCents-previous.totalCents)/previous.totalCents*1000)/10 : null},categories,...trend,availablePeriod };
   },true);

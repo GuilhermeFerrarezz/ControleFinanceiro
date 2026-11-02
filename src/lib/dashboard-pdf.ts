@@ -1,7 +1,7 @@
 import PDFDocument from 'pdfkit';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { displayDate,daysBetween,EXPENSE_CATEGORIES,money,trendPeriodLabel,type ExpenseDashboardData } from './expense-shared';
+import { categoryInfo,displayDate,daysBetween,money,trendPeriodLabel,type ExpenseDashboardData } from './expense-shared';
 
 let fonts:Promise<Buffer[]>|undefined;
 const loadFonts=()=>fonts??=Promise.all(['NotoSans-Regular.ttf','NotoSans-Bold.ttf'].map(name=>readFile(join(process.cwd(),'public','fonts',name))));
@@ -19,7 +19,7 @@ export async function dashboardPdf(data:ExpenseDashboardData,restaurant:string,a
   text('RESUMO DO PERÍODO',540,23,266,9,muted,true);
   text(restaurant,36,48,770,20,ink,true,52);
   text(`${displayDate(data.filters.start)} a ${displayDate(data.filters.end)}  |  ${data.count} lançamentos`,36,108,770,11,green,true);
-  const category=EXPENSE_CATEGORIES.find(item=>item.id===data.filters.category)?.label||'Todas as categorias';
+  const category=data.filters.category ? categoryInfo(data.filters.category,data.categoryOptions).label : 'Todas as categorias';
   const status=data.filters.status==='paid'?'Pagos':data.filters.status==='pending'?'A pagar':'Todas as situações';
   text(`Filtros: ${category}  |  ${status}${data.filters.q?`  |  Busca: ${data.filters.q}`:''}`,36,132,770,9,muted,false,30);
   const cards=[['Total do período',data.summary.totalCents],['Já pago',data.summary.paidCents],['A pagar',data.summary.pendingCents],['Média por dia',data.summary.averageDailyCents]] as const;
@@ -60,19 +60,32 @@ export async function dashboardPdf(data:ExpenseDashboardData,restaurant:string,a
       const fraction=row.totalCents/data.summary.totalCents,mid=start+fraction/2,end=start+fraction;
       const point=(r:number,part:number)=>`${cx+r*Math.cos((part*360-90)*Math.PI/180)} ${cy+r*Math.sin((part*360-90)*Math.PI/180)}`;
       const path=`M${point(radius,start)} A${radius} ${radius} 0 0 1 ${point(radius,mid)} A${radius} ${radius} 0 0 1 ${point(radius,end)} L${point(inner,end)} A${inner} ${inner} 0 0 0 ${point(inner,mid)} A${inner} ${inner} 0 0 0 ${point(inner,start)} Z`;
-      doc.path(path).fill(EXPENSE_CATEGORIES.find(category=>category.id===row.category)!.color);start=end;
+      doc.path(path).fill(categoryInfo(row.category,data.categoryOptions).color);start=end;
     }
     doc.font('ReportBold').fontSize(20).fillColor(ink).text(String(data.categories.length),cx-36,331,{width:72,height:28,align:'center'});
     doc.font('Report').fontSize(7).fillColor(muted).text('categorias',cx-36,361,{width:72,height:14,align:'center'});
   }else{doc.circle(cx,cy,radius).fill('#e4e9da');doc.circle(cx,cy,inner).fill(paper);text('Sem gastos',cx-35,344,80,9,muted);}
   text('Categoria',538,412,120,7,muted,true);text('Valor',668,412,92,7,muted,true);text('%',775,412,30,7,muted,true);
-  data.categories.forEach((row,index)=>{
-    const category=EXPENSE_CATEGORIES.find(item=>item.id===row.category)!,yy=431+index*14;
+  data.categories.slice(0,9).forEach((row,index)=>{
+    const category=categoryInfo(row.category,data.categoryOptions),yy=431+index*14;
     doc.circle(530,yy+5,2.5).fill(category.color);
     text(category.label,538,yy,122,7.5,ink);
     const amount=money(row.totalCents);text(amount,668,yy,102,fit(amount,102,8),ink);
     text(new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1}).format(row.totalCents/data.summary.totalCents*100)+'%',777,yy,31,7,muted);
   });
+  if (data.categories.length > 9) {
+    text('Lista completa de categorias nas próximas páginas.',538,563,270,7,muted);
+    for (let offset=0; offset<data.categories.length; offset+=17) {
+      doc.addPage(); doc.rect(0,0,842,595).fill(paper);
+      text('Gastos por categoria',36,35,770,20,ink,true,35);
+      data.categories.slice(offset,offset+17).forEach((row,index)=>{
+        const category=categoryInfo(row.category,data.categoryOptions),yy=90+index*25;
+        doc.circle(42,yy+6,3).fill(category.color);
+        text(category.label,55,yy,520,10,ink);
+        text(money(row.totalCents),590,yy,200,10,ink,true);
+      });
+    }
+  }
   const detailTitle=data.seriesInterval==='day'?'Gastos por dia':data.seriesInterval==='month'?'Gastos por mês':'Gastos por ano';
   const periodTitle=data.seriesInterval==='day'?'Data':data.seriesInterval==='month'?'Mês':'Ano';
   const rowsPerPage=17;

@@ -6,7 +6,7 @@ import { decodeCsv } from '@/src/lib/csv-encoding';
 import { displayDate,EXPENSE_CATEGORIES,money,type ExpenseInput } from '@/src/lib/expense-shared';
 import Icon from './Icon';
 import styles from './finance.module.css';
-type Review={total:number;ready:number;duplicates:number;totalErrors:number;errors:{line:number;message:string}[];preview:(ExpenseInput&{line:number;duplicate:boolean})[];totalCents:number};
+type Review={total:number;ready:number;duplicates:number;totalErrors:number;errors:{line:number;message:string}[];preview:(ExpenseInput&{line:number;duplicate:boolean;categoryLabel?:string})[];totalCents:number};
 export default function ImportExpenses({onClose,onImported}:{onClose:()=>void;onImported:(result:{imported:number;duplicates:number;period:{start:string;end:string}})=>Promise<void>}) {
   const dialog=useRef<HTMLDialogElement>(null);
   const [csv,setCsv]=useState(''),[filename,setFilename]=useState(''),[review,setReview]=useState<Review|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
@@ -42,7 +42,7 @@ export default function ImportExpenses({onClose,onImported}:{onClose:()=>void;on
     {error&&<p className={styles.error} role="alert">{error}</p>}
     {review&&<section className={styles.importReview} aria-label="Prévia da importação"><h3>Conferência de {filename}</h3><p role="status">{review.ready} a importar · {review.duplicates} repetidos · {review.totalErrors} com erro</p><strong>Total a importar: {money(review.totalCents)}</strong>
       {!!review.totalErrors&&<div className={styles.error} role="alert"><strong>Corrija as linhas abaixo antes de importar.</strong><ul>{review.errors.map(row=><li key={row.line}>Linha {row.line}: {row.message}</li>)}</ul>{review.totalErrors>review.errors.length&&<p>Mostrando os primeiros {review.errors.length} erros.</p>}</div>}
-      <ul className={styles.importRows}>{review.preview.map(row=><li key={row.line}><div><strong>{row.description}</strong><span>{displayDate(row.date)} · {EXPENSE_CATEGORIES.find(item=>item.id===row.category)?.label}</span><small>{row.duplicate?'Já identificado - será ignorado':`Linha ${row.line}`}</small></div><strong>{money(row.amountCents)}</strong></li>)}</ul>
+      <ul className={styles.importRows}>{review.preview.map(row=><li key={row.line}><div><strong>{row.description}</strong><span>{displayDate(row.date)} · {row.categoryLabel || EXPENSE_CATEGORIES.find(item=>item.id===row.category)?.label}</span><small>{row.duplicate?'Já identificado - será ignorado':`Linha ${row.line}`}</small></div><strong>{money(row.amountCents)}</strong></li>)}</ul>
       {review.total>10&&<p className={styles.importHint}>Prévia dos primeiros 10 registros. Todos os {review.total} registros foram conferidos.</p>}
     </section>}
     <div className={styles.formActions}><button type="button" className="button button-outline" disabled={busy} onClick={onClose}>Cancelar</button><button type="button" className="button" disabled={busy||!csv||(!!review&&(review.totalErrors>0||review.ready===0))} onClick={review?confirm:check}>{busy?'Processando...':review?(review.totalErrors?'Corrija o CSV para continuar':!review.ready?'Nenhum lançamento novo':`Importar ${review.ready} lançamentos`):'Conferir arquivo'}</button></div>
