@@ -38,7 +38,7 @@ const headerAliases:Record<string,string>={
   observacoes:'notes',notes:'notes',iddolancamento:'sourceId',id:'sourceId',
 };
 export interface ImportRow { line:number; input:ExpenseInput; requestId:string; legacyRequestId?:string; sourceId:string | null }
-export interface CsvIssue { line:number; message:string }
+export interface CsvIssue { line:number; message:string; code?:'unknown_category' }
 function importDate(value:string) {
   const text=value.trim().replace(/^'/,'').replace(/^data:\s*/i,'');
   const br=/^(\d{2})[/-](\d{2})[/-](\d{4})$/.exec(text);
@@ -87,7 +87,7 @@ export function parseExpenseCsv(csv:unknown,empresaId:string,categories:readonly
         if(data[name]?.startsWith("'") && escapedCsvText.test(data[name].slice(1)))data[name]=data[name].slice(1);
       }
       const category=categories.find(item=>normalizeCatalogName(item.id)===normalizeCatalogName(data.category)||normalizeCatalogName(item.label)===normalizeCatalogName(data.category));
-      if(!category) { const name=textValue(data.category,'A categoria'); unknownCategories.set(normalizeCatalogName(name),name); throw new InputError(`Categoria não cadastrada: ${name}. Autorize o cadastro abaixo ou corrija a planilha.`); }
+      if(!category) { const name=textValue(data.category,'A categoria'); unknownCategories.set(normalizeCatalogName(name),name); issues.push({line:info.lines,code:'unknown_category',message:`Categoria não cadastrada: ${name}. Use as categorias encontradas ou corrija a planilha.`}); continue; }
       const status=normalize(data.status||'Pago');
       const paid=['pago','pagos','paid'].includes(status),pending=['apagar','pendente','pendentes','pending'].includes(status);
       if(!paid&&!pending)throw new InputError('Situação inválida. Use Pago ou A pagar.');
@@ -141,8 +141,10 @@ export async function previewExpenseCsv(actor:ExpenseActor,csv:unknown,createCat
   const parsed=parseExpenseCsv(csv,actor.empresaId,options),rows=await classify(parsed.rows,actor,db);
   const total=rows.length+parsed.issues.length;
   for(const row of rows)if(row.forbidden)parsed.issues.push({line:row.line,message:'Apenas o dono ou o autor pode restaurar este gasto excluído.'});
+  const categoryPending=parsed.issues.filter(issue=>issue.code==='unknown_category').length;
+  const otherIssues=parsed.issues.filter(issue=>issue.code!=='unknown_category');
   return { unknownCategories:unknown, total,ready:rows.filter(row=>!row.duplicate&&!row.forbidden).length,duplicates:rows.filter(row=>row.duplicate).length,
-    totalErrors:parsed.issues.length,errors:parsed.issues.slice(0,30),preview:rows.slice(0,10).map(row=>({line:row.line,...row.input,categoryLabel:categoryInfo(row.input.category,options).label,duplicate:row.duplicate})),
+    categoryPending,totalErrors:parsed.issues.length,errors:otherIssues.slice(0,30),preview:rows.slice(0,10).map(row=>({line:row.line,...row.input,categoryLabel:categoryInfo(row.input.category,options).label,duplicate:row.duplicate})),
     totalCents:rows.filter(row=>!row.duplicate&&!row.forbidden).reduce((sum,row)=>sum+row.input.amountCents,0) };
 }
 export async function importExpenseCsv(actor:ExpenseActor,csv:unknown,createCategories?:unknown) {

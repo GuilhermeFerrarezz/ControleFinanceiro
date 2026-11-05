@@ -46,7 +46,7 @@ function CatalogSection({ empresaId, kind, items }: { empresaId: string; kind: '
     {notice && <p className={styles.teamNotice} role="status">{notice}</p>}
     <ul className={styles.catalogList} aria-label={category ? 'Categorias cadastradas' : 'Locais cadastrados'}>{items.map(item => <li key={item.id}>
       <div className={styles.catalogRow}><span>{item.name}</span><div className={styles.memberActions}>
-        <button type="button" className={styles.removeMember} disabled={busy} aria-label={`Editar ${item.name}`} onClick={() => { setAction({ type: 'edit', item }); setError(''); setNotice(''); }}>Editar</button>
+        <button type="button" className={`${styles.removeMember} ${styles.editButton}`} disabled={busy} aria-label={`Editar ${item.name}`} onClick={() => { setAction({ type: 'edit', item }); setError(''); setNotice(''); }}>Editar</button>
         <button type="button" className={styles.removeMember} disabled={busy} aria-label={`Excluir ${item.name}`} onClick={() => { setAction({ type: 'delete', item }); setError(''); setNotice(''); }}>Excluir</button>
       </div></div>
       {action?.item.id === item.id && <form key={`${item.id}-${action.type}`} className={formStyles.form} onSubmit={change} aria-busy={busy}>

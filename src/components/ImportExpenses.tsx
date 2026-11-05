@@ -6,29 +6,32 @@ import { decodeCsv } from '@/src/lib/csv-encoding';
 import { displayDate,EXPENSE_CATEGORIES,money,type ExpenseInput } from '@/src/lib/expense-shared';
 import Icon from './Icon';
 import styles from './finance.module.css';
-type Review={unknownCategories:string[];total:number;ready:number;duplicates:number;totalErrors:number;errors:{line:number;message:string}[];preview:(ExpenseInput&{line:number;duplicate:boolean;categoryLabel?:string})[];totalCents:number};
+type Review={categoryPending?:number;unknownCategories:string[];total:number;ready:number;duplicates:number;totalErrors:number;errors:{line:number;message:string}[];preview:(ExpenseInput&{line:number;duplicate:boolean;categoryLabel?:string})[];totalCents:number};
 export default function ImportExpenses({empresaId,onClose,onImported}:{empresaId:string;onClose:()=>void;onImported:(result:{imported:number;duplicates:number;period:{start:string;end:string}})=>Promise<void>}) {
   const dialog=useRef<HTMLDialogElement>(null);
   const [csv,setCsv]=useState(''),[filename,setFilename]=useState(''),[review,setReview]=useState<Review|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
-  const [createMissing,setCreateMissing]=useState(false),[reviewStale,setReviewStale]=useState(false);
+  const [createMissing,setCreateMissing]=useState(false);
+  const unknownCategories=Array.isArray(review?.unknownCategories)?review.unknownCategories:[];
+  const categoryPending=review?.categoryPending??0;
+  const otherErrors=Math.max(0,(review?.totalErrors??0)-categoryPending);
   useEffect(()=>{const node=dialog.current;node?.showModal();return()=>node?.close();},[]);
   async function choose(file:File|undefined) {
-    setReview(null);setCreateMissing(false);setReviewStale(false);setError('');setCsv('');setFilename(file?.name||'');
+    setReview(null);setCreateMissing(false);setError('');setCsv('');setFilename(file?.name||'');
     if(!file)return;
     if(file.size>2*1024*1024){setError('Selecione um arquivo de até 2 MB.');return;}
     setBusy(true);
     try {setCsv(decodeCsv(await file.arrayBuffer()));}
     catch{setError('Não foi possível ler o arquivo. Selecione-o novamente.');}finally{setBusy(false);}
   }
-  async function check() {
+  async function check(approveCategories=false) {
     setBusy(true);setError('');
-    try{setReview((await api.post<Review>('/expenses/import',{csv,mode:'preview',expectedEmpresaId:empresaId,createCategories:createMissing ? review?.unknownCategories : []},{timeout:30000})).data);setReviewStale(false);}
+    try{setReview((await api.post<Review>('/expenses/import',{csv,mode:'preview',expectedEmpresaId:empresaId,createCategories:approveCategories ? unknownCategories : []},{timeout:30000})).data);setCreateMissing(approveCategories);}
     catch(error){setError(errorMessage(error));}finally{setBusy(false);}
   }
   async function confirm() {
-    if(reviewStale||!review||review.totalErrors||!review.ready||busy)return;
+    if(!review||review.totalErrors||!review.ready||busy)return;
     setBusy(true);setError('');
-    try{const result=(await api.post('/expenses/import',{csv,mode:'import',expectedEmpresaId:empresaId,createCategories:createMissing ? review.unknownCategories : []},{timeout:120000})).data;await onImported(result);}
+    try{const result=(await api.post('/expenses/import',{csv,mode:'import',expectedEmpresaId:empresaId,createCategories:createMissing ? unknownCategories : []},{timeout:120000})).data;await onImported(result);}
     catch(error){setError(errorMessage(error));setBusy(false);}
   }
   async function template() {
@@ -41,16 +44,17 @@ export default function ImportExpenses({empresaId,onClose,onImported}:{empresaId
     <label className={styles.field} htmlFor="import-file">Arquivo CSV<input id="import-file" type="file" accept=".csv,text/csv" disabled={busy} onChange={event=>void choose(event.target.files?.[0])}/></label>
     <p className={styles.importHint}>Colunas obrigatórias: Data, Descrição, Valor e Categoria. Datas em dd/mm/aaaa ou aaaa-mm-dd. Use vírgula para centavos (125,90). O CSV exportado pelo sistema também é aceito. Registros ativos já identificados serão ignorados. O dono ou o autor pode restaurar registros excluídos.</p>
     {error&&<p className={styles.error} role="alert">{error}</p>}
-    {review&&<section className={styles.importReview} aria-label="Prévia da importação"><h3>Conferência de {filename}</h3><p role="status">{review.ready} a importar · {review.duplicates} repetidos · {review.totalErrors} com erro</p><strong>Total a importar: {money(review.totalCents)}</strong>
-      {!!review.unknownCategories.length && <div className={styles.importReview}>
-        <h3>Categorias ainda não cadastradas</h3><ul>{review.unknownCategories.map(name=><li key={name}>{name}</li>)}</ul>
-        <label className={styles.checkbox}><input type="checkbox" disabled={busy} checked={createMissing} onChange={event=>{setCreateMissing(event.target.checked);setReviewStale(true);}} />Cadastrar essas categorias ao importar (reativa categorias excluídas com o mesmo nome)</label>
-        <p className={styles.importHint}>Marque a opção e confira novamente. Os cadastros e lançamentos só serão salvos ao confirmar a importação.</p>
+    {review&&<section className={styles.importReview} aria-label="Prévia da importação"><h3>Conferência de {filename}</h3><p role="status">{review.ready} a importar · {review.duplicates} repetidos · {otherErrors} com erro{categoryPending>0 && ` · ${categoryPending} aguardando categorias`}</p><strong>Total a importar: {money(review.totalCents)}</strong>
+      {!!unknownCategories.length && <div className={styles.categoryImportCard}>
+        <h3>{createMissing ? "Categorias prontas para importar" : `Encontramos ${unknownCategories.length} categorias fora do seu cadastro`}</h3>
+        <p>{createMissing ? "Estas categorias serão cadastradas junto com os lançamentos ao confirmar a importação." : "Você pode usar os nomes da planilha sem precisar cadastrá-los um por um."}</p><ul className={styles.categoryImportTags}>{unknownCategories.map(name=><li key={name}>{name}</li>)}</ul>
+        {!createMissing ? <button type="button" className="button" disabled={busy} onClick={()=>void check(true)}>{busy?'Conferindo...':'Usar estas categorias e continuar'}</button> : <><p role="status">✓ Categorias incluídas na prévia.</p><button type="button" className={styles.textButton} disabled={busy} onClick={()=>void check(false)}>Desfazer escolha</button></>}
+        <p className={styles.importHint}>Categorias excluídas com o mesmo nome serão reativadas. Nada será salvo antes de você confirmar a importação. Para usar outros nomes, ajuste a coluna Categoria na planilha e selecione o arquivo novamente.</p>
       </div>}
-      {!!review.totalErrors&&<div className={styles.error} role="alert"><strong>Corrija as linhas abaixo antes de importar.</strong><ul>{review.errors.map(row=><li key={row.line}>Linha {row.line}: {row.message}</li>)}</ul>{review.totalErrors>review.errors.length&&<p>Mostrando os primeiros {review.errors.length} erros.</p>}</div>}
+      {!!otherErrors&&<div className={styles.error} role="alert"><strong>Corrija as linhas abaixo antes de importar.</strong><ul>{review.errors.map(row=><li key={row.line}>Linha {row.line}: {row.message}</li>)}</ul>{otherErrors>review.errors.length&&<p>Mostrando os primeiros {review.errors.length} erros.</p>}</div>}
       <ul className={styles.importRows}>{review.preview.map(row=><li key={row.line}><div><strong>{row.description}</strong><span>{displayDate(row.date)} · {row.categoryLabel || EXPENSE_CATEGORIES.find(item=>item.id===row.category)?.label}</span><small>{row.duplicate?'Já identificado - será ignorado':`Linha ${row.line}`}</small></div><strong>{money(row.amountCents)}</strong></li>)}</ul>
       {review.total>10&&<p className={styles.importHint}>Prévia dos primeiros 10 registros. Todos os {review.total} registros foram conferidos.</p>}
     </section>}
-    <div className={styles.formActions}><button type="button" className="button button-outline" disabled={busy} onClick={onClose}>Cancelar</button><button type="button" className="button" disabled={busy||!csv||(!reviewStale&&!!review&&(review.totalErrors>0||review.ready===0))} onClick={review&&!reviewStale?confirm:check}>{busy?'Processando...':reviewStale?'Conferir novamente':review?(review.totalErrors?'Corrija o CSV para continuar':!review.ready?'Nenhum lançamento novo':`Importar ${review.ready} lançamentos`):'Conferir arquivo'}</button></div>
+    <div className={styles.formActions}><button type="button" className="button button-outline" disabled={busy} onClick={onClose}>Cancelar</button><button type="button" className="button" disabled={busy||!csv|| (!!review&&(review.totalErrors>0||review.ready===0))} onClick={()=>void (review?confirm():check())}>{busy?'Processando...':review?(categoryPending?'Escolha as categorias acima':review.totalErrors?'Corrija o CSV para continuar':!review.ready?'Nenhum lançamento novo':`Confirmar importação de ${review.ready} lançamentos`):'Conferir arquivo'}</button></div>
   </div></dialog>;
 }

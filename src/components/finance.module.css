@@ -197,3 +197,12 @@
 .merchantSuggestions li { padding: 12px; min-height: 44px; cursor: pointer; border-radius: 5px; overflow-wrap: anywhere; }
 .merchantSuggestions li:hover,.merchantSuggestions li[aria-selected='true'] { background: #edf3e3; }
 @media (max-width: 600px) { .importRows li > strong { font-size: 12px; }.headingActions { align-items: stretch; }.listActions { justify-content: flex-start; }.field input[type='file'] { font-size: 13px; } }
+
+.editButton { background: #dcefd6; color: #315c35; }
+.editButton:hover:not(:disabled) { background: #c8e4bf; }
+
+.categoryImportCard { margin: 20px 0; padding: 20px; border: 1px solid #b9d5ae; border-radius: 12px; background: #f0f7ec; color: #315c35; display: grid; gap: 14px; }
+.categoryImportCard h3, .categoryImportCard p { margin: 0; }
+.categoryImportCard > button { justify-self: start; white-space: normal; text-align: left; }
+.categoryImportTags { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin: 0; }
+.categoryImportTags li { background: #dcefd6; border: 1px solid #b9d5ae; border-radius: 20px; padding: 6px 12px; font-weight: 600; font-size: 13px; overflow-wrap: anywhere; }

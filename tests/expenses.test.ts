@@ -144,7 +144,7 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal((await api('/expenses/import','','POST',{csv,mode:'preview'})).status,401);
     assert.equal((await api('/expenses/import',owner,'POST',{csv,mode:'import'},'https://hostil.invalid')).status,403);
     const preview=await api('/expenses/import',employee,'POST',{csv,mode:'preview'});assert.equal(preview.status,200,await preview.clone().text());
-    const plan=await preview.json();assert.equal(plan.ready,2);assert.equal(plan.totalErrors,0);assert.equal(plan.totalCents,18000);
+    const plan=await preview.json();assert.equal(plan.ready,2);assert.equal(plan.totalErrors,0);assert.equal(plan.totalCents,18000);assert.deepEqual(plan.unknownCategories,[]);
     const first=await api('/expenses/import',employee,'POST',{csv,mode:'import',empresaId:'forged',createdBy:ownerUser.id});
     assert.equal(first.status,200,await first.clone().text());assert.equal((await first.json()).imported,2);
     const data=await list(owner,'start=2030-01-01&end=2031-12-31');assert.equal(data.count,2);assert.equal(data.summary.totalCents,18000);
@@ -358,9 +358,13 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     const before=await query(fixture.pool,"SELECT id FROM restaurant_catalog WHERE empresa_id=$1",[ownerUser.empresaId]);
     let preview=await (await api('/expenses/import',owner,'POST',{csv,mode:'preview'})).json();
     assert.equal(preview.unknownCategories.length,1);assert.equal(preview.totalErrors,2);
+    assert.equal(preview.categoryPending,2);assert.deepEqual(preview.errors,[]);
+    const mixed=await (await api('/expenses/import',owner,'POST',{csv:csv+'\n03/02/2040;Valor incorreto;abc;Alimentos',mode:'preview'})).json();
+    assert.equal(mixed.categoryPending,2);assert.equal(mixed.totalErrors,3);assert.equal(mixed.errors.length,1);assert.equal(mixed.errors[0].line,4);
     const createCategories=preview.unknownCategories;
     preview=await (await api('/expenses/import',owner,'POST',{csv,mode:'preview',createCategories})).json();
     assert.equal(preview.totalErrors,0);assert.equal(preview.ready,2);
+    assert.equal(preview.categoryPending,0);
     assert.equal((await query(fixture.pool,"SELECT id FROM restaurant_catalog WHERE empresa_id=$1",[ownerUser.empresaId])).length,before.length);
     assert.equal((await api('/expenses/import',owner,'POST',{csv,mode:'import'})).status,400);
     assert.equal((await api('/expenses/import',owner,'POST',{csv,mode:'import',createCategories:true})).status,400);
