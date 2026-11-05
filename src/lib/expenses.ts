@@ -2,7 +2,7 @@ import { deleteExpensesInPeriod, countDemoExpenses, expenseBounds, expenseYears,
 import { inTransaction } from './postgres';
 import { InputError } from './validation';
 import { findMembership } from '../models/Membership';
-import { listCategories } from '../models/Catalog';
+import { listCategories, lockCatalog } from '../models/Catalog';
 import { addDays, buildExpenseSeries, daysBetween, EXPENSE_CATEGORIES, MAX_AMOUNT_CENTS, monthPeriod, yearPeriod, todayInSaoPaulo, PAYMENT_METHODS, type ExpenseDashboardData, type ExpenseFilters, type ExpenseInput, type ExpenseRecord } from './expense-shared';
 
 export type ExpenseActor = { id: string; empresaId: string; role?: string };
@@ -35,7 +35,8 @@ function validCategoryKey(value: unknown) {
   return typeof value === 'string' && (EXPENSE_CATEGORIES.some(category => category.id === value) || /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value));
 }
 async function requireCategory(empresaId: string, category: string, client: import('./postgres').Queryable) {
-  if (!(await listCategories(empresaId, client)).some(item => item.id === category)) throw new InputError('Categoria não cadastrada neste restaurante.');
+  await lockCatalog(empresaId, client);
+  if (!(await listCategories(empresaId, client)).some(item => item.id === category && !item.archived)) throw new InputError('Categoria não cadastrada ou excluída neste restaurante.');
 }
 export function uuidValue(value: unknown) {
   if (typeof value !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) throw new InputError('Identificador inválido.');
@@ -80,9 +81,10 @@ export async function changeExpense(actor: ExpenseActor,id: string,version: numb
   await inTransaction(async client => {
     const membership = await findMembership(actor.id,actor.empresaId,client,true);
     if (!membership) throw new ExpenseError('Você não tem mais acesso a este restaurante.',403);
-    if (input) await requireCategory(actor.empresaId, input.category, client);
+    await lockCatalog(actor.empresaId, client);
     const expense = await findExpense(id,actor.empresaId,client);
     if (!expense) throw new ExpenseError('Lançamento não encontrado.',404);
+    if (input && input.category !== expense.category) await requireCategory(actor.empresaId, input.category, client);
     if (membership.role !== 'owner' && expense.createdBy !== actor.id) throw new ExpenseError('Você pode alterar apenas os seus próprios lançamentos.',403);
     if (expense.version !== version) throw new ExpenseError('Este lançamento foi alterado por outra pessoa. Atualize a lista e tente novamente.',409);
     const updated = await updateExpense(id,actor.empresaId,actor.id,input,client);

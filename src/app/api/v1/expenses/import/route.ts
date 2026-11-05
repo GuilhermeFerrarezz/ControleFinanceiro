@@ -13,9 +13,10 @@ export async function POST(request:Request) {
   const user=await currentUser();if(!user)return jsonError('Entre na sua conta para continuar.',401);
   if(!user.empresaId)return jsonError('Selecione um restaurante.',403);
   try {
-    const {csv,mode}=await readBody(request,4*1024*1024);
+    const {csv,mode,createCategories,expectedEmpresaId}=await readBody(request,4*1024*1024);
+    if(expectedEmpresaId !== undefined && expectedEmpresaId !== user.empresaId) return jsonError('O restaurante ativo mudou. Atualize a página.',409);
     if(mode!=='preview'&&mode!=='import')throw new InputError('Escolha visualizar ou importar o CSV.');
     const actor={...user,empresaId:user.empresaId};
-    return NextResponse.json(mode==='preview'?await previewExpenseCsv(actor,csv):await importExpenseCsv(actor,csv),{headers:{'Cache-Control':'no-store'}});
+    return NextResponse.json(mode==='preview'?await previewExpenseCsv(actor,csv,createCategories):await importExpenseCsv(actor,csv,createCategories),{headers:{'Cache-Control':'no-store'}});
   }catch(error){return jsonError(error instanceof InputError?error.message:'Não foi possível importar o CSV. Nenhum novo lançamento foi salvo.',error instanceof InputError?400:500);}
 }

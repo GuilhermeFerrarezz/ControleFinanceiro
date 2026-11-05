@@ -136,7 +136,7 @@ export default function FinancialDashboard({ initialData, view, user, restaurant
       </section>
     </div>
     <p className={styles.bottomNote}><Icon name="shield" size={15} />Os dados pertencem ao restaurante ativo. Donos administram todos os lançamentos; funcionários, os próprios.</p>
-    {importing && <ImportExpenses onClose={()=>setImporting(false)} onImported={async result=>{
+    {importing && <ImportExpenses empresaId={selectedRestaurant} onClose={()=>setImporting(false)} onImported={async result=>{
       setImporting(false);setNotice(`${result.imported} lançamentos importados. ${result.duplicates} repetidos foram ignorados.`);
       await load({...data.filters,...result.period,category:'',status:'',q:'',page:1});
     }}/>}

@@ -1,9 +1,9 @@
 import { parse } from 'csv-parse/sync';
 import { createHash } from 'node:crypto';
-import { InputError } from './validation';
+import { InputError, textValue } from './validation';
 import { dateValue, validateExpense, type ExpenseActor } from './expenses';
 import { categoryInfo, displayDate, EXPENSE_CATEGORIES, PAYMENT_METHODS, parseMoneyInput, type CategoryOption, type ExpenseInput } from './expense-shared';
-import { listCategories } from '../models/Catalog';
+import { listCategories, insertCatalogEntry, lockCatalog } from '../models/Catalog';
 import { normalizeCatalogName } from './catalog-shared';
 import { db } from './db';
 import { inTransaction, type Queryable } from './postgres';
@@ -76,18 +76,18 @@ export function parseExpenseCsv(csv:unknown,empresaId:string,categories:readonly
   if(records.length<2)throw new InputError('O CSV não contém lançamentos.');
   if(records.length-1>MAX_IMPORT_ROWS)throw new InputError(`Importe até ${MAX_IMPORT_ROWS} lançamentos por arquivo.`);
   const systemExport=records[0].record.length===CSV_HEADERS.length && records[0].record.every((header,index)=>header===CSV_HEADERS[index]);
-  const rows:ImportRow[]=[],issues:CsvIssue[]=[],occurrences=new Map<string,number>();
+  const rows:ImportRow[]=[],issues:CsvIssue[]=[],occurrences=new Map<string,number>(),unknownCategories=new Map<string,string>();
   for(const {record,info} of records.slice(1)) {
     if(record.every(value=>!value.trim()))continue;
     try {
       if(record.length!==mapping.length)throw new InputError('A quantidade de campos é diferente do cabeçalho. Confira os separadores e as aspas.');
       const data:Record<string,string>={};mapping.forEach((name,index)=>{if(name)data[name]=record[index].trim();});
       // Only undo our reversible text escaping for the system's export format.
-      if(systemExport)for(const name of ['description','merchant','notes']) {
+      if(systemExport)for(const name of ['description','merchant','notes','category']) {
         if(data[name]?.startsWith("'") && escapedCsvText.test(data[name].slice(1)))data[name]=data[name].slice(1);
       }
       const category=categories.find(item=>normalizeCatalogName(item.id)===normalizeCatalogName(data.category)||normalizeCatalogName(item.label)===normalizeCatalogName(data.category));
-      if(!category)throw new InputError('Categoria desconhecida. Cadastre a categoria no restaurante antes de importar.');
+      if(!category) { const name=textValue(data.category,'A categoria'); unknownCategories.set(normalizeCatalogName(name),name); throw new InputError(`Categoria não cadastrada: ${name}. Autorize o cadastro abaixo ou corrija a planilha.`); }
       const status=normalize(data.status||'Pago');
       const paid=['pago','pagos','paid'].includes(status),pending=['apagar','pendente','pendentes','pending'].includes(status);
       if(!paid&&!pending)throw new InputError('Situação inválida. Use Pago ou A pagar.');
@@ -102,7 +102,7 @@ export function parseExpenseCsv(csv:unknown,empresaId:string,categories:readonly
     } catch(error) {issues.push({line:info.lines,message:error instanceof InputError?error.message:'Dados inválidos nesta linha.'});}
   }
   if(!rows.length&&!issues.length)throw new InputError('O CSV não contém lançamentos.');
-  return {rows,issues};
+  return {rows,issues,unknownCategories:[...unknownCategories.values()]};
 }
 async function classify(rows:ImportRow[],actor:ExpenseActor,client:Queryable,lock=false) {
   const existing=await existingImportKeys(actor.empresaId,rows.flatMap(row=>row.sourceId?[row.sourceId]:[]),rows.flatMap(row=>row.legacyRequestId?[row.requestId,row.legacyRequestId]:[row.requestId]),client,lock);
@@ -119,22 +119,44 @@ async function classify(rows:ImportRow[],actor:ExpenseActor,client:Queryable,loc
     return {...row,duplicate,restoreId,forbidden};
   });
 }
-export async function previewExpenseCsv(actor:ExpenseActor,csv:unknown) {
-  const categories=await listCategories(actor.empresaId);
-  const parsed=parseExpenseCsv(csv,actor.empresaId,categories),rows=await classify(parsed.rows,actor,db);
+function categorySelection(value: unknown): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > MAX_IMPORT_ROWS) throw new InputError('Seleção de categorias inválida.');
+  return [...new Set(value.map(item => normalizeCatalogName(textValue(item, 'A categoria'))))];
+}
+function proposedCategories(csv: unknown, empresaId: string, categories: CategoryOption[], selected: string[]) {
+  const unknown = parseExpenseCsv(csv, empresaId, categories).unknownCategories;
+  return { unknown, proposed: unknown.filter(name => selected.includes(normalizeCatalogName(name))).map(name => ({
+    id: requestUuid(`catalog-import:${empresaId}:${normalizeCatalogName(name)}`), label: name, color: '#749da0',
+  })) };
+}
+export async function previewExpenseCsv(actor:ExpenseActor,csv:unknown,createCategories?:unknown) {
+  const allCategories=await listCategories(actor.empresaId);
+  const categories=allCategories.filter(item => !item.archived);
+  const {unknown,proposed}=proposedCategories(csv,actor.empresaId,categories,categorySelection(createCategories));
+  const options=[...categories,...proposed.map(item => {
+    const archived=allCategories.find(old => old.archived && normalizeCatalogName(old.label)===normalizeCatalogName(item.label));
+    return archived ? {...item,id:archived.id} : item;
+  })];
+  const parsed=parseExpenseCsv(csv,actor.empresaId,options),rows=await classify(parsed.rows,actor,db);
   const total=rows.length+parsed.issues.length;
   for(const row of rows)if(row.forbidden)parsed.issues.push({line:row.line,message:'Apenas o dono ou o autor pode restaurar este gasto excluído.'});
-  return { total,ready:rows.filter(row=>!row.duplicate&&!row.forbidden).length,duplicates:rows.filter(row=>row.duplicate).length,
-    totalErrors:parsed.issues.length,errors:parsed.issues.slice(0,30),preview:rows.slice(0,10).map(row=>({line:row.line,...row.input,categoryLabel:categoryInfo(row.input.category,categories).label,duplicate:row.duplicate})),
+  return { unknownCategories:unknown, total,ready:rows.filter(row=>!row.duplicate&&!row.forbidden).length,duplicates:rows.filter(row=>row.duplicate).length,
+    totalErrors:parsed.issues.length,errors:parsed.issues.slice(0,30),preview:rows.slice(0,10).map(row=>({line:row.line,...row.input,categoryLabel:categoryInfo(row.input.category,options).label,duplicate:row.duplicate})),
     totalCents:rows.filter(row=>!row.duplicate&&!row.forbidden).reduce((sum,row)=>sum+row.input.amountCents,0) };
 }
-export async function importExpenseCsv(actor:ExpenseActor,csv:unknown) {
-  const parsed=parseExpenseCsv(csv,actor.empresaId,await listCategories(actor.empresaId));
-  if(parsed.issues.length)throw new InputError(`Corrija o CSV antes de importar. Linha ${parsed.issues[0].line}: ${parsed.issues[0].message}`);
+export async function importExpenseCsv(actor:ExpenseActor,csv:unknown,createCategories?:unknown) {
+  const selected=categorySelection(createCategories);
   return inTransaction(async client=>{
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`csv-import:${actor.empresaId}`]);
     const member=await findMembership(actor.id,actor.empresaId,client,true);
     if(!member)throw new InputError('Você não tem mais acesso a este restaurante.');
+    await lockCatalog(actor.empresaId,client);
+    const categories=(await listCategories(actor.empresaId,client)).filter(item => !item.archived);
+    const {proposed}=proposedCategories(csv,actor.empresaId,categories,selected);
+    for(const category of proposed) await insertCatalogEntry(actor.empresaId,'category',category.label,client);
+    const parsed=parseExpenseCsv(csv,actor.empresaId,(await listCategories(actor.empresaId,client)).filter(item => !item.archived));
+    if(parsed.issues.length)throw new InputError(`Corrija o CSV antes de importar. Linha ${parsed.issues[0].line}: ${parsed.issues[0].message}`);
     const rows=await classify(parsed.rows,{...actor,role:member.role},client,true);
     if(rows.some(row=>row.forbidden))throw new InputError('Apenas o dono ou o autor pode restaurar um gasto excluído.');
     let imported=await insertImportedExpenses(actor.empresaId,actor.id,rows.filter(row=>!row.duplicate&&!row.restoreId),client);

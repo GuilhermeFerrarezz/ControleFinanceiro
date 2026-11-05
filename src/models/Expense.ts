@@ -83,7 +83,7 @@ export async function expenseTotals(empresaId: string, filters: ExpenseFilters, 
 export async function listExpenses(empresaId: string, filters: ExpenseFilters, limit: number, offset = 0, client: Queryable = db) {
   const { clause, values } = scope(empresaId,filters);
   const { rows } = await client.query<IExpense>(`SELECT ${columns},u.nome AS "authorName",c.name AS "categoryLabel" FROM expenses e JOIN usuarios u ON u.id=e.created_by
-    LEFT JOIN restaurant_catalog c ON c.id::text=e.category AND c.empresa_id=e.empresa_id AND c.kind='category'
+    LEFT JOIN restaurant_catalog c ON COALESCE(c.category_key,c.id::text)=e.category AND c.empresa_id=e.empresa_id AND c.kind='category'
     WHERE ${clause} ORDER BY e.date DESC,e.created_at DESC,e.id DESC LIMIT $${values.length+1} OFFSET $${values.length+2}`, [...values,limit,offset]);
   return rows.map(expenseRow);
 }

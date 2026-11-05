@@ -10,7 +10,7 @@ export const EXPENSE_CATEGORIES = [
   { id: 'outros', label: 'Outros', color: '#939889', icon: 'receipt' },
 ] as const;
 export type ExpenseCategory = string;
-export type CategoryOption = { id: string; label: string; color: string };
+export type CategoryOption = { id: string; label: string; color: string; archived?: boolean };
 export function categoryInfo(id: string, options: readonly CategoryOption[] = EXPENSE_CATEGORIES): CategoryOption {
   return options.find(item => item.id === id) || { id, label: 'Categoria não disponível', color: '#939889' };
 }

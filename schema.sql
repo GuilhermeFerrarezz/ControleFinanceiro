@@ -137,6 +137,9 @@ CREATE TABLE IF NOT EXISTS restaurant_catalog (
     UNIQUE (empresa_id,kind,normalized_name)
 );
 -- Existing category keys remain valid; custom categories use UUID keys.
+ALTER TABLE restaurant_catalog ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE restaurant_catalog ADD COLUMN IF NOT EXISTS category_key TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS catalog_category_key ON restaurant_catalog (empresa_id,category_key);
 ALTER TABLE expenses DROP CONSTRAINT IF EXISTS expenses_category_check;
 ALTER TABLE expenses ADD CONSTRAINT expenses_category_check CHECK (
     category IN ('alimentos','funcionarios','produtos','bebidas','embalagens','contas','manutencao','impostos','outros')
