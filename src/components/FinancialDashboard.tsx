@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, errorMessage } from '@/src/lib/api';
-import { addDays, categoryInfo, displayDate, EXPENSE_CATEGORIES, money, monthPeriod, yearPeriod, selectedPeriodYear, todayInSaoPaulo, type ExpenseDashboardData, type ExpenseFilters, type ExpenseRecord } from '@/src/lib/expense-shared';
+import { addDays, categoryInfo, displayDate, EXPENSE_CATEGORIES, money, monthPeriod, yearPeriod, selectedPeriodYear, todayInSaoPaulo, type CategoryOption, type ExpenseDashboardData, type ExpenseFilters, type ExpenseRecord } from '@/src/lib/expense-shared';
 import RestaurantSwitcher from '@/src/app/(system)/dashboard/RestaurantSwitcher';
 import ExpenseCharts from './ExpenseCharts';
 import ExpenseForm from './ExpenseForm';
@@ -13,7 +13,7 @@ import Icon from './Icon';
 import styles from './finance.module.css';
 
 function filterParams(filters: ExpenseFilters) {
-  return new URLSearchParams(Object.entries(filters).map(([key, value]) => [key, String(value)]));
+  return new URLSearchParams(Object.entries(filters).map(([key, value]) => [key, String(value ?? '')]));
 }
 export default function FinancialDashboard({ initialData, view, user, restaurants, selectedRestaurant, initialNotice }: {
   initialData: ExpenseDashboardData; view: 'overview' | 'expenses'; user: { id: string; nome: string; role?: string };
@@ -82,9 +82,9 @@ export default function FinancialDashboard({ initialData, view, user, restaurant
     catch{setError('Não foi possível gerar o PDF. Tente novamente.');}finally{setPdfBusy(false);}
   }
   const summary = data.summary;
-  const categoryOptions = data.categoryOptions || EXPENSE_CATEGORIES;
+  const categoryOptions: readonly CategoryOption[] = data.categoryOptions || EXPENSE_CATEGORIES;
   const rows = view === 'overview' ? data.expenses.slice(0, 5) : data.expenses;
-  const hasFilters = !!(data.filters.category || data.filters.status || data.filters.q);
+  const hasFilters = !!(data.filters.category || data.filters.merchant || data.filters.status || data.filters.q);
   return <>
     <div className={styles.heading}><div><span className="eyebrow">{view === 'overview' ? 'Um olhar atento para o seu negócio' : 'A rotina da casa, organizada'}</span><h1>{view === 'overview' ? 'Cada gasto, mais clareza.' : 'Todos os gastos, em um lugar.'}</h1><p>{view === 'overview' ? `Olá, ${user.nome.split(' ')[0]}. Acompanhe os custos e cuide dos próximos passos.` : 'Registre, encontre e acompanhe os lançamentos do seu restaurante.'}</p></div><div className={styles.headingActions}><RestaurantSwitcher restaurants={restaurants} selected={selectedRestaurant} /><button className="button button-outline" disabled={pdfBusy||loading} onClick={report}><Icon name="download" size={17}/>{pdfBusy?'Gerando PDF...':'Gerar PDF'}</button><button className="button" onClick={() => { setNotice(''); setForm('new'); }}><Icon name="plus" size={19} />Novo gasto</button></div></div>
     {notice && <div className={styles.notice} role="status"><Icon name="check" size={18} /><span>{notice}</span><button aria-label="Fechar mensagem" onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}
@@ -98,12 +98,13 @@ export default function FinancialDashboard({ initialData, view, user, restaurant
       }}><option value="">Período personalizado</option>{Array.from(new Set([...data.years,Number(draft.start.slice(0,4))])).sort((a,b)=>b-a).map(year=><option key={year} value={year}>{year}</option>)}</select></label>
       <label className={styles.filterField} htmlFor="filter-start">De<input id="filter-start" type="date" min="2000-01-01" max="2100-12-31" required value={draft.start} onChange={event => setDraft({ ...draft, start: event.target.value })} /></label>
       <label className={styles.filterField} htmlFor="filter-end">Até<input id="filter-end" type="date" min="2000-01-01" max="2100-12-31" required value={draft.end} onChange={event => setDraft({ ...draft, end: event.target.value })} /></label>
-      <label className={styles.filterField} htmlFor="filter-category">Categoria<select id="filter-category" value={draft.category} onChange={event => setDraft({ ...draft, category: event.target.value })}><option value="">Todas as categorias</option>{categoryOptions.map(category => <option key={category.id} value={category.id}>{category.label}</option>)}</select></label>
+      <label className={styles.filterField} htmlFor="filter-category">Categoria<select id="filter-category" value={draft.category} onChange={event => setDraft({ ...draft, category: event.target.value })}><option value="">Todas as categorias</option>{categoryOptions.filter(category => !category.archived).map(category => <option key={category.id} value={category.id}>{category.label}</option>)}</select></label>
+      <label className={styles.filterField} htmlFor="filter-merchant">Local<select id="filter-merchant" value={draft.merchant ?? ''} onChange={event => setDraft({ ...draft, merchant: event.target.value })}><option value="">Todos os locais</option>{data.merchantOptions?.map(item => <option key={item.id} value={item.name}>{item.name}</option>)}</select></label>
       <label className={styles.filterField} htmlFor="filter-status">Situação<select id="filter-status" value={draft.status} onChange={event => setDraft({ ...draft, status: event.target.value })}><option value="">Todos os gastos</option><option value="paid">Pagos</option><option value="pending">A pagar</option></select></label>
       <button className="button" type="submit" disabled={loading}>{loading ? 'Atualizando...' : 'Aplicar filtros'}</button>
       <label className={`${styles.filterField} ${styles.searchField}`} htmlFor="filter-search">Buscar descrição ou local<input id="filter-search" type="search" placeholder="Ex.: hortifruti, mercado, diária..." maxLength={120} value={draft.q} onChange={event => setDraft({ ...draft, q: event.target.value })} /></label>
     </form></section>
-    <div className={styles.periodLine}><span>{displayDate(data.filters.start)} a {displayDate(data.filters.end)}{hasFilters ? ' · Com filtros aplicados' : ''}</span>{hasFilters && <button className={styles.textButton} onClick={() => void load({ ...data.filters, category: '', status: '', q: '', page: 1 })}>Limpar filtros</button>}<span>{loading ? 'Atualizando os dados...' : `${data.count} ${data.count === 1 ? 'lançamento encontrado' : 'lançamentos encontrados'}`}</span></div>
+    <div className={styles.periodLine}><span>{displayDate(data.filters.start)} a {displayDate(data.filters.end)}{hasFilters ? ' · Com filtros aplicados' : ''}</span>{(hasFilters || draft.category || draft.merchant || draft.status || draft.q) && <button className={styles.textButton} onClick={() => void load({ ...data.filters, category: '', merchant: '', status: '', q: '', page: 1 })}>Limpar filtros</button>}<span>{loading ? 'Atualizando os dados...' : `${data.count} ${data.count === 1 ? 'lançamento encontrado' : 'lançamentos encontrados'}`}</span></div>
     {view === 'expenses' && user.role === 'owner' && <DeleteExpensePeriod
       empresaId={selectedRestaurant} restaurantName={restaurants.find(restaurant => restaurant.id === selectedRestaurant)?.nome || 'Restaurante ativo'}
       start={data.filters.start} end={data.filters.end} disabled={loading}

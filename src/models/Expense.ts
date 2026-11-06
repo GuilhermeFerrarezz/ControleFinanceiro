@@ -65,6 +65,10 @@ function scope(empresaId: string, filters: ExpenseFilters) {
   const values: unknown[] = [empresaId,filters.start,filters.end];
   const conditions = ['e.empresa_id=$1', 'e.deleted_at IS NULL', 'e.date BETWEEN $2::date AND $3::date'];
   if (filters.category) { values.push(filters.category); conditions.push(`e.category=$${values.length}`); }
+  if (filters.merchant) {
+    values.push(filters.merchant);
+    conditions.push(`LOWER(e.merchant)=LOWER($${values.length})`);
+  }
   if (filters.status) { values.push(filters.status); conditions.push(`e.status=$${values.length}`); }
   if (filters.q) {
     values.push(`%${filters.q.replace(/[\\%_]/g, '\\$&')}%`);
@@ -98,6 +102,14 @@ export async function expenseDaily(empresaId: string, filters: ExpenseFilters, c
     FROM expenses e WHERE ${clause} GROUP BY e.date ORDER BY e.date`,values)).rows.map(row=>({...row,totalCents:integer(row.totalCents)}));
 }
 
+
+export async function expenseDailyByCategory(empresaId: string, filters: ExpenseFilters, client: Queryable) {
+  const { clause, values } = scope(empresaId, filters);
+  const { rows } = await client.query<{ date: string; category: string; totalCents: string }>(
+    `SELECT to_char(e.date,'YYYY-MM-DD') AS date, e.category, SUM(e.amount_cents) AS "totalCents"
+    FROM expenses e WHERE ${clause} GROUP BY e.date, e.category`, values);
+  return rows.map(row => ({ ...row, totalCents: integer(row.totalCents) }));
+}
 
 export async function expenseYears(empresaId: string, client: Queryable) {
   return (await client.query<{ year:number }>('SELECT DISTINCT EXTRACT(YEAR FROM date)::integer AS year FROM expenses WHERE empresa_id=$1 AND deleted_at IS NULL ORDER BY year DESC',[empresaId])).rows.map(row=>row.year);

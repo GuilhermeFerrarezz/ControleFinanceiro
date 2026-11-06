@@ -196,3 +196,27 @@
 .categoryImportCard > button { justify-self: start; white-space: normal; text-align: left; }
 .categoryImportTags { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin: 0; }
 .categoryImportTags li { background: #dcefd6; border: 1px solid #b9d5ae; border-radius: 20px; padding: 6px 12px; font-weight: 600; font-size: 13px; overflow-wrap: anywhere; }
+
+.sheetScroll { max-width: 100%; overflow: auto; border: 1px solid #dbe0d0; border-radius: 10px; }
+.sheetTable { border-collapse: separate; border-spacing: 0; width: 100%; background: #fffefa; font-size: 14px; }
+.sheetCaption { text-align: left; padding: 12px 16px; font-weight: 600; }
+.sheetTable th, .sheetTable td { padding: 10px 14px; border-bottom: 1px solid #e6e9dd; border-right: 1px solid #e6e9dd; text-align: right; white-space: nowrap; }
+.sheetTable thead th { min-width: 110px; max-width: 220px; white-space: normal; overflow-wrap: anywhere; background: #eaf2e5; }
+.sheetTable th:first-child { position: sticky; left: 0; text-align: left; background: #f3f5ed; }
+.sheetTable small { display: block; font-weight: 400; }
+.sheetTable tbody tr:nth-child(even) td { background: #fafbf7; }
+.sheetTable tfoot td, .sheetTable tfoot th:first-child { background: #eaf2e5; font-weight: 700; }
+
+.sheetOrderActions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
+.sheetColumnActions { display: flex; align-items: center; justify-content: center; margin-top: 6px; }
+.sheetColumnActions button, .sheetDragHandle { padding: 7px; background: transparent; border: 0; color: inherit; }
+.sheetColumnActions button:disabled { opacity: .35; }
+.sheetDragHandle { cursor: grab; touch-action: none; user-select: none; }
+.sheetTable thead .sheetDragActive { background: #c8e4bf; }
+.sheetValueLink { display: inline-block; color: #315c35; text-decoration: underline; text-underline-offset: 3px; }
+.sheetDetails { margin-top: 18px; padding: 18px; border: 1px solid #dbe0d0; border-radius: 10px; background: #fffefa; scroll-margin-top: 20px; }
+.sheetDetails details { border-top: 1px solid #e6e9dd; margin-top: 10px; padding-top: 10px; }
+.sheetDetails summary { cursor: pointer; overflow-wrap: anywhere; }
+.sheetDetails dl { display: flex; flex-wrap: wrap; gap: 12px 24px; padding: 10px 0; }
+.sheetDetails dt { font-weight: 600; }
+.sheetDetails dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }

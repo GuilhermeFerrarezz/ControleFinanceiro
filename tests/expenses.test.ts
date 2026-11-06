@@ -75,6 +75,30 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal((await list(owner, `${period}&q=%25`)).count, 0);
     assert.equal((await api('/expenses?start=2026-10-30&end=2026-10-01', owner)).status, 400);
   });
+  await t.test('planilha soma valores por dia e categoria e respeita o restaurante ativo', async () => {
+    const url = `${origin}/dashboard/sheet?${period}`;
+    const response = await fetch(url, { headers: { Cookie: owner } });
+    assert.equal(response.status, 200);
+    const html = await response.text();
+    assert.match(html, /<th scope="col" data-sheet-column="alimentos">Alimentos<\/th>/);
+    assert.match(html, /<th scope="row">01\/10\/2026<\/th><td><a [^>]*detailCategory=alimentos[^>]*>R\$\s125,90<\/a><\/td>/);
+    assert.match(html, /<th scope="row">03\/10\/2026<\/th><td>—<\/td>/);
+    const laterPage = await fetch(`${origin}/dashboard/sheet?start=2026-09-25&end=2026-10-31&page=2&sort=highest`, { headers: { Cookie: owner } });
+    assert.equal(laterPage.status, 200);
+    const laterHtml = await laterPage.text();
+    assert.match(laterHtml, /<th scope="col">Dia<\/th><th scope="col" data-sheet-column="alimentos">Alimentos<\/th><th scope="col" data-sheet-column="funcionarios">Funcionários<\/th>/);
+    assert.match(laterHtml, /<tfoot><tr><th scope="row">Total do período<\/th><td>R\$\s225,90<\/td><td>R\$\s50,00<\/td>.*<td>R\$\s275,90<\/td><\/tr><\/tfoot>/);
+    const otherHtml = await (await fetch(url, { headers: { Cookie: other } })).text();
+    assert.doesNotMatch(otherHtml, /125,90/);
+    const detailUrl = url + '&detailDate=2026-10-01&detailCategory=alimentos';
+    const detailHtml = await (await fetch(detailUrl, { headers: { Cookie: owner } })).text();
+    assert.match(detailHtml, /<summary><strong>Hortifruti da semana<\/strong>/);
+    assert.match(detailHtml, /<dd>Compra da cozinha<\/dd>/);
+    const otherDetail = await (await fetch(detailUrl, { headers: { Cookie: other } })).text();
+    assert.doesNotMatch(otherDetail, /Compra da cozinha/);
+    const anonymous = await fetch(url, { redirect: 'manual' });
+    assert.equal(anonymous.headers.get('location'), '/login');
+  });
   await t.test('restaurantes permanecem isolados em consultas, alterações e exportações', async () => {
     assert.equal((await list(other)).count, 0);
     assert.equal((await list(other, `${period}&empresaId=${ownerUser.empresaId}`)).count, 0);
@@ -311,6 +335,15 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal((await api('/catalog',owner,'DELETE',deletion)).status,200);
     const data=await list(owner,params);assert.equal(data.count,1);
     assert.equal(data.categoryOptions.find((item:{id:string})=>item.id===category.id).archived,true);
+    const reset = await list(owner, `${params}&category=${category.id}&merchant=Local%20exclu%C3%ADdo`);
+    assert.equal(reset.filters.category, '');
+    assert.equal(reset.filters.merchant, '');
+    assert.equal(reset.count, 1);
+    const sheet = await fetch(`${origin}/dashboard/sheet?${params}`, { headers: { Cookie: owner } });
+    assert.equal(sheet.status, 200);
+    const sheetHtml = await sheet.text();
+    assert.match(sheetHtml, /<th scope="col" data-sheet-column="[^"]+">Categoria renomeada<small>Arquivada<\/small><\/th>/);
+    assert.doesNotMatch(sheetHtml, new RegExp(`<option value="${category.id}"`));
     assert.equal((await create(owner,{category:category.id})).status,400);
     assert.equal((await api(`/expenses/${id}`,owner,'PATCH',{...body,category:category.id,date:'2040-01-01',version:1})).status,200);
     const standard={empresaId:ownerUser.empresaId,kind:'category',id:'alimentos',previousName:'Alimentos',name:'Insumos da cozinha'};
@@ -325,6 +358,7 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal((await api('/catalog',owner,'PATCH',merchantEdit)).status,200);
     assert.equal((await api('/catalog',owner,'DELETE',{...merchantEdit,previousName:'Local novo',confirm:true})).status,200);
     assert.ok(!(await (await api('/catalog',owner)).json()).merchants.some((item:{id:string})=>item.id===merchant.id));
+    assert.equal((await list(owner, `${params}&merchant=Local%20novo`)).filters.merchant, '');
     const restoredMerchant=await (await api('/catalog',owner,'POST',{...base,kind:'merchant',name:'Local novo'})).json();
     assert.equal(restoredMerchant.id,merchant.id);
   });

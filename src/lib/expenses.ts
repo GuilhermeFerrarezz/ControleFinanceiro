@@ -1,9 +1,9 @@
-import { deleteExpensesInPeriod, expenseBounds, expenseYears, expenseCategories, expenseDaily, expenseTotals, findExpense, insertExpense, insertExpenseAudit, listExpenses, updateExpense, type IExpense } from '../models/Expense';
+import { deleteExpensesInPeriod, expenseBounds, expenseYears, expenseCategories, expenseDaily, expenseDailyByCategory, expenseTotals, findExpense, insertExpense, insertExpenseAudit, listExpenses, updateExpense, type IExpense } from '../models/Expense';
 import { inTransaction } from './postgres';
 import { InputError } from './validation';
 import { findMembership } from '../models/Membership';
-import { listCategories, lockCatalog } from '../models/Catalog';
-import { addDays, buildExpenseSeries, daysBetween, EXPENSE_CATEGORIES, MAX_AMOUNT_CENTS, monthPeriod, yearPeriod, todayInSaoPaulo, PAYMENT_METHODS, type ExpenseDashboardData, type ExpenseFilters, type ExpenseInput, type ExpenseRecord } from './expense-shared';
+import { listCategories, listMerchants, lockCatalog } from '../models/Catalog';
+import { addDays, buildExpenseSeries, categoryInfo, daysBetween, EXPENSE_CATEGORIES, MAX_AMOUNT_CENTS, monthPeriod, yearPeriod, todayInSaoPaulo, PAYMENT_METHODS, type ExpenseDashboardData, type ExpenseFilters, type ExpenseInput, type ExpenseRecord } from './expense-shared';
 
 export type ExpenseActor = { id: string; empresaId: string; role?: string };
 export class ExpenseError extends Error {
@@ -55,12 +55,13 @@ export function expenseFilters(params = new URLSearchParams()): ExpenseFilters {
   if (start > end) throw new InputError('A data inicial deve ser anterior ou igual à data final.');
   const category = params.get('category') || '';
   const status = params.get('status') || '';
+  const merchant = text(params.get('merchant') ?? undefined, 'Local', 120);
   const q = (params.get('q') || '').trim();
   const page = Number(params.get('page') || 1);
   if (category && !validCategoryKey(category)) throw new InputError('Categoria de filtro inválida.');
   if (status && !['paid', 'pending'].includes(status)) throw new InputError('Situação de filtro inválida.');
   if (q.length > 120 || !Number.isSafeInteger(page) || page < 1 || page > 100000) throw new InputError('Filtros inválidos.');
-  return { start, end, category, status, q, page };
+  return { start, end, category, merchant, status, q, page };
 }
 const inputSnapshot = (expense: IExpense) => Object.fromEntries(['description','amountCents','date','category','merchant','status','paymentMethod','notes','version','deletedAt'].map(field => [field, expense[field as keyof IExpense]]));
 export async function createExpense(actor: ExpenseActor, input: ExpenseInput, requestId: string) {
@@ -109,9 +110,9 @@ function toRecord(row: IExpense,actor: ExpenseActor): ExpenseRecord {
     status:row.status,paymentMethod:row.paymentMethod,notes:row.notes,createdBy:row.createdBy,authorName:row.authorName,
     version:row.version,createdAt:row.createdAt,isDemo:row.isDemo,canManage:actor.role === 'owner' || row.createdBy === actor.id };
 }
-export async function expenseDashboard(actor: ExpenseActor,filters: ExpenseFilters): Promise<ExpenseDashboardData> {
+export async function expenseDashboard(actor: ExpenseActor,requested: ExpenseFilters): Promise<ExpenseDashboardData> {
   return inTransaction(async client => {
-    const categoryOptions = await listCategories(actor.empresaId, client);
+    const { categoryOptions, merchantOptions, filters } = await catalogFilters(actor.empresaId, requested, client);
     const totals = await expenseTotals(actor.empresaId,filters,client);
     const years = Array.from(new Set([Number(todayInSaoPaulo().slice(0,4)), ...await expenseYears(actor.empresaId,client)])).sort((a,b)=>b-a);
     const pageSize=15, pages=Math.max(1,Math.ceil(totals.count/pageSize)), page=Math.min(filters.page,pages);
@@ -122,11 +123,69 @@ export async function expenseDashboard(actor: ExpenseActor,filters: ExpenseFilte
     const previous = await expenseTotals(actor.empresaId,{...filters,start:addDays(previousEnd,-(duration-1)),end:previousEnd},client);
     const trend=buildExpenseSeries(daily,filters.start,filters.end);
     const availablePeriod=await expenseBounds(actor.empresaId,client);
-    return { categoryOptions, filters:{...filters,page},expenses:expenses.map(row=>toRecord(row,actor)),count:totals.count,pages,pageSize,years,
+    return { categoryOptions, merchantOptions, filters:{...filters,page},expenses:expenses.map(row=>toRecord(row,actor)),count:totals.count,pages,pageSize,years,
       summary:{...totals,averageDailyCents:Math.round(totals.totalCents/duration),previousTotalCents:previous.totalCents,
         changePercent:previous.totalCents>0 ? Math.round((totals.totalCents-previous.totalCents)/previous.totalCents*1000)/10 : null},categories,...trend,availablePeriod };
   },true);
 }
+async function catalogFilters(empresaId: string, requested: ExpenseFilters, client: import('./postgres').Queryable) {
+  const categoryOptions = await listCategories(empresaId, client);
+  const merchantOptions = await listMerchants(empresaId, client);
+  const filters = {
+    ...requested,
+    category: categoryOptions.some(item => !item.archived && item.id === requested.category) ? requested.category : '',
+    merchant: merchantOptions.some(item => item.name === requested.merchant) ? requested.merchant : '',
+  };
+  return { categoryOptions, merchantOptions, filters };
+}
+
+export type ExpenseSheetOrder = 'manual' | 'name-asc' | 'name-desc' | 'highest' | 'lowest';
+
+export async function expenseSheet(actor: ExpenseActor, requested: ExpenseFilters, order: ExpenseSheetOrder,
+  detail?: { date: string; category: string; page: number }) {
+  return inTransaction(async client => {
+    const catalog = await catalogFilters(actor.empresaId, requested, client);
+    const { filters, categoryOptions } = catalog;
+    const daysPerPage = 31;
+    const pages = Math.ceil(daysBetween(filters.start, filters.end) / daysPerPage);
+    const page = Math.min(filters.page, pages);
+    const start = addDays(filters.start, (page - 1) * daysPerPage);
+    const end = daysBetween(start, filters.end) > daysPerPage
+      ? addDays(start, daysPerPage - 1) : filters.end;
+    const categoriesWithExpenses = await expenseCategories(actor.empresaId, filters, client);
+    const active = categoryOptions.filter(item => !item.archived && (!filters.category || item.id === filters.category));
+    const activeIds = new Set(active.map(item => item.id));
+    const historical = categoriesWithExpenses.filter(item => !activeIds.has(item.category))
+      .map(item => categoryInfo(item.category, categoryOptions));
+    const totals = await expenseDailyByCategory(actor.empresaId, { ...filters, start, end }, client);
+    const cells = new Map(totals.map(row => [`${row.date}/${row.category}`, row.totalCents]));
+    const periodTotals = new Map(categoriesWithExpenses.map(item => [item.category, item.totalCents]));
+    const names = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
+    const columns = [...active, ...historical].map(item => ({
+      ...item, totalCents: periodTotals.get(item.id) ?? 0,
+    })).sort((a, b) => {
+      const byName = names.compare(a.label, b.label);
+      if (order === 'name-desc') return -byName;
+      if (order === 'highest') return b.totalCents - a.totalCents || byName;
+      if (order === 'lowest') return a.totalCents - b.totalCents || byName;
+      return byName;
+    });
+    const totalCents = columns.reduce((sum, item) => sum + item.totalCents, 0);
+    const rows = Array.from({ length: daysBetween(start, end) }, (_, index) => {
+      const date = addDays(start, index);
+      return { date, amounts: columns.map(item => cells.get(`${date}/${item.id}`) ?? 0) };
+    });
+    let details = null;
+    if (detail && rows.some(row => row.date === detail.date) && columns.some(item => item.id === detail.category)) {
+      const detailFilters = { ...filters, start: detail.date, end: detail.date, category: detail.category };
+      const limit = 20;
+      const detailRows = await listExpenses(actor.empresaId, detailFilters, limit + 1, (detail.page - 1) * limit, client);
+      details = { ...detail, expenses: detailRows.slice(0, limit).map(row => toRecord(row, actor)), hasNext: detailRows.length > limit };
+    }
+    return { ...catalog, filters: { ...filters, page }, columns, rows, pages, totalCents, details };
+  }, true);
+}
+
 export async function expensesForExport(actor: ExpenseActor,filters: ExpenseFilters) {
   const rows=await listExpenses(actor.empresaId,filters,10001);
   if(rows.length>10000) throw new InputError('A exportação permite até 10 mil gastos. Reduza o período ou use mais filtros.');

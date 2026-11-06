@@ -79,9 +79,10 @@ export function newExpenseRequestId() {
 }
 export type ExpenseInput = { description: string; amountCents: number; date: string; category: ExpenseCategory; merchant: string; status: ExpenseStatus; paymentMethod: PaymentMethod; notes: string };
 export type ExpenseRecord = ExpenseInput & { id: string; createdBy: string; authorName: string; version: number; createdAt: string; canManage: boolean; isDemo: boolean };
-export type ExpenseFilters = { start: string; end: string; category: string; status: string; q: string; page: number };
+export type ExpenseFilters = { start: string; end: string; category: string; merchant?: string; status: string; q: string; page: number };
 export type ExpenseDashboardData = {
   categoryOptions?: CategoryOption[];
+  merchantOptions?: import("./catalog-shared").MerchantOption[];
   filters: ExpenseFilters; expenses: ExpenseRecord[]; count: number; pages: number; pageSize: number; years: number[];
   summary: { totalCents: number; paidCents: number; pendingCents: number; count: number; averageDailyCents: number; previousTotalCents: number; changePercent: number | null };
   categories: { category: ExpenseCategory; totalCents: number; count: number }[];
