@@ -8,6 +8,7 @@ import { InputError } from '@/src/lib/validation';
 import Header from '@/src/components/cabecalho/page';
 import ExpenseSheetTable from '@/src/components/ExpenseSheetTable';
 import MonthFilter from '@/src/components/MonthFilter';
+import PeriodFilters from '@/src/components/PeriodFilters';
 import FinanceNav from '@/src/components/FinanceNav';
 import styles from '@/src/components/finance.module.css';
 import RestaurantSwitcher from '../RestaurantSwitcher';
@@ -81,11 +82,11 @@ export default async function ExpenseSheetPage({ searchParams }: {
         <RestaurantSwitcher restaurants={await userRestaurants(user.id)} selected={user.empresaId} />
       </div>
       {error && <p className={styles.error} role="alert">{error}</p>}
-      <section className={styles.filtersCard} aria-label="Filtros da planilha">
-        <MonthFilter action={path} start={filters.start}>
+      <PeriodFilters start={filters.start} end={filters.end} activeFilters={filterKeys.filter(key => filters[key]).length}
+        primary={<MonthFilter action={path} start={filters.start}>
           <input type="hidden" name="sort" value={order} />
           {filterKeys.map(key => filters[key] && <input key={key} type="hidden" name={key} value={filters[key]} />)}
-        </MonthFilter>
+        </MonthFilter>}>
         <form key={pageHref(1)} action={path} method="get" className={styles.filters}>
           <label className={styles.filterField}>De<input name="start" type="date" min="2000-01-01" max="2100-12-31" defaultValue={filters.start} required /></label>
           <label className={styles.filterField}>Até<input name="end" type="date" min="2000-01-01" max="2100-12-31" defaultValue={filters.end} required /></label>
@@ -97,6 +98,7 @@ export default async function ExpenseSheetPage({ searchParams }: {
             <option value="">Todos os locais</option>
             {merchantOptions.map(item => <option key={item.id} value={item.name}>{item.name}</option>)}
           </select></label>
+          {(['status', 'q'] as const).map(key => filters[key] && <input key={key} type="hidden" name={key} value={filters[key]} />)}
           <label className={styles.filterField}>Ordenar categorias<select name="sort" defaultValue={order}>
             {sortOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select></label>
@@ -108,8 +110,7 @@ export default async function ExpenseSheetPage({ searchParams }: {
           <input type="hidden" name="sort" value={order} />
           <button className={styles.textButton} type="submit">Limpar filtros</button>
         </form>
-      </section>
-      <p className={styles.periodLine}>Período: {displayDate(filters.start)} a {displayDate(filters.end)}</p>
+      </PeriodFilters>
       <p className={styles.financeCoverage}>
         Faturamento registrado em {finance.recordedDays} de {finance.periodDays} dias. O resultado usa todos os gastos do restaurante.
         {finance.recordedDays < finance.periodDays && ' O total pode ser parcial.'}

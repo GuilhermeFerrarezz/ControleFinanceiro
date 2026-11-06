@@ -8,6 +8,7 @@ import { userRestaurants } from '@/src/lib/restaurants';
 import { InputError } from '@/src/lib/validation';
 import Header from '@/src/components/cabecalho/page';
 import MonthFilter from '@/src/components/MonthFilter';
+import PeriodFilters from '@/src/components/PeriodFilters';
 import FinanceNav from '@/src/components/FinanceNav';
 import RevenueEditor from '@/src/components/RevenueEditor';
 import MoneyTrendChart from '@/src/components/MoneyTrendChart';
@@ -58,16 +59,18 @@ export default async function RevenuePage({ searchParams }: {
         <RestaurantSwitcher restaurants={await userRestaurants(user.id)} selected={user.empresaId} />
       </div>
       {error && <p className={styles.error} role="alert">{error}</p>}
-      <section className={styles.filtersCard} aria-label="Período do faturamento">
-        <MonthFilter action={path} start={period.start} />
-        <form method="get" action={path} className={styles.filters}>
+      <PeriodFilters start={period.start} end={period.end} advancedLabel="Datas personalizadas"
+        primary={<MonthFilter action={path} start={period.start} />}>
+        <form key={period.start + period.end} method="get" action={path} className={styles.filters}>
           <label className={styles.filterField}>De<input type="date" name="start" defaultValue={period.start} min="2000-01-01" max="2100-12-31" required /></label>
           <label className={styles.filterField}>Até<input type="date" name="end" defaultValue={period.end} min="2000-01-01" max="2100-12-31" required /></label>
           <button type="submit" className="button">Aplicar período</button>
-          <a className="button button-outline" href={`/api/v1/revenue?${dates}`}>Exportar faturamento CSV</a>
         </form>
-        <p className={styles.periodLine}>{rows.length} dias registrados · Total informado: {money(totalCents)}</p>
-      </section>
+      </PeriodFilters>
+      <div className={styles.periodLine}>
+        <span>{rows.length} dias registrados · Total informado: {money(totalCents)}</span>
+        <a className={styles.textButton} href={`/api/v1/revenue?${dates}`}>Exportar faturamento CSV</a>
+      </div>
       <MoneyTrendChart titleId="revenue-trend-title" title="O ritmo do faturamento" metric="Faturamento"
         emptyTitle="Seu gráfico começa no primeiro registro." peakLabel="Dia de maior faturamento" daysLabel="Dias com faturamento"
         series={series} interval={trend.seriesInterval} start={period.start} end={period.end}

@@ -234,4 +234,18 @@
 .revenueImport p, .revenueImport label { margin: 10px 0; }
 .chartCard.revenueTrend { display: block; margin-bottom: 22px; }
 .comparisonPeriod { max-width: 240px; margin-top: 14px; }
-.monthFilter { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+
+.filterPanelHeading { display: flex; justify-content: space-between; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin-bottom: 14px; }
+.filterPanelHeading h2 { margin: 0; font-size: 16px; font-weight: 650; }
+.filterPanelHeading span { color: #506249; font-size: 13px; font-variant-numeric: tabular-nums; }
+.monthFilter { margin: 0; padding: 0; border: 0; }
+.monthFilter .filterField { max-width: 210px; }
+.filterDetails { margin-top: 14px; border-top: 1px solid var(--line); }
+.filterDetails > summary { cursor: pointer; padding: 13px 0 0; min-height: 36px; color: #315c35; font-size: 14px; font-weight: 600; }
+.filterDetailsBody { margin-top: 14px; }
+.filterCount { display: inline-block; margin-inline-start: 8px; border-radius: 20px; padding: 3px 8px; background: #eaf2e5; font-size: 12px; }
+.filterGroupTitle { flex-basis: 100%; grid-column: 1 / -1; margin: 0; font-size: 13px; font-weight: 650; }
+@media (max-width: 600px) {
+  .monthFilter .filterField:first-of-type { grid-column: auto; }
+  .monthFilter .filterField { max-width: none; }
+}

@@ -8,6 +8,7 @@ import { InputError } from '@/src/lib/validation';
 import Header from '@/src/components/cabecalho/page';
 import FinanceComparisonChart from '@/src/components/FinanceComparisonChart';
 import MonthFilter from '@/src/components/MonthFilter';
+import PeriodFilters from '@/src/components/PeriodFilters';
 import FinanceNav from '@/src/components/FinanceNav';
 import styles from '@/src/components/finance.module.css';
 import RestaurantSwitcher from '../RestaurantSwitcher';
@@ -51,14 +52,14 @@ export default async function ProfitPage({ searchParams }: {
         <RestaurantSwitcher restaurants={await userRestaurants(user.id)} selected={empresaId} />
       </div>
       {error && <p className={styles.error} role="alert">{error}</p>}
-      <section className={styles.filtersCard} aria-label="Período do lucro">
-        <MonthFilter action={path} start={period.start} />
-        <form method="get" action={path} className={styles.filters}>
+      <PeriodFilters start={period.start} end={period.end} advancedLabel="Datas personalizadas"
+        primary={<MonthFilter action={path} start={period.start} />}>
+        <form key={period.start + period.end} method="get" action={path} className={styles.filters}>
           <label className={styles.filterField}>De<input type="date" name="start" defaultValue={period.start} min="2000-01-01" max="2100-12-31" required /></label>
           <label className={styles.filterField}>Até<input type="date" name="end" defaultValue={period.end} min="2000-01-01" max="2100-12-31" required /></label>
           <button type="submit" className="button">Aplicar período</button>
         </form>
-      </section>
+      </PeriodFilters>
       <FinanceComparisonChart key={`${empresaId}-${period.start}-${period.end}`} finance={finance} />
     </main>
   </>;
