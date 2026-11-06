@@ -1,4 +1,4 @@
-import { deleteExpensesInPeriod, countDemoExpenses, expenseBounds, expenseYears, expenseCategories, expenseDaily, expenseTotals, findExpense, insertExpense, insertExpenseAudit, listExpenses, updateExpense, type IExpense } from '../models/Expense';
+import { deleteExpensesInPeriod, expenseBounds, expenseYears, expenseCategories, expenseDaily, expenseTotals, findExpense, insertExpense, insertExpenseAudit, listExpenses, updateExpense, type IExpense } from '../models/Expense';
 import { inTransaction } from './postgres';
 import { InputError } from './validation';
 import { findMembership } from '../models/Membership';
@@ -113,7 +113,6 @@ export async function expenseDashboard(actor: ExpenseActor,filters: ExpenseFilte
   return inTransaction(async client => {
     const categoryOptions = await listCategories(actor.empresaId, client);
     const totals = await expenseTotals(actor.empresaId,filters,client);
-    const demoCount = await countDemoExpenses(actor.empresaId,client);
     const years = Array.from(new Set([Number(todayInSaoPaulo().slice(0,4)), ...await expenseYears(actor.empresaId,client)])).sort((a,b)=>b-a);
     const pageSize=15, pages=Math.max(1,Math.ceil(totals.count/pageSize)), page=Math.min(filters.page,pages);
     const expenses = await listExpenses(actor.empresaId,filters,pageSize,(page-1)*pageSize,client);
@@ -123,7 +122,7 @@ export async function expenseDashboard(actor: ExpenseActor,filters: ExpenseFilte
     const previous = await expenseTotals(actor.empresaId,{...filters,start:addDays(previousEnd,-(duration-1)),end:previousEnd},client);
     const trend=buildExpenseSeries(daily,filters.start,filters.end);
     const availablePeriod=await expenseBounds(actor.empresaId,client);
-    return { categoryOptions, filters:{...filters,page},expenses:expenses.map(row=>toRecord(row,actor)),count:totals.count,pages,pageSize,demoCount,years,
+    return { categoryOptions, filters:{...filters,page},expenses:expenses.map(row=>toRecord(row,actor)),count:totals.count,pages,pageSize,years,
       summary:{...totals,averageDailyCents:Math.round(totals.totalCents/duration),previousTotalCents:previous.totalCents,
         changePercent:previous.totalCents>0 ? Math.round((totals.totalCents-previous.totalCents)/previous.totalCents*1000)/10 : null},categories,...trend,availablePeriod };
   },true);

@@ -5,7 +5,6 @@ import { once } from 'node:events';
 import { createServer } from 'node:net';
 import { randomUUID } from 'node:crypto';
 import { isolatedDatabase, query } from './postgres-fixture';
-import { demoSamples } from '../src/lib/demo-data';
 import ExcelJS from 'exceljs';
 
 test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async t => {
@@ -17,7 +16,7 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
   const origin = `http://127.0.0.1:${address.port}`;
   await new Promise<void>(resolve => portServer.close(() => resolve()));
   const server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '-p', String(address.port), '-H', '127.0.0.1'], {
-    env: { ...process.env, NODE_ENV: 'production', DATABASE_URL: fixture.connectionString, APP_ORIGIN: origin, ENABLE_DEMO_DATA: 'true' }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, NODE_ENV: 'production', DATABASE_URL: fixture.connectionString, APP_ORIGIN: origin }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = ''; server.stdout.on('data', data => { output = (output + data.toString()).slice(-5000); }); server.stderr.on('data', data => { output = (output + data.toString()).slice(-5000); });
   stop = async () => { if (server.exitCode === null) { const closed = once(server, 'exit'); server.kill(); await closed; } };
@@ -181,65 +180,41 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal((await api('/expenses/report?'+range)).status,401);
     for(const cookie of [owner,other]){const pdf=await api('/expenses/report?'+range,cookie);assert.equal(pdf.status,200,await pdf.clone().text());assert.match(pdf.headers.get('content-type')||'',/application\/pdf/);const bytes=Buffer.from(await pdf.arrayBuffer());assert.equal(bytes.subarray(0,5).toString(),'%PDF-');}
   });
-  await t.test('exemplos só podem ser gerenciados pelo dono e preservam os gastos reais', async () => {
-    assert.equal((await api('/demo-data','','POST',{action:'restore'})).status,401);
-    assert.equal((await api('/demo-data',employee,'POST',{action:'restore'})).status,403);
-    assert.equal((await api('/demo-data',owner,'POST',{action:'restore'},'https://hostil.invalid')).status,403);
-    assert.equal((await api('/demo-data',owner,'POST',{action:'truncate'})).status,400);
-    const expectedDemoCount=demoSamples().length;
-    const legacyResponse=await create(owner,{description:'Exemplo da versão anterior'});
-    const legacyId=(await legacyResponse.json()).id;
-    await query(fixture.pool,'UPDATE expenses SET demo_key=$1 WHERE id=$2',['v1-current-0',legacyId]);
-
-    const before = await query(fixture.pool,'SELECT * FROM expenses WHERE empresa_id=$1 AND demo_key IS NULL ORDER BY id',[ownerUser.empresaId]);
-    const restore = await api('/demo-data',owner,'POST',{action:'restore',empresaId:'forged'});
-    assert.equal(restore.status,200,await restore.clone().text());
-    assert.equal((await restore.json()).count,expectedDemoCount);
-    const legacy=await query(fixture.pool,'SELECT deleted_at FROM expenses WHERE id=$1',[legacyId]);
-    assert.ok(legacy[0].deleted_at);
-
-    const examples = await query<{id:string}>(fixture.pool,'SELECT id FROM expenses WHERE empresa_id=$1 AND demo_key IS NOT NULL AND deleted_at IS NULL ORDER BY id',[ownerUser.empresaId]);
-    assert.equal(examples.length,expectedDemoCount);
-    const demo = await list(owner,''); assert.equal(demo.demoCount,expectedDemoCount);
+  await t.test('filtra e exporta um ano e restaura seu CSV sem duplicar lançamentos', async () => {
+    assert.equal((await api('/demo-data',owner,'POST',{action:'restore'})).status,404);
+    const rows = Array.from({length:12}, (_, index) =>
+      `01/${String(index+1).padStart(2,'0')}/2025;Compra mensal ${index+1};10;Alimentos`);
+    const csv = ['Data;Descrição;Valor;Categoria', ...rows].join('\n');
+    const imported = await api('/expenses/import',owner,'POST',{csv,mode:'import'});
+    assert.equal(imported.status,200);
+    assert.equal((await imported.json()).imported,12);
+    const examples = await query<{id:string}>(fixture.pool,
+      "SELECT id FROM expenses WHERE empresa_id=$1 AND date BETWEEN '2025-01-01' AND '2025-12-31'",[ownerUser.empresaId]);
     const annual = await list(owner,'year=2025');
-    assert.equal(annual.count,216); assert.equal(annual.filters.start,'2025-01-01'); assert.equal(annual.filters.end,'2025-12-31');
+    assert.equal(annual.count,12); assert.equal(annual.filters.start,'2025-01-01'); assert.equal(annual.filters.end,'2025-12-31');
     assert.equal(annual.series.length,12); assert.equal(annual.seriesInterval,'month'); assert.ok(annual.years.includes(2025));
-    assert.ok(annual.expenses.every((row:{date:string;isDemo:boolean})=>row.date.startsWith('2025-') && row.isDemo));
+    assert.ok(annual.expenses.every((row:{date:string})=>row.date.startsWith('2025-')));
     assert.equal(annual.categories.reduce((sum:number,row:{totalCents:number})=>sum+row.totalCents,0),annual.summary.totalCents);
     assert.equal((await list(other,'year=2025')).count,0);
     assert.equal((await api('/expenses?year=2025%20OR%201=1',owner)).status,400);
     const csv2025=await (await api('/expenses?year=2025&format=csv',owner)).text();
     assert.match(csv2025, /Data: \d{2}\/01\/2025/); assert.doesNotMatch(csv2025, /Data: \d{2}\/\d{2}\/2026/);
 
-    assert.equal(demo.categories.length,9); assert.ok(demo.expenses.some((row:{isDemo:boolean})=>row.isDemo));
-    assert.equal((await list(other,'')).demoCount,0);
-    const repeated = await Promise.all([api('/demo-data',owner,'POST',{action:'restore'}),api('/demo-data',owner,'POST',{action:'restore'})]);
-    assert.deepEqual(repeated.map(response=>response.status),[200,200]);
-    assert.deepEqual(await query(fixture.pool,'SELECT id FROM expenses WHERE empresa_id=$1 AND demo_key IS NOT NULL AND deleted_at IS NULL ORDER BY id',[ownerUser.empresaId]),examples);
-    assert.equal((await api('/demo-data',other,'POST',{action:'clear'})).status,200);
-    assert.equal((await list(owner,'')).demoCount,expectedDemoCount);
-    const cleared = await api('/demo-data',owner,'POST',{action:'clear'});
-    assert.equal(cleared.status,200); assert.equal((await cleared.json()).count,0);
-    const unchanged = await query(fixture.pool,'SELECT * FROM expenses WHERE empresa_id=$1 AND demo_key IS NULL ORDER BY id',[ownerUser.empresaId]);
-    assert.deepEqual(unchanged,before);
-    assert.equal((await list(owner,'')).demoCount,0);
-    // Reproduce downloading examples, clearing them, then importing that file.
+    await query(fixture.pool,'UPDATE expenses SET deleted_at=now() WHERE id=ANY($1::uuid[])',[examples.map(item=>item.id)]);
     const review=await (await api('/expenses/import',owner,'POST',{csv:csv2025,mode:'preview'})).json();
-    assert.equal(review.ready,216);assert.equal(review.duplicates,0);
+    assert.equal(review.ready,12);assert.equal(review.duplicates,0);
     assert.equal((await api('/expenses/import',employee,'POST',{csv:csv2025,mode:'import'})).status,400);
     for(let cycle=0;cycle<2;cycle++) {
       const imports=await Promise.all([api('/expenses/import',owner,'POST',{csv:csv2025,mode:'import'}),api('/expenses/import',owner,'POST',{csv:csv2025,mode:'import'})]);
       const counts=[];
       for(const response of imports){assert.equal(response.status,200);counts.push((await response.json()).imported);}
-      assert.deepEqual(counts.sort((a,b)=>a-b),[0,216]);
-      const restored=await list(owner,'year=2025');assert.equal(restored.count,216);
+      assert.deepEqual(counts.sort((a,b)=>a-b),[0,12]);
+      const restored=await list(owner,'year=2025');assert.equal(restored.count,12);
       assert.ok(restored.expenses.every((row:{id:string;createdBy:string})=>examples.some(item=>item.id===row.id)&&row.createdBy===ownerUser.id));
       const audits=await query(fixture.pool,"SELECT id FROM expense_audit WHERE empresa_id=$1 AND after->>'source'='csv-restore'",[ownerUser.empresaId]);
-      assert.equal(audits.length,(cycle+1)*216);
-      assert.equal((await api('/demo-data',owner,'POST',{action:'clear'})).status,200);
+      assert.equal(audits.length,(cycle+1)*12);
+      await query(fixture.pool,'UPDATE expenses SET deleted_at=now() WHERE id=ANY($1::uuid[])',[examples.map(item=>item.id)]);
     }
-    assert.equal((await api('/demo-data',owner,'POST',{action:'restore'})).status,200);
-    assert.equal((await list(owner,'')).demoCount,expectedDemoCount);
   });
   await t.test('importação identifica IDs repetidos, inclusive após alterar o conteúdo',async()=>{
     const id=randomUUID();

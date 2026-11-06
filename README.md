@@ -63,10 +63,6 @@ Para compartilhar convites com o celular, gere os links acessando o sistema por 
 
 Se o IP do computador mudar, reinicie a aplicação. Para parar o servidor, pressione `Ctrl+C`; para iniciá-lo novamente, execute `npm run dev`.
 
-### Testar com dados de exemplo
-
-Com `ENABLE_DEMO_DATA=true` no `.env`, o dono vê os controles **Restaurar exemplos** e **Excluir exemplos** no painel e na lista de lançamentos. São 18 gastos fictícios por mês, de janeiro de 2025 até a data atual, identificados com a etiqueta **Exemplo**. Restaurar recompõe os exemplos e desfaz alterações feitas neles; excluir retira somente esses registros. Os gastos reais são preservados. Para ocultar os controles, defina `ENABLE_DEMO_DATA=false` e reinicie a aplicação.
-
 ### Importar lançamentos e gerar um resumo
 
 Use **Importar CSV** para baixar um modelo, escolher seu arquivo e conferir a prévia. As colunas Data, Descrição, Valor e Categoria são obrigatórias; local, situação, pagamento e observações são opcionais. São aceitos ponto e vírgula, vírgula e tabulação como separadores, datas em `dd/mm/aaaa` ou `aaaa-mm-dd` e valores como `125,90`. O arquivo pode conter até 2.000 lançamentos e 2 MB. Corrija os erros indicados por linha antes de confirmar. Os novos gastos serão registrados em seu nome; reenvios do mesmo arquivo e IDs já identificados são ignorados. A importação adiciona registros e preserva os existentes.

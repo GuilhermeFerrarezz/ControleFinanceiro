@@ -82,7 +82,7 @@ export type ExpenseRecord = ExpenseInput & { id: string; createdBy: string; auth
 export type ExpenseFilters = { start: string; end: string; category: string; status: string; q: string; page: number };
 export type ExpenseDashboardData = {
   categoryOptions?: CategoryOption[];
-  filters: ExpenseFilters; expenses: ExpenseRecord[]; count: number; pages: number; pageSize: number; demoCount: number; years: number[];
+  filters: ExpenseFilters; expenses: ExpenseRecord[]; count: number; pages: number; pageSize: number; years: number[];
   summary: { totalCents: number; paidCents: number; pendingCents: number; count: number; averageDailyCents: number; previousTotalCents: number; changePercent: number | null };
   categories: { category: ExpenseCategory; totalCents: number; count: number }[];
   seriesInterval: 'day' | 'month' | 'year';

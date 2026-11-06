@@ -98,18 +98,6 @@ export async function expenseDaily(empresaId: string, filters: ExpenseFilters, c
     FROM expenses e WHERE ${clause} GROUP BY e.date ORDER BY e.date`,values)).rows.map(row=>({...row,totalCents:integer(row.totalCents)}));
 }
 
-export async function listDemoExpenses(empresaId: string, client: Queryable) {
-  return (await client.query<IExpense & { demoKey: string }>(`SELECT ${columns},e.demo_key AS "demoKey" FROM expenses e WHERE e.empresa_id=$1 AND e.demo_key IS NOT NULL FOR UPDATE`, [empresaId])).rows;
-}
-export async function tagDemoExpense(id: string, empresaId: string, key: string, client: Queryable) {
-  await client.query('UPDATE expenses SET demo_key=$1 WHERE id=$2 AND empresa_id=$3', [key,id,empresaId]);
-}
-export async function restoreDemoExpense(id: string, empresaId: string, client: Queryable) {
-  await client.query('UPDATE expenses SET deleted_at=NULL WHERE id=$1 AND empresa_id=$2 AND demo_key IS NOT NULL', [id,empresaId]);
-}
-export async function countDemoExpenses(empresaId: string, client: Queryable) {
-  return Number((await client.query<{ count: string }>('SELECT count(*) FROM expenses WHERE empresa_id=$1 AND demo_key IS NOT NULL AND deleted_at IS NULL', [empresaId])).rows[0].count);
-}
 
 export async function expenseYears(empresaId: string, client: Queryable) {
   return (await client.query<{ year:number }>('SELECT DISTINCT EXTRACT(YEAR FROM date)::integer AS year FROM expenses WHERE empresa_id=$1 AND deleted_at IS NULL ORDER BY year DESC',[empresaId])).rows.map(row=>row.year);

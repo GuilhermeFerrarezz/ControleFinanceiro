@@ -1,5 +1,4 @@
 import { redirect } from 'next/navigation';
-import { demoDataEnabled } from '@/src/lib/demo-data';
 import { currentUser } from '@/src/lib/auth';
 import { expenseDashboard, expenseFilters } from '@/src/lib/expenses';
 import { InputError } from '@/src/lib/validation';
@@ -20,6 +19,6 @@ export default async function FinancePage({ view, searchParams }: { view: 'overv
   catch (error) { if (!(error instanceof InputError)) throw error; filters = expenseFilters(); notice = error.message; }
   const data = await expenseDashboard({ ...user, empresaId: user.empresaId }, filters);
   return <><Header nome={user.empresaNome || 'Meu restaurante'} user={user} /><main className={styles.main}><FinanceNav active={view} />
-    <FinancialDashboard key={`${user.empresaId}-${view}`} demoEnabled={user.role === 'owner' && demoDataEnabled()} initialData={data} view={view} user={{ id: user.id, nome: user.nome, role: user.role }} restaurants={await userRestaurants(user.id)} selectedRestaurant={user.empresaId} initialNotice={notice} />
+    <FinancialDashboard key={`${user.empresaId}-${view}`} initialData={data} view={view} user={{ id: user.id, nome: user.nome, role: user.role }} restaurants={await userRestaurants(user.id)} selectedRestaurant={user.empresaId} initialNotice={notice} />
   </main></>;
 }

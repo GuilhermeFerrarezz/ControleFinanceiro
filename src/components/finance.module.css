@@ -95,7 +95,7 @@
 
 /* Let flex/grid children shrink instead of widening the mobile viewport. */
 .heading > div, .headingActions, .headingActions > div, .filtersCard, .filters,
-.listHeading > div, .listActions, .tableWrap, .demoPanel > div { min-width: 0; max-width: 100%; }
+.listHeading > div, .listActions, .tableWrap { min-width: 0; max-width: 100%; }
 .heading h1, .heading p, .notice span, .bottomNote { overflow-wrap: anywhere; }
 .filters input, .filters select, .field input, .field select { min-inline-size: 0; max-inline-size: 100%; }
 .tableWrap { width: 100%; }
@@ -104,13 +104,7 @@
 .authorship { line-height: 1.6; }
 .authorship b { font-weight: 600; color: #637652; }
 .expenseTable td > .demoBadge { display: inline-flex; margin-top: 8px; color: #557053; background: #edf2e6; border-radius: 4px; padding: 3px 7px; font-size: 11px; }
-.demoPanel { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px; padding: 20px 22px; margin-bottom: 22px; background: #eff3e6; border: 1px dashed #cbd8bb; border-radius: 12px; }
-.demoPanel > div:first-child { flex: 1 1 340px; }
-.demoLabel { display: block; font-size: 10px; letter-spacing: 1.4px; color: #7d8d6a; font-weight: 700; }
-.demoPanel h2 { font-size: 17px; font-weight: 600; margin: 8px 0; }
-.demoPanel p { font-size: 13px; color: #77856b; line-height: 1.7; margin: 0; }
-.demoActions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
-.demoActions > button { font-size: 13px; }
+
 @media (max-width: 850px) { .chartCard:last-child { grid-template-columns: minmax(0,160px) minmax(0,1fr); } }
 @media (max-width: 600px) {
   .main { padding-inline: 16px; }
@@ -122,10 +116,6 @@
   .periodShortcuts, .filters > button, .searchField { grid-column: 1 / -1; }
   .formRow { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .chartCard:last-child { display: block; }
-  .demoPanel { padding: 18px 16px; }
-  .demoActions { width: 100%; }
-  .demoActions > button { flex: 1 1 140px; }
-  .demoPanel p { font-size: 12px; }
   .expenseTable { min-width: 0; display: block; }
   .expenseTable thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .expenseTable tbody { display: block; }

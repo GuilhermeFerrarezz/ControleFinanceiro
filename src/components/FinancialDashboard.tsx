@@ -5,7 +5,6 @@ import { api, errorMessage } from '@/src/lib/api';
 import { addDays, categoryInfo, displayDate, EXPENSE_CATEGORIES, money, monthPeriod, yearPeriod, selectedPeriodYear, todayInSaoPaulo, type ExpenseDashboardData, type ExpenseFilters, type ExpenseRecord } from '@/src/lib/expense-shared';
 import RestaurantSwitcher from '@/src/app/(system)/dashboard/RestaurantSwitcher';
 import ExpenseCharts from './ExpenseCharts';
-import DemoDataControls from './DemoDataControls';
 import ExpenseForm from './ExpenseForm';
 import ImportExpenses from './ImportExpenses';
 import DeleteExpensePeriod from './DeleteExpensePeriod';
@@ -16,9 +15,9 @@ import styles from './finance.module.css';
 function filterParams(filters: ExpenseFilters) {
   return new URLSearchParams(Object.entries(filters).map(([key, value]) => [key, String(value)]));
 }
-export default function FinancialDashboard({ initialData, view, user, restaurants, selectedRestaurant, initialNotice, demoEnabled }: {
+export default function FinancialDashboard({ initialData, view, user, restaurants, selectedRestaurant, initialNotice }: {
   initialData: ExpenseDashboardData; view: 'overview' | 'expenses'; user: { id: string; nome: string; role?: string };
-  restaurants: { id: string; nome: string }[]; selectedRestaurant: string; initialNotice: string; demoEnabled: boolean;
+  restaurants: { id: string; nome: string }[]; selectedRestaurant: string; initialNotice: string;
 }) {
   const [data, setData] = useState(initialData);
   const [draft, setDraft] = useState(initialData.filters);
@@ -90,10 +89,6 @@ export default function FinancialDashboard({ initialData, view, user, restaurant
     <div className={styles.heading}><div><span className="eyebrow">{view === 'overview' ? 'Um olhar atento para o seu negócio' : 'A rotina da casa, organizada'}</span><h1>{view === 'overview' ? 'Cada gasto, mais clareza.' : 'Todos os gastos, em um lugar.'}</h1><p>{view === 'overview' ? `Olá, ${user.nome.split(' ')[0]}. Acompanhe os custos e cuide dos próximos passos.` : 'Registre, encontre e acompanhe os lançamentos do seu restaurante.'}</p></div><div className={styles.headingActions}><RestaurantSwitcher restaurants={restaurants} selected={selectedRestaurant} /><button className="button button-outline" disabled={pdfBusy||loading} onClick={report}><Icon name="download" size={17}/>{pdfBusy?'Gerando PDF...':'Gerar PDF'}</button><button className="button" onClick={() => { setNotice(''); setForm('new'); }}><Icon name="plus" size={19} />Novo gasto</button></div></div>
     {notice && <div className={styles.notice} role="status"><Icon name="check" size={18} /><span>{notice}</span><button aria-label="Fechar mensagem" onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}
     {error && <div className={styles.error} role="alert">{error} <button className={styles.textButton} onClick={() => void load()}>Atualizar lista</button></div>}
-    {demoEnabled && <DemoDataControls count={data.demoCount} onChanged={async action => {
-      setNotice(action === 'restore' ? 'Exemplos restaurados. Mostrando o mês atual.' : 'Exemplos excluídos. Seus gastos reais foram preservados.');
-      await load(action === 'restore' ? { ...data.filters,...monthPeriod(),category:'',status:'',q:'',page:1 } : data.filters);
-    }} />}
     <section className={styles.filtersCard} aria-label="Filtros do período"><form onSubmit={apply} className={styles.filters}>
       <div className={styles.periodShortcuts}><span>Ver período</span><div><button type="button" onClick={() => preset('all')}>Todo o período</button><button type="button" onClick={() => preset('month')}>Mês atual</button><button type="button" onClick={() => preset('previous')}>Mês anterior</button><button type="button" onClick={() => preset('week')}>Últimos 7 dias</button></div></div>
       <label className={styles.filterField} htmlFor="filter-year">Ano<select id="filter-year" value={selectedPeriodYear(draft)} disabled={loading} onChange={event=>{
