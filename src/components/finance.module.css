@@ -220,3 +220,17 @@
 .sheetDetails dl { display: flex; flex-wrap: wrap; gap: 12px 24px; padding: 10px 0; }
 .sheetDetails dt { font-weight: 600; }
 .sheetDetails dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+
+.financeComparison { background: #fffefa; border: 1px solid #dbe0d0; border-radius: 12px; padding: clamp(16px, 3vw, 26px); margin-bottom: 22px; }
+.financeMetrics { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+.financeMetrics > div { flex: 1 1 150px; display: grid; gap: 6px; background: #eef3e8; border-radius: 8px; padding: 12px; }
+.financeMetrics strong { font-size: 19px; }
+.financeCoverage { font-size: 13px; color: #506249; }
+.financeLegend { display: flex; flex-wrap: wrap; gap: 14px; list-style: none; padding: 0; margin: 12px 0; }
+.financeLegend li { display: flex; align-items: center; gap: 6px; }
+.financeLegend i { width: 10px; height: 10px; border-radius: 50%; }
+.revenueImport { margin-top: 18px; }
+.revenueImport summary { cursor: pointer; font-weight: 600; }
+.revenueImport p, .revenueImport label { margin: 10px 0; }
+.chartCard.revenueTrend { display: block; margin-bottom: 22px; }
+.comparisonPeriod { max-width: 240px; margin-top: 14px; }

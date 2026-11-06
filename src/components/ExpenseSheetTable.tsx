@@ -22,13 +22,14 @@ function savedIds(snapshot: string) {
   } catch { return []; }
 }
 
-export default function ExpenseSheetTable({ storageId, baseHref, manual, columns, rows, totalCents }: {
+export default function ExpenseSheetTable({ storageId, baseHref, manual, columns, rows, totalCents, finance }: {
   storageId: string;
   baseHref: string;
   manual: boolean;
   columns: (CategoryOption & { totalCents: number })[];
-  rows: { date: string; amounts: number[] }[];
+  rows: { date: string; amounts: number[]; revenueCents: number | null; profitCents: number | null }[];
   totalCents: number;
+  finance: { revenueCents: number; profitCents: number | null; recordedDays: number };
 }) {
   const router = useRouter();
   const storageKey = `saldo-da-casa:sheet-order:${storageId}`;
@@ -123,6 +124,8 @@ export default function ExpenseSheetTable({ storageId, baseHref, manual, columns
             </th>;
           })}
           <th scope="col">Total do dia</th>
+          <th scope="col">Faturamento</th>
+          <th scope="col">Resultado</th>
         </tr></thead>
         <tbody>{rows.map(row => <tr key={row.date}>
           <th scope="row">{displayDate(row.date)}</th>
@@ -133,11 +136,15 @@ export default function ExpenseSheetTable({ storageId, baseHref, manual, columns
               aria-label={`Ver gastos de ${columns[column].label} em ${displayDate(row.date)}: ${money(amount)}`}>{money(amount)}</Link> : '—'}</td>;
           })}
           <td><strong>{money(row.amounts.reduce((sum, amount) => sum + amount, 0))}</strong></td>
+          <td>{row.revenueCents === null ? '—' : money(row.revenueCents)}</td>
+          <td>{row.profitCents === null ? '—' : money(row.profitCents)}</td>
         </tr>)}</tbody>
         <tfoot><tr>
           <th scope="row">Total do período</th>
           {ordered.map(id => <td key={id}>{money(columns[index.get(id)!].totalCents)}</td>)}
           <td>{money(totalCents)}</td>
+          <td>{finance.recordedDays ? money(finance.revenueCents) : '—'}</td>
+          <td>{finance.profitCents === null ? '—' : money(finance.profitCents)}</td>
         </tr></tfoot>
       </table>
     </div>

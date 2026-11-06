@@ -22,6 +22,12 @@ export async function dashboardPdf(data:ExpenseDashboardData,restaurant:string,a
   const category=data.filters.category ? categoryInfo(data.filters.category,data.categoryOptions).label : 'Todas as categorias';
   const status=data.filters.status==='paid'?'Pagos':data.filters.status==='pending'?'A pagar':'Todas as situações';
   text(`Filtros: ${category}  |  ${status}${data.filters.q?`  |  Busca: ${data.filters.q}`:''}`,36,132,770,9,muted,false,30);
+  const finance = data.finance;
+  if (finance) {
+    const revenue = finance.recordedDays ? money(finance.revenueCents) : 'sem registro';
+    const result = finance.profitCents === null ? 'sem registro' : money(finance.profitCents);
+    text(`Faturamento: ${revenue}  |  Todos os gastos: ${money(finance.expenseCents)}  |  Resultado: ${result}  |  ${finance.recordedDays}/${finance.periodDays} dias informados`,36,155,770,8,green,true);
+  }
   const cards=[['Total do período',data.summary.totalCents],['Já pago',data.summary.paidCents],['A pagar',data.summary.pendingCents],['Média por dia',data.summary.averageDailyCents]] as const;
   cards.forEach(([label,value],index)=>{
     const x=36+index*196,selected=index===0;
@@ -94,25 +100,40 @@ export async function dashboardPdf(data:ExpenseDashboardData,restaurant:string,a
     doc.addPage();
     doc.rect(0,0,842,595).fill(paper);
     text('CONTROLE FINANCEIRO',36,23,420,11,green,true);
-    text('DETALHAMENTO DOS GASTOS',540,23,266,9,muted,true);
-    text(detailTitle,36,51,770,20,ink,true,30);
+    text(finance?'DETALHAMENTO FINANCEIRO':'DETALHAMENTO DOS GASTOS',540,23,266,9,muted,true);
+    text(finance ? 'Gastos, faturamento e resultado' : detailTitle,36,51,770,20,ink,true,30);
     text(restaurant,36,87,770,11,ink,true);
     text(`${displayDate(data.filters.start)} a ${displayDate(data.filters.end)}  |  ${data.count} lançamentos`,36,108,770,11,green,true);
     text(`Filtros: ${category}  |  ${status}${data.filters.q?`  |  Busca: ${data.filters.q}`:''}`,36,132,770,9,muted,false,30);
     doc.rect(36,169,770,24).fill(green);
-    text(periodTitle,48,174,550,9,'#ffffff',true);
-    text('Total dos gastos',650,174,144,9,'#ffffff',true);
+    text(periodTitle,48,174,190,9,'#ffffff',true);
+    if (finance) {
+      text('Gastos filtrados',253,174,125,9,'#ffffff',true);
+      text('Todos os gastos',390,174,125,9,'#ffffff',true);
+      text('Faturamento',530,174,125,9,'#ffffff',true);
+      text('Resultado',670,174,125,9,'#ffffff',true);
+    } else text('Total dos gastos',650,174,144,9,'#ffffff',true);
+    function financialValues(yy: number, expense: number, allExpenses: number, revenue: number | null, profit: number | null) {
+      const values = [expense, allExpenses, revenue, profit];
+      values.forEach((value,index) => text(value === null ? '—' : money(value),[253,390,530,670][index],yy,125,9,green));
+    }
     const pageRows=series.slice(page*rowsPerPage,(page+1)*rowsPerPage);
     pageRows.forEach((row,index)=>{
       const yy=193+index*20;
       doc.rect(36,yy,770,20).fill(index%2===0?'#fffefa':'#edf1e7');
       text(trendPeriodLabel(row.date,data.seriesInterval),48,yy+4,570,9);
-      doc.font('Report').fontSize(9).fillColor(ink).text(money(row.totalCents),650,yy+4,{width:144,height:16,align:'right'});
+      const comparison = finance?.series[page * rowsPerPage + index];
+      if (comparison) financialValues(yy+4,row.totalCents,comparison.expenseCents,comparison.revenueCents,comparison.profitCents);
+      else doc.font('Report').fontSize(9).fillColor(ink).text(money(row.totalCents),650,yy+4,{width:144,height:16,align:'right'});
     });
+    if (finance && finance.recordedDays < finance.periodDays) {
+      text('Resultado parcial quando faltam registros de faturamento. A comparação inclui todos os gastos.',48,552,740,8,muted);
+    }
     if(page===detailPages-1) {
       const yy=199+pageRows.length*20;
       text('Total do período',48,yy,550,10,green,true);
-      doc.font('ReportBold').fontSize(10).fillColor(green).text(money(data.summary.totalCents),650,yy,{width:144,height:18,align:'right'});
+      if (finance) financialValues(yy,data.summary.totalCents,finance.expenseCents,finance.recordedDays ? finance.revenueCents : null,finance.profitCents);
+      else doc.font('ReportBold').fontSize(10).fillColor(green).text(money(data.summary.totalCents),650,yy,{width:144,height:18,align:'right'});
     }
   }
   const generated=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'short'}).format(new Date());

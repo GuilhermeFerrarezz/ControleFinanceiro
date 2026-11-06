@@ -25,6 +25,12 @@ export type ExpenseStatus = 'paid' | 'pending';
 export const MAX_AMOUNT_CENTS = 9_999_999_999;
 const currencyFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 export const money = (cents: number) => currencyFormatter.format(cents / 100);
+export type DailyRevenue = { date: string; totalCents: number };
+export type FinancePoint = { date: string; revenueCents: number | null; expenseCents: number; profitCents: number | null };
+export type FinanceComparison = {
+  revenueCents: number; expenseCents: number; profitCents: number | null;
+  recordedDays: number; periodDays: number; seriesInterval: 'day' | 'month' | 'year'; series: FinancePoint[];
+};
 export function todayInSaoPaulo() {
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
   const part = (type: string) => parts.find(item => item.type === type)?.value;
@@ -38,12 +44,12 @@ export function addDays(date: string, days: number) {
 export function daysBetween(start: string, end: string) {
   return Math.round((Date.parse(`${end}T12:00:00Z`) - Date.parse(`${start}T12:00:00Z`)) / 86400_000) + 1;
 }
-export function parseMoneyInput(value: string): number | null {
+export function parseMoneyInput(value: string, allowZero = false): number | null {
   const input = value.trim().replace(/^R\$\s*/, '');
   if (!/^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/.test(input)) return null;
   const [whole, fraction = ''] = input.replaceAll('.', '').split(',');
   const cents = Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
-  return Number.isSafeInteger(cents) && cents > 0 && cents <= MAX_AMOUNT_CENTS ? cents : null;
+  return Number.isSafeInteger(cents) && cents >= (allowZero ? 0 : 1) && cents <= MAX_AMOUNT_CENTS ? cents : null;
 }
 export function monthPeriod(today = todayInSaoPaulo()) { return { start: `${today.slice(0, 7)}-01`, end: today }; }
 export function yearPeriod(year: number, today = todayInSaoPaulo()) {
@@ -81,6 +87,7 @@ export type ExpenseInput = { description: string; amountCents: number; date: str
 export type ExpenseRecord = ExpenseInput & { id: string; createdBy: string; authorName: string; version: number; createdAt: string; canManage: boolean; isDemo: boolean };
 export type ExpenseFilters = { start: string; end: string; category: string; merchant?: string; status: string; q: string; page: number };
 export type ExpenseDashboardData = {
+  finance?: FinanceComparison;
   categoryOptions?: CategoryOption[];
   merchantOptions?: import("./catalog-shared").MerchantOption[];
   filters: ExpenseFilters; expenses: ExpenseRecord[]; count: number; pages: number; pageSize: number; years: number[];

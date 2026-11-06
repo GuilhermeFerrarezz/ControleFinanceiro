@@ -1,5 +1,6 @@
 import { deleteExpensesInPeriod, expenseBounds, expenseYears, expenseCategories, expenseDaily, expenseDailyByCategory, expenseTotals, findExpense, insertExpense, insertExpenseAudit, listExpenses, updateExpense, type IExpense } from '../models/Expense';
 import { inTransaction } from './postgres';
+import { financeComparison, financeDays } from './revenue';
 import { InputError } from './validation';
 import { findMembership } from '../models/Membership';
 import { listCategories, listMerchants, lockCatalog } from '../models/Catalog';
@@ -119,11 +120,14 @@ export async function expenseDashboard(actor: ExpenseActor,requested: ExpenseFil
     const expenses = await listExpenses(actor.empresaId,filters,pageSize,(page-1)*pageSize,client);
     const categories = await expenseCategories(actor.empresaId,filters,client);
     const daily = await expenseDaily(actor.empresaId,filters,client);
+    const isFiltered = filters.category || filters.merchant || filters.status || filters.q;
+    const { expenses: allDaily, revenue } = await financeDays(actor.empresaId, filters, client, isFiltered ? undefined : daily);
+    const finance = financeComparison(allDaily, revenue, filters);
     const duration=daysBetween(filters.start,filters.end), previousEnd=addDays(filters.start,-1);
     const previous = await expenseTotals(actor.empresaId,{...filters,start:addDays(previousEnd,-(duration-1)),end:previousEnd},client);
     const trend=buildExpenseSeries(daily,filters.start,filters.end);
     const availablePeriod=await expenseBounds(actor.empresaId,client);
-    return { categoryOptions, merchantOptions, filters:{...filters,page},expenses:expenses.map(row=>toRecord(row,actor)),count:totals.count,pages,pageSize,years,
+    return { categoryOptions, merchantOptions, finance, filters:{...filters,page},expenses:expenses.map(row=>toRecord(row,actor)),count:totals.count,pages,pageSize,years,
       summary:{...totals,averageDailyCents:Math.round(totals.totalCents/duration),previousTotalCents:previous.totalCents,
         changePercent:previous.totalCents>0 ? Math.round((totals.totalCents-previous.totalCents)/previous.totalCents*1000)/10 : null},categories,...trend,availablePeriod };
   },true);
@@ -152,6 +156,10 @@ export async function expenseSheet(actor: ExpenseActor, requested: ExpenseFilter
     const start = addDays(filters.start, (page - 1) * daysPerPage);
     const end = daysBetween(start, filters.end) > daysPerPage
       ? addDays(start, daysPerPage - 1) : filters.end;
+    const financialDays = await financeDays(actor.empresaId, filters, client);
+    const finance = financeComparison(financialDays.expenses, financialDays.revenue, filters);
+    const revenueByDate = new Map(financialDays.revenue.map(item => [item.date, item.totalCents]));
+    const costsByDate = new Map(financialDays.expenses.map(item => [item.date, item.totalCents]));
     const categoriesWithExpenses = await expenseCategories(actor.empresaId, filters, client);
     const active = categoryOptions.filter(item => !item.archived && (!filters.category || item.id === filters.category));
     const activeIds = new Set(active.map(item => item.id));
@@ -173,7 +181,9 @@ export async function expenseSheet(actor: ExpenseActor, requested: ExpenseFilter
     const totalCents = columns.reduce((sum, item) => sum + item.totalCents, 0);
     const rows = Array.from({ length: daysBetween(start, end) }, (_, index) => {
       const date = addDays(start, index);
-      return { date, amounts: columns.map(item => cells.get(`${date}/${item.id}`) ?? 0) };
+      const revenueCents = revenueByDate.get(date) ?? null;
+      const profitCents = revenueCents === null ? null : revenueCents - (costsByDate.get(date) ?? 0);
+      return { date, revenueCents, profitCents, amounts: columns.map(item => cells.get(`${date}/${item.id}`) ?? 0) };
     });
     let details = null;
     if (detail && rows.some(row => row.date === detail.date) && columns.some(item => item.id === detail.category)) {
@@ -182,7 +192,7 @@ export async function expenseSheet(actor: ExpenseActor, requested: ExpenseFilter
       const detailRows = await listExpenses(actor.empresaId, detailFilters, limit + 1, (detail.page - 1) * limit, client);
       details = { ...detail, expenses: detailRows.slice(0, limit).map(row => toRecord(row, actor)), hasNext: detailRows.length > limit };
     }
-    return { ...catalog, filters: { ...filters, page }, columns, rows, pages, totalCents, details };
+    return { ...catalog, filters: { ...filters, page }, columns, rows, pages, totalCents, details, finance };
   }, true);
 }
 

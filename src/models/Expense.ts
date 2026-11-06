@@ -111,12 +111,15 @@ export async function expenseDailyByCategory(empresaId: string, filters: Expense
   return rows.map(row => ({ ...row, totalCents: integer(row.totalCents) }));
 }
 
+const activityDates = `SELECT date FROM expenses WHERE empresa_id=$1 AND deleted_at IS NULL
+  UNION ALL SELECT date FROM daily_revenue WHERE empresa_id=$1`;
+
 export async function expenseYears(empresaId: string, client: Queryable) {
-  return (await client.query<{ year:number }>('SELECT DISTINCT EXTRACT(YEAR FROM date)::integer AS year FROM expenses WHERE empresa_id=$1 AND deleted_at IS NULL ORDER BY year DESC',[empresaId])).rows.map(row=>row.year);
+  return (await client.query<{ year:number }>(`SELECT DISTINCT EXTRACT(YEAR FROM date)::integer AS year FROM (${activityDates}) activity ORDER BY year DESC`,[empresaId])).rows.map(row=>row.year);
 }
 
 export async function expenseBounds(empresaId: string,client: Queryable) {
-  const {rows}=await client.query<{start:string|null;end:string|null}>("SELECT to_char(min(date),'YYYY-MM-DD') AS start,to_char(max(date),'YYYY-MM-DD') AS end FROM expenses WHERE empresa_id=$1 AND deleted_at IS NULL",[empresaId]);
+  const {rows}=await client.query<{start:string|null;end:string|null}>(`SELECT to_char(min(date),'YYYY-MM-DD') AS start,to_char(max(date),'YYYY-MM-DD') AS end FROM (${activityDates}) activity`,[empresaId]);
   return rows[0].start && rows[0].end ? {start:rows[0].start,end:rows[0].end} : null;
 }
 export async function existingImportKeys(empresaId: string,ids: string[],keys: string[],client: Queryable,lock=false) {

@@ -47,7 +47,7 @@ export default async function ExpenseSheetPage({ searchParams }: {
   const detailPage = Number(params.get('detailPage') || 1);
   const detail = detailDate && detailCategory && Number.isSafeInteger(detailPage) && detailPage > 0 && detailPage <= 100000
     ? { date: detailDate, category: detailCategory, page: detailPage } : undefined;
-  const { filters, categoryOptions, merchantOptions, columns, rows, pages, totalCents, details } =
+  const { filters, categoryOptions, merchantOptions, columns, rows, pages, totalCents, details, finance } =
     await expenseSheet({ ...user, empresaId: user.empresaId }, requested, order, detail);
   const period = new URLSearchParams({ start: filters.start, end: filters.end });
   function pageHref(page: number) {
@@ -104,8 +104,13 @@ export default async function ExpenseSheetPage({ searchParams }: {
         </form>
       </section>
       <p className={styles.periodLine}>Período: {displayDate(filters.start)} a {displayDate(filters.end)}</p>
+      <p className={styles.financeCoverage}>
+        Faturamento registrado em {finance.recordedDays} de {finance.periodDays} dias. O resultado usa todos os gastos do restaurante.
+        {finance.recordedDays < finance.periodDays && ' O total pode ser parcial.'}
+      </p>
+      <Link className={styles.textButton} href={'/dashboard/revenue?' + period}>Ver faturamento do período</Link>
       <ExpenseSheetTable key={user.empresaId} storageId={user.empresaId} baseHref={pageHref(filters.page)}
-        manual={order === 'manual'} columns={columns} rows={rows} totalCents={totalCents} />
+        manual={order === 'manual'} columns={columns} rows={rows} totalCents={totalCents} finance={finance} />
       {details && <section id="detalhes-gastos" className={styles.sheetDetails} aria-labelledby="sheet-details-title">
         <div className={styles.headingActions}>
           <h2 id="sheet-details-title">{columns.find(item => item.id === details.category)?.label} · {displayDate(details.date)}</h2>

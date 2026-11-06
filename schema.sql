@@ -146,4 +146,12 @@ ALTER TABLE expenses ADD CONSTRAINT expenses_category_check CHECK (
     OR category ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 );
 
+CREATE TABLE IF NOT EXISTS daily_revenue (
+    empresa_id UUID NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+    date DATE NOT NULL CHECK (date BETWEEN DATE '2000-01-01' AND DATE '2100-12-31'),
+    amount_cents BIGINT NOT NULL CHECK (amount_cents BETWEEN 0 AND 9999999999),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (empresa_id, date)
+);
+
 COMMIT;
