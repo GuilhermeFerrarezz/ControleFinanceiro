@@ -88,6 +88,20 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     const laterHtml = await laterPage.text();
     assert.match(laterHtml, /<th scope="col">Dia<\/th><th scope="col" data-sheet-column="alimentos">Alimentos<\/th><th scope="col" data-sheet-column="funcionarios">Funcionários<\/th>/);
     assert.match(laterHtml, /<tfoot><tr><th scope="row">Total do período<\/th><td>R\$\s225,90<\/td><td>R\$\s50,00<\/td>.*<td>R\$\s275,90<\/td><td>—<\/td><td>—<\/td><\/tr><\/tfoot>/);
+    const exportUrl = '/expenses/sheet?start=2026-09-25&end=2026-10-31&page=2&sort=manual';
+    const exportBody = { empresaId: ownerUser.empresaId, columns: ['funcionarios', 'alimentos'] };
+    assert.equal((await api(exportUrl, other, 'POST', exportBody)).status, 409);
+    const exportResponse = await api(exportUrl, owner, 'POST', exportBody);
+    assert.equal(exportResponse.status, 200, await exportResponse.clone().text());
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(await exportResponse.arrayBuffer());
+    const exported = book.getWorksheet('Planilha de gastos')!;
+    assert.equal(exported.getCell('B1').value, 'Funcionários');
+    assert.equal(exported.getCell('C1').value, 'Alimentos');
+    assert.deepEqual(exported.getCell('A2').value, new Date('2026-09-25T00:00:00Z'));
+    assert.equal(exported.getCell('C2').value, 100);
+    assert.equal(exported.rowCount, 39);
+    assert.equal(exported.getRow(39).getCell(exported.columnCount - 2).value, 275.9);
     const otherHtml = await (await fetch(url, { headers: { Cookie: other } })).text();
     assert.doesNotMatch(otherHtml, /125,90/);
     const detailUrl = url + '&detailDate=2026-10-01&detailCategory=alimentos';
@@ -141,6 +155,17 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal(revenue.getCell('B3').value, 0);
     const sheet = await fetch(`${origin}/dashboard/sheet?${period}`, { headers: { Cookie: owner } });
     assert.match(await sheet.text(), /<td>R\$\s200,00<\/td><td>R\$\s24,10<\/td><\/tr><\/tfoot>/);
+    const deletion = { empresaId, date: input.date, totalCents: 20000, confirm: true };
+    assert.equal((await api('/revenue', employee, 'DELETE', deletion)).status, 403);
+    assert.equal((await api('/revenue', other, 'DELETE', deletion)).status, 409);
+    assert.equal((await api('/revenue', owner, 'DELETE', { ...deletion, confirm: false })).status, 400);
+    assert.equal((await api('/revenue', owner, 'DELETE', { ...deletion, totalCents: 19000 })).status, 409);
+    assert.equal((await api('/revenue', owner, 'DELETE', deletion)).status, 200);
+    const after = await list(owner, period);
+    assert.equal(after.finance.recordedDays, 1);
+    assert.equal(after.finance.series[0].revenueCents, null);
+    assert.equal(after.finance.series[1].revenueCents, 0);
+    assert.equal(after.summary.totalCents, 17590);
   });
   await t.test('restaurantes permanecem isolados em consultas, alterações e exportações', async () => {
     assert.equal((await list(other)).count, 0);

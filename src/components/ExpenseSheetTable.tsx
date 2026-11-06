@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useSyncExternalStore } from 'react';
 import { displayDate, money, type CategoryOption } from '@/src/lib/expense-shared';
+import { downloadBlob } from '@/src/lib/browser-download';
 import styles from './finance.module.css';
 
 const orderEvent = 'saldo-da-casa:sheet-order';
@@ -41,6 +42,8 @@ export default function ExpenseSheetTable({ storageId, baseHref, manual, columns
   const [sessionOrder, setSessionOrder] = useState<string[] | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [target, setTarget] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
   const index = new Map(columns.map((column, i) => [column.id, i]));
   const saved = sessionOrder ?? savedIds(snapshot);
   const visible = draft ?? (manual ? saved : []);
@@ -82,14 +85,40 @@ export default function ExpenseSheetTable({ storageId, baseHref, manual, columns
     return '/dashboard/sheet?' + query + '#detalhes-gastos';
   }
 
+  async function exportSheet() {
+    if (exporting) return;
+    setExporting(true);
+    setExportError('');
+    const params = new URLSearchParams(baseHref.split('?')[1]);
+    params.delete('page');
+    try {
+      const response = await fetch('/api/v1/expenses/sheet?' + params, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ empresaId: storageId, columns: ordered }),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        setExportError(error?.erro || 'Não foi possível exportar a planilha.');
+        return;
+      }
+      downloadBlob(await response.blob(), `planilha-${params.get('start')}-${params.get('end')}.xlsx`);
+    } catch { setExportError('Não foi possível exportar a planilha. Tente novamente.'); }
+    finally { setExporting(false); }
+  }
+
   return <>
     <div className={styles.sheetOrderActions}>
+      <button className="button" type="button" disabled={exporting} onClick={() => void exportSheet()}>
+        {exporting ? 'Exportando...' : 'Exportar planilha Excel'}
+      </button>
       {editing ? <>
         <button className="button" type="button" onClick={save}>Salvar ordem</button>
         <button className="button button-outline" type="button" onClick={() => setDraft(null)}>Cancelar</button>
         <span>Arraste pelo ícone ↔ ou use as setas para mover uma coluna.</span>
       </> : <button className="button button-outline" type="button" onClick={() => setDraft(ordered)} disabled={columns.length < 2}>Editar ordem</button>}
     </div>
+    {exportError && <p className={styles.error} role="alert">{exportError}</p>}
     <div className={styles.sheetScroll} tabIndex={0} role="region" aria-label="Planilha de gastos por dia e categoria">
       <table className={styles.sheetTable}>
         <caption className={styles.sheetCaption}>Gastos diários por categoria</caption>

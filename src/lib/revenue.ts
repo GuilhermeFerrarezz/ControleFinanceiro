@@ -28,6 +28,16 @@ export async function saveRevenue(actor: { id: string; empresaId: string }, rows
   });
 }
 
+export async function deleteRevenue(actor: { id: string; empresaId: string }, row: DailyRevenue) {
+  return inTransaction(async client => {
+    if ((await findMembership(actor.id, actor.empresaId, client, true))?.role !== 'owner') return null;
+    const result = await client.query(
+      'DELETE FROM daily_revenue WHERE empresa_id=$1 AND date=$2::date AND amount_cents=$3',
+      [actor.empresaId, row.date, row.totalCents]);
+    return result.rowCount === 1;
+  });
+}
+
 export async function financeDays(empresaId: string, period: ExpenseFilters, client: Queryable = db,
   unfilteredDaily?: DailyRevenue[]) {
   // Profit compares revenue with all costs, regardless of the expense-only filters.

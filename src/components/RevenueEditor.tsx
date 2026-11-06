@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, errorMessage } from '@/src/lib/api';
 import { decodeCsv } from '@/src/lib/csv-encoding';
 import { displayDate, money, parseMoneyInput, type DailyRevenue } from '@/src/lib/expense-shared';
@@ -22,6 +22,29 @@ export default function RevenueEditor({ empresaId, today, rows, canEdit }: {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const [deleting, setDeleting] = useState<DailyRevenue | null>(null);
+  const [deleteError, setDeleteError] = useState('');
+  const deleteDialog = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    if (deleting) deleteDialog.current?.showModal();
+    else deleteDialog.current?.close();
+  }, [deleting]);
+
+  async function removeRevenue() {
+    if (!deleting || busy) return;
+    setBusy(true); setDeleteError(''); setError(''); setNotice('');
+    try {
+      await api.delete('/revenue', { data: { empresaId, ...deleting, confirm: true } });
+      if (date === deleting.date) setAmount('');
+      setDeleting(null);
+      setNotice(`Faturamento de ${displayDate(deleting.date)} excluído.`);
+      router.refresh();
+    } catch (cause) {
+      setDeleteError(errorMessage(cause));
+      router.refresh();
+    } finally { setBusy(false); }
+  }
 
   function chooseDate(value: string) {
     setDate(value);
@@ -96,10 +119,28 @@ export default function RevenueEditor({ empresaId, today, rows, canEdit }: {
         <thead><tr><th scope="col">Data</th><th scope="col">Faturamento</th>{canEdit && <th scope="col">Ações</th>}</tr></thead>
         <tbody>{[...rows].reverse().map(row => <tr key={row.date}>
           <th scope="row">{displayDate(row.date)}</th><td>{money(row.totalCents)}</td>
-          {canEdit && <td><button className={styles.textButton} type="button" disabled={busy} onClick={() => { chooseDate(row.date); amountInput.current?.focus(); }}>Editar</button></td>}
+          {canEdit && <td><div className={styles.rowActions}>
+            <button className={styles.textButton} type="button" disabled={busy} onClick={() => { chooseDate(row.date); amountInput.current?.focus(); }}>Editar</button>
+            <button className={styles.textButton} type="button" disabled={busy} aria-label={`Excluir faturamento de ${displayDate(row.date)}`}
+              onClick={() => { setDeleteError(''); setDeleting(row); }}>Excluir</button>
+          </div></td>}
         </tr>)}</tbody>
       </table>
       {!rows.length && <p className={styles.sheetCaption}>Nenhum dia registrado neste período.</p>}
     </div>
+    {canEdit && <dialog ref={deleteDialog} className={`${styles.dialog} ${styles.confirmDialog}`} aria-labelledby="delete-revenue-title"
+      onCancel={event => { event.preventDefault(); if (!busy) setDeleting(null); }}>
+      {deleting && <div className={styles.dialogInner}>
+        <h2 id="delete-revenue-title">Excluir faturamento?</h2>
+        <p>O registro de {money(deleting.totalCents)} em {displayDate(deleting.date)} será excluído. O dia ficará sem faturamento informado.</p>
+        {deleteError && <p className={styles.error} role="alert">{deleteError}</p>}
+        <div className={styles.formActions}>
+          <button className="button button-outline" type="button" autoFocus disabled={busy} onClick={() => setDeleting(null)}>Cancelar</button>
+          <button className={styles.dangerButton} type="button" disabled={busy} onClick={() => void removeRevenue()}>
+            {busy ? 'Excluindo...' : 'Excluir faturamento'}
+          </button>
+        </div>
+      </div>}
+    </dialog>}
   </>;
 }

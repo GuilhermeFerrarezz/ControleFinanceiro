@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { currentUser } from '@/src/lib/auth';
-import { expenseFilters, expenseSheet, type ExpenseSheetOrder } from '@/src/lib/expenses';
+import { expenseFilters, expenseSheet, expenseSheetOrder, type ExpenseSheetOrder } from '@/src/lib/expenses';
 import { displayDate, money, PAYMENT_METHODS } from '@/src/lib/expense-shared';
 import { userRestaurants } from '@/src/lib/restaurants';
 import { InputError } from '@/src/lib/validation';
@@ -41,14 +41,14 @@ export default async function ExpenseSheetPage({ searchParams }: {
     requested = expenseFilters();
     error = cause.message;
   }
-  const order = sortOptions.find(option => option.value === params.get('sort'))?.value ?? 'manual';
+  const order = expenseSheetOrder(params.get('sort'));
   const detailDate = params.get('detailDate');
   const detailCategory = params.get('detailCategory');
   const detailPage = Number(params.get('detailPage') || 1);
   const detail = detailDate && detailCategory && Number.isSafeInteger(detailPage) && detailPage > 0 && detailPage <= 100000
     ? { date: detailDate, category: detailCategory, page: detailPage } : undefined;
   const { filters, categoryOptions, merchantOptions, columns, rows, pages, totalCents, details, finance } =
-    await expenseSheet({ ...user, empresaId: user.empresaId }, requested, order, detail);
+    await expenseSheet({ ...user, empresaId: user.empresaId }, requested, order, { detail });
   const period = new URLSearchParams({ start: filters.start, end: filters.end });
   function pageHref(page: number) {
     const query = new URLSearchParams(period);

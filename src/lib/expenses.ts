@@ -144,17 +144,22 @@ async function catalogFilters(empresaId: string, requested: ExpenseFilters, clie
 }
 
 export type ExpenseSheetOrder = 'manual' | 'name-asc' | 'name-desc' | 'highest' | 'lowest';
+export function expenseSheetOrder(value: string | null): ExpenseSheetOrder {
+  if (value === 'name-asc' || value === 'name-desc' || value === 'highest' || value === 'lowest') return value;
+  return 'manual';
+}
 
 export async function expenseSheet(actor: ExpenseActor, requested: ExpenseFilters, order: ExpenseSheetOrder,
-  detail?: { date: string; category: string; page: number }) {
+  options?: { detail?: { date: string; category: string; page: number }; exportColumnIds?: string[] }) {
   return inTransaction(async client => {
     const catalog = await catalogFilters(actor.empresaId, requested, client);
     const { filters, categoryOptions } = catalog;
     const daysPerPage = 31;
     const pages = Math.ceil(daysBetween(filters.start, filters.end) / daysPerPage);
     const page = Math.min(filters.page, pages);
-    const start = addDays(filters.start, (page - 1) * daysPerPage);
-    const end = daysBetween(start, filters.end) > daysPerPage
+    const exporting = options?.exportColumnIds !== undefined;
+    const start = exporting ? filters.start : addDays(filters.start, (page - 1) * daysPerPage);
+    const end = !exporting && daysBetween(start, filters.end) > daysPerPage
       ? addDays(start, daysPerPage - 1) : filters.end;
     const financialDays = await financeDays(actor.empresaId, filters, client);
     const finance = financeComparison(financialDays.expenses, financialDays.revenue, filters);
@@ -165,27 +170,37 @@ export async function expenseSheet(actor: ExpenseActor, requested: ExpenseFilter
     const activeIds = new Set(active.map(item => item.id));
     const historical = categoriesWithExpenses.filter(item => !activeIds.has(item.category))
       .map(item => categoryInfo(item.category, categoryOptions));
-    const totals = await expenseDailyByCategory(actor.empresaId, { ...filters, start, end }, client);
-    const cells = new Map(totals.map(row => [`${row.date}/${row.category}`, row.totalCents]));
     const periodTotals = new Map(categoriesWithExpenses.map(item => [item.category, item.totalCents]));
     const names = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
+    const positions = new Map(options?.exportColumnIds?.map((id, index) => [id, index]));
     const columns = [...active, ...historical].map(item => ({
       ...item, totalCents: periodTotals.get(item.id) ?? 0,
     })).sort((a, b) => {
       const byName = names.compare(a.label, b.label);
+      if (exporting) {
+        const position = (positions.get(a.id) ?? Infinity) - (positions.get(b.id) ?? Infinity);
+        if (position) return position;
+      }
       if (order === 'name-desc') return -byName;
       if (order === 'highest') return b.totalCents - a.totalCents || byName;
       if (order === 'lowest') return a.totalCents - b.totalCents || byName;
       return byName;
     });
+    const dayCount = daysBetween(start, end);
+    if (exporting && (columns.length + 4 > 16384 || dayCount * (columns.length + 4) > 250000)) {
+      throw new InputError('A planilha está muito grande. Reduza o período ou filtre por categoria.');
+    }
+    const totals = await expenseDailyByCategory(actor.empresaId, { ...filters, start, end }, client);
+    const cells = new Map(totals.map(row => [`${row.date}/${row.category}`, row.totalCents]));
     const totalCents = columns.reduce((sum, item) => sum + item.totalCents, 0);
-    const rows = Array.from({ length: daysBetween(start, end) }, (_, index) => {
+    const rows = Array.from({ length: dayCount }, (_, index) => {
       const date = addDays(start, index);
       const revenueCents = revenueByDate.get(date) ?? null;
       const profitCents = revenueCents === null ? null : revenueCents - (costsByDate.get(date) ?? 0);
       return { date, revenueCents, profitCents, amounts: columns.map(item => cells.get(`${date}/${item.id}`) ?? 0) };
     });
     let details = null;
+    const detail = options?.detail;
     if (detail && rows.some(row => row.date === detail.date) && columns.some(item => item.id === detail.category)) {
       const detailFilters = { ...filters, start: detail.date, end: detail.date, category: detail.category };
       const limit = 20;
