@@ -72,7 +72,7 @@ export default function FinanceComparisonChart({ finance }: { finance: FinanceCo
         }).join(' ');
         return <g key={metric.key}><path d={path} fill="none" stroke={metric.color} strokeWidth="2.5" />
           {finance.series.map((row, index) => row[metric.key] !== null && <circle key={row.date} cx={x(index)} cy={y(row[metric.key]!)} r="3" fill={metric.color}>
-            <title>{label(row.date)} · {metric.label}: {money(row[metric.key]!)}</title>
+            <title>{`${label(row.date)} · ${metric.label}: ${money(row[metric.key]!)}`}</title>
           </circle>)}</g>;
       })}
       {active && <g pointerEvents="none">

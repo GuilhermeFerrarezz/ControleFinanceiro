@@ -50,9 +50,16 @@ export function versionValue(value: unknown) {
 export function expenseFilters(params = new URLSearchParams()): ExpenseFilters {
   const year = params.get('year');
   if (year !== null && !/^(20[0-9]{2}|2100)$/.test(year)) throw new InputError('Escolha um ano válido.');
+  const month = params.get('month');
+  const monthYear = params.get('monthYear');
+  if (month !== null && (!monthYear || !/^(20\d{2}|2100)$/.test(monthYear) || !/^(0[1-9]|1[0-2])$/.test(month))) {
+    throw new InputError('Selecione um mês e um ano entre 2000 e 2100.');
+  }
   const defaults = year === null ? monthPeriod() : yearPeriod(Number(year));
-  const start = dateValue(year === null ? params.get('start') || defaults.start : defaults.start);
-  const end = dateValue(year === null ? params.get('end') || defaults.end : defaults.end);
+  const start = dateValue(month !== null ? `${monthYear}-${month}-01`
+    : (year === null ? params.get('start') : null) || defaults.start);
+  const end = dateValue(month !== null ? new Date(Date.UTC(Number(monthYear), Number(month), 0)).toISOString().slice(0, 10)
+    : (year === null ? params.get('end') : null) || defaults.end);
   if (start > end) throw new InputError('A data inicial deve ser anterior ou igual à data final.');
   const category = params.get('category') || '';
   const status = params.get('status') || '';

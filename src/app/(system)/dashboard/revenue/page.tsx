@@ -7,6 +7,7 @@ import { listRevenue } from '@/src/lib/revenue';
 import { userRestaurants } from '@/src/lib/restaurants';
 import { InputError } from '@/src/lib/validation';
 import Header from '@/src/components/cabecalho/page';
+import MonthFilter from '@/src/components/MonthFilter';
 import FinanceNav from '@/src/components/FinanceNav';
 import RevenueEditor from '@/src/components/RevenueEditor';
 import MoneyTrendChart from '@/src/components/MoneyTrendChart';
@@ -58,6 +59,7 @@ export default async function RevenuePage({ searchParams }: {
       </div>
       {error && <p className={styles.error} role="alert">{error}</p>}
       <section className={styles.filtersCard} aria-label="Período do faturamento">
+        <MonthFilter action={path} start={period.start} />
         <form method="get" action={path} className={styles.filters}>
           <label className={styles.filterField}>De<input type="date" name="start" defaultValue={period.start} min="2000-01-01" max="2100-12-31" required /></label>
           <label className={styles.filterField}>Até<input type="date" name="end" defaultValue={period.end} min="2000-01-01" max="2100-12-31" required /></label>

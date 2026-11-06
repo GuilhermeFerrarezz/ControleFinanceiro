@@ -234,3 +234,4 @@
 .revenueImport p, .revenueImport label { margin: 10px 0; }
 .chartCard.revenueTrend { display: block; margin-bottom: 22px; }
 .comparisonPeriod { max-width: 240px; margin-top: 14px; }
+.monthFilter { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }

@@ -7,6 +7,7 @@ import { userRestaurants } from '@/src/lib/restaurants';
 import { InputError } from '@/src/lib/validation';
 import Header from '@/src/components/cabecalho/page';
 import FinanceComparisonChart from '@/src/components/FinanceComparisonChart';
+import MonthFilter from '@/src/components/MonthFilter';
 import FinanceNav from '@/src/components/FinanceNav';
 import styles from '@/src/components/finance.module.css';
 import RestaurantSwitcher from '../RestaurantSwitcher';
@@ -24,7 +25,7 @@ export default async function ProfitPage({ searchParams }: {
 
   const params = await searchParams;
   const query = new URLSearchParams();
-  for (const field of ['start', 'end', 'year'] as const) {
+  for (const field of ['start', 'end', 'year', 'month', 'monthYear'] as const) {
     const value = params[field];
     if (typeof value === 'string') query.set(field, value);
   }
@@ -51,6 +52,7 @@ export default async function ProfitPage({ searchParams }: {
       </div>
       {error && <p className={styles.error} role="alert">{error}</p>}
       <section className={styles.filtersCard} aria-label="Período do lucro">
+        <MonthFilter action={path} start={period.start} />
         <form method="get" action={path} className={styles.filters}>
           <label className={styles.filterField}>De<input type="date" name="start" defaultValue={period.start} min="2000-01-01" max="2100-12-31" required /></label>
           <label className={styles.filterField}>Até<input type="date" name="end" defaultValue={period.end} min="2000-01-01" max="2100-12-31" required /></label>

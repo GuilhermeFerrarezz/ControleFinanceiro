@@ -7,12 +7,14 @@ import { userRestaurants } from '@/src/lib/restaurants';
 import { InputError } from '@/src/lib/validation';
 import Header from '@/src/components/cabecalho/page';
 import ExpenseSheetTable from '@/src/components/ExpenseSheetTable';
+import MonthFilter from '@/src/components/MonthFilter';
 import FinanceNav from '@/src/components/FinanceNav';
 import styles from '@/src/components/finance.module.css';
 import RestaurantSwitcher from '../RestaurantSwitcher';
 
 export const metadata = { title: 'Planilha de gastos | Saldo da Casa' };
 const path = '/dashboard/sheet';
+const filterKeys = ['category', 'merchant', 'status', 'q'] as const;
 const sortOptions = [
   { value: 'manual', label: 'Ordem personalizada' },
   { value: 'name-asc', label: 'Nome (A–Z)' },
@@ -52,7 +54,7 @@ export default async function ExpenseSheetPage({ searchParams }: {
   const period = new URLSearchParams({ start: filters.start, end: filters.end });
   function pageHref(page: number) {
     const query = new URLSearchParams(period);
-    for (const key of ['category', 'merchant', 'status', 'q'] as const) {
+    for (const key of filterKeys) {
       const value = filters[key];
       if (value) query.set(key, value);
     }
@@ -80,6 +82,10 @@ export default async function ExpenseSheetPage({ searchParams }: {
       </div>
       {error && <p className={styles.error} role="alert">{error}</p>}
       <section className={styles.filtersCard} aria-label="Filtros da planilha">
+        <MonthFilter action={path} start={filters.start}>
+          <input type="hidden" name="sort" value={order} />
+          {filterKeys.map(key => filters[key] && <input key={key} type="hidden" name={key} value={filters[key]} />)}
+        </MonthFilter>
         <form key={pageHref(1)} action={path} method="get" className={styles.filters}>
           <label className={styles.filterField}>De<input name="start" type="date" min="2000-01-01" max="2100-12-31" defaultValue={filters.start} required /></label>
           <label className={styles.filterField}>Até<input name="end" type="date" min="2000-01-01" max="2100-12-31" defaultValue={filters.end} required /></label>
