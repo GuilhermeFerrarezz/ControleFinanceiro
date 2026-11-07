@@ -4,11 +4,15 @@ import { expenseFilters } from '@/src/lib/expenses';
 import { inTransaction } from '@/src/lib/postgres';
 import { financeComparison, financeDays } from '@/src/lib/revenue';
 import { userRestaurants } from '@/src/lib/restaurants';
+import { todayInSaoPaulo } from '@/src/lib/expense-shared';
 import { InputError } from '@/src/lib/validation';
 import Header from '@/src/components/cabecalho/page';
 import FinanceComparisonChart from '@/src/components/FinanceComparisonChart';
 import MonthFilter from '@/src/components/MonthFilter';
 import PeriodFilters from '@/src/components/PeriodFilters';
+import DateRangeFields from '@/src/components/DateRangeFields';
+import { expenseYears } from '@/src/models/Expense';
+import { db } from '@/src/lib/db';
 import FinanceNav from '@/src/components/FinanceNav';
 import styles from '@/src/components/finance.module.css';
 import RestaurantSwitcher from '../RestaurantSwitcher';
@@ -43,6 +47,8 @@ export default async function ProfitPage({ searchParams }: {
     return financeComparison(expenses, revenue, period);
   }, true);
 
+  const years = await expenseYears(user.empresaId, db);
+
   return <>
     <Header nome={user.empresaNome || 'Meu restaurante'} user={user} />
     <main className={styles.main}>
@@ -55,8 +61,7 @@ export default async function ProfitPage({ searchParams }: {
       <PeriodFilters start={period.start} end={period.end} advancedLabel="Datas personalizadas"
         primary={<MonthFilter action={path} start={period.start} />}>
         <form key={period.start + period.end} method="get" action={path} className={styles.filters}>
-          <label className={styles.filterField}>De<input type="date" name="start" defaultValue={period.start} min="2000-01-01" max="2100-12-31" required /></label>
-          <label className={styles.filterField}>Até<input type="date" name="end" defaultValue={period.end} min="2000-01-01" max="2100-12-31" required /></label>
+          <DateRangeFields start={period.start} end={period.end} years={years} today={todayInSaoPaulo()} />
           <button type="submit" className="button">Aplicar período</button>
         </form>
       </PeriodFilters>

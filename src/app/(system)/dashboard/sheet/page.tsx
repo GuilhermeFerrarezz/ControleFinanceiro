@@ -2,13 +2,16 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { currentUser } from '@/src/lib/auth';
 import { expenseFilters, expenseSheet, expenseSheetOrder, type ExpenseSheetOrder } from '@/src/lib/expenses';
-import { displayDate, money, PAYMENT_METHODS } from '@/src/lib/expense-shared';
+import { displayDate, money, PAYMENT_METHODS, todayInSaoPaulo } from '@/src/lib/expense-shared';
 import { userRestaurants } from '@/src/lib/restaurants';
 import { InputError } from '@/src/lib/validation';
 import Header from '@/src/components/cabecalho/page';
 import ExpenseSheetTable from '@/src/components/ExpenseSheetTable';
 import MonthFilter from '@/src/components/MonthFilter';
 import PeriodFilters from '@/src/components/PeriodFilters';
+import DateRangeFields from '@/src/components/DateRangeFields';
+import { expenseYears } from '@/src/models/Expense';
+import { db } from '@/src/lib/db';
 import FinanceNav from '@/src/components/FinanceNav';
 import styles from '@/src/components/finance.module.css';
 import RestaurantSwitcher from '../RestaurantSwitcher';
@@ -73,6 +76,8 @@ export default async function ExpenseSheetPage({ searchParams }: {
     return path + '?' + query + '#detalhes-gastos';
   }
 
+  const years = await expenseYears(user.empresaId, db);
+
   return <>
     <Header nome={user.empresaNome || 'Meu restaurante'} user={user} />
     <main className={styles.main}>
@@ -88,8 +93,8 @@ export default async function ExpenseSheetPage({ searchParams }: {
           {filterKeys.map(key => filters[key] && <input key={key} type="hidden" name={key} value={filters[key]} />)}
         </MonthFilter>}>
         <form key={pageHref(1)} action={path} method="get" className={styles.filters}>
-          <label className={styles.filterField}>De<input name="start" type="date" min="2000-01-01" max="2100-12-31" defaultValue={filters.start} required /></label>
-          <label className={styles.filterField}>Até<input name="end" type="date" min="2000-01-01" max="2100-12-31" defaultValue={filters.end} required /></label>
+          <DateRangeFields start={filters.start} end={filters.end} years={years} today={todayInSaoPaulo()} />
+          <h3 className={styles.filterGroupTitle}>Refinar lançamentos</h3>
           <label className={styles.filterField}>Categoria<select name="category" defaultValue={filters.category}>
             <option value="">Todas as categorias</option>
             {categoryOptions.filter(item => !item.archived).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
