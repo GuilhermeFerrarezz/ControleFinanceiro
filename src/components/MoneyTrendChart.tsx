@@ -2,6 +2,7 @@
 
 import { useState, type PointerEvent } from 'react';
 import { daysBetween, displayDate, trendPeriodLabel, money } from '@/src/lib/expense-shared';
+import { moneyAxisLabel, moneyChartScale } from '@/src/lib/chart-scale';
 import { chartPeriodIndex } from './chart-pointer';
 import Icon from './Icon';
 import styles from './finance.module.css';
@@ -21,8 +22,8 @@ export default function MoneyTrendChart({
   const monthly=interval==='month';
   const yearly=interval==='year';
   const periodLabel=(date:string)=>trendPeriodLabel(date,interval);
-  const max = Math.max(...series.map(day => day.totalCents ?? 0), 100);
-  const left = 62, right = 690, top = 24, bottom = 225;
+  const { max, ticks } = moneyChartScale(series.map(day => day.totalCents));
+  const left = 80, right = 690, top = 24, bottom = 225;
   const x = (index: number) => series.length === 1 ? (left + right) / 2 : left + index / (series.length - 1) * (right - left);
   const y = (value: number) => bottom - value / max * (bottom - top);
   const segments: { x: number; y: number }[][] = [];
@@ -45,7 +46,8 @@ export default function MoneyTrendChart({
         <div className={styles.chartReadout} aria-live="polite">{active !== null ? <><span>{periodLabel(series[active].date)}</span><strong>{activeValue === null ? 'Sem registro' : money(activeValue)}</strong></> : <><span>Total do período</span><strong>{money(totalCents)}</strong></>}</div>
         <svg className={styles.lineChart} viewBox="0 0 720 270" role="img" aria-label={`${metric} de ${displayDate(start)} a ${displayDate(end)}. Total de ${money(totalCents)}. Valores disponíveis na tabela abaixo.`} onPointerMove={inspect} onPointerLeave={event => { if (event.pointerType === 'mouse') setActiveDate(null); }} onPointerDown={inspect}>
           <defs><linearGradient id={titleId + '-area'} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#829d62" stopOpacity="0.28" /><stop offset="100%" stopColor="#829d62" stopOpacity="0.01" /></linearGradient></defs>
-          {[0, .25, .5, .75, 1].map(fraction => <g key={fraction}><line x1={left} x2={right} y1={y(max * fraction)} y2={y(max * fraction)} stroke="#e8ebdf" strokeDasharray="4 4" /><text x={left - 10} y={y(max * fraction) + 4} textAnchor="end" fill="#7d8870" fontSize="11">{new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 }).format(max * fraction / 100)}</text></g>)}
+          <text x={left} y="14" fill="#506249" fontSize="11">R$</text>
+          {ticks.map(value => <g key={value}><line x1={left} x2={right} y1={y(value)} y2={y(value)} stroke={value === 0 ? '#73836a' : '#e8ebdf'} strokeDasharray={value === 0 ? undefined : '4 4'} /><text x={left - 10} y={y(value) + 4} textAnchor="end" fill="#506249" fontSize="11">{moneyAxisLabel(value)}</text></g>)}
           {segments.map(points => {
             const line = points.map((point, index) => `${index ? 'L' : 'M'}${point.x},${point.y}`).join(' ');
             return <g key={points[0].x}>

@@ -233,6 +233,15 @@
 .revenueImport summary { cursor: pointer; font-weight: 600; }
 .revenueImport p, .revenueImport label { margin: 10px 0; }
 .chartCard.revenueTrend { display: block; margin-bottom: 22px; }
+.revenueTrend .lineChart { height: clamp(220px, 30vw, 420px); min-height: 0; }
+.revenueTrend .chartEmpty { min-height: 200px; }
+.comparisonChart { max-height: 360px; }
+.comparisonToolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 24px; }
+.comparisonToolbar .comparisonPeriod { margin-top: 0; }
+.comparisonReadout { display: grid; align-content: center; gap: 8px; min-height: 106px; margin: 12px 0; padding: 12px 16px; border: 1px solid #dbe0d0; border-radius: 8px; background: #f6f8f1; font-size: 13px; }
+.comparisonReadout > div { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+.comparisonReadout small { color: #506249; }
+.financeMetrics strong, .comparisonReadout b, .chartValues td { font-variant-numeric: tabular-nums; }
 .comparisonPeriod { max-width: 240px; margin-top: 14px; }
 
 .filterPanelHeading { display: flex; justify-content: space-between; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin-bottom: 14px; }

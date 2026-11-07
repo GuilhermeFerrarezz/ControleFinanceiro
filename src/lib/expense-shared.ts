@@ -26,7 +26,10 @@ export const MAX_AMOUNT_CENTS = 9_999_999_999;
 const currencyFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 export const money = (cents: number) => currencyFormatter.format(cents / 100);
 export type DailyRevenue = { date: string; totalCents: number };
-export type FinancePoint = { date: string; revenueCents: number | null; expenseCents: number; profitCents: number | null };
+export type FinancePoint = {
+  date: string; revenueCents: number | null; expenseCents: number; profitCents: number | null;
+  recordedDays: number; periodDays: number;
+};
 export type FinanceComparison = {
   revenueCents: number; expenseCents: number; profitCents: number | null;
   recordedDays: number; periodDays: number; seriesInterval: 'day' | 'month' | 'year'; series: FinancePoint[];

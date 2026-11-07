@@ -2,7 +2,7 @@ import { db } from './db';
 import { inTransaction, type Queryable } from './postgres';
 import { findMembership } from '../models/Membership';
 import { expenseDaily, integer } from '../models/Expense';
-import { buildExpenseSeries, daysBetween, type DailyRevenue, type ExpenseFilters, type FinanceComparison } from './expense-shared';
+import { addDays, buildExpenseSeries, daysBetween, type DailyRevenue, type ExpenseFilters, type FinanceComparison } from './expense-shared';
 
 export async function listRevenue(empresaId: string, period: { start: string; end: string }, client: Queryable = db) {
   const { rows } = await client.query<{ date: string; totalCents: string }>(
@@ -57,10 +57,19 @@ export function financeComparison(expenses: DailyRevenue[], revenue: DailyRevenu
   return {
     revenueCents, expenseCents, profitCents: revenue.length ? revenueCents - expenseCents : null,
     recordedDays: revenue.length, periodDays: daysBetween(start, end), seriesInterval,
-    series: costs.map((row, index) => ({
-      date: row.date, expenseCents: row.totalCents,
-      revenueCents: coverage[index].totalCents ? sales[index].totalCents : null,
-      profitCents: coverage[index].totalCents ? sales[index].totalCents - row.totalCents : null,
-    })),
+    series: costs.map((row, index) => {
+      const next = new Date(`${row.date}T12:00:00Z`);
+      if (seriesInterval === 'year') next.setUTCFullYear(next.getUTCFullYear() + 1);
+      else if (seriesInterval === 'month') next.setUTCMonth(next.getUTCMonth() + 1);
+      else next.setUTCDate(next.getUTCDate() + 1);
+      const bucketEnd = addDays(next.toISOString().slice(0, 10), -1);
+      return {
+        date: row.date, expenseCents: row.totalCents,
+        revenueCents: coverage[index].totalCents ? sales[index].totalCents : null,
+        profitCents: coverage[index].totalCents ? sales[index].totalCents - row.totalCents : null,
+        recordedDays: coverage[index].totalCents,
+        periodDays: daysBetween(row.date < start ? start : row.date, bucketEnd > end ? end : bucketEnd),
+      };
+    }),
   };
 }

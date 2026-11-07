@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { currentUser } from '@/src/lib/auth';
 import { expenseFilters } from '@/src/lib/expenses';
-import { buildExpenseSeries, money, todayInSaoPaulo, type DailyRevenue } from '@/src/lib/expense-shared';
+import { buildExpenseSeries, daysBetween, money, todayInSaoPaulo, type DailyRevenue } from '@/src/lib/expense-shared';
 import { listRevenue } from '@/src/lib/revenue';
 import { userRestaurants } from '@/src/lib/restaurants';
 import { InputError } from '@/src/lib/validation';
@@ -75,6 +75,7 @@ export default async function RevenuePage({ searchParams }: {
         <span>{rows.length} dias registrados · Total informado: {money(totalCents)}</span>
         <a className={styles.textButton} href={`/api/v1/revenue?${dates}`}>Exportar faturamento CSV</a>
       </div>
+      <p className={styles.financeCoverage}>{rows.length} de {daysBetween(period.start, period.end)} dias com faturamento informado. Dias sem registro aparecem como lacunas no gráfico.</p>
       <MoneyTrendChart titleId="revenue-trend-title" title="O ritmo do faturamento" metric="Faturamento"
         emptyTitle="Seu gráfico começa no primeiro registro." peakLabel="Dia de maior faturamento" daysLabel="Dias com faturamento"
         series={series} interval={trend.seriesInterval} start={period.start} end={period.end}
