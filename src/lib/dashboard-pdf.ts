@@ -1,3 +1,4 @@
+import { formatPercent, ratioPercent } from './financial-math';
 import PDFDocument from 'pdfkit';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -77,7 +78,7 @@ export async function dashboardPdf(data:ExpenseDashboardData,restaurant:string,a
     doc.circle(530,yy+5,2.5).fill(category.color);
     text(category.label,538,yy,122,7.5,ink);
     const amount=money(row.totalCents);text(amount,668,yy,102,fit(amount,102,8),ink);
-    text(new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1}).format(row.totalCents/data.summary.totalCents*100)+'%',777,yy,31,7,muted);
+    text(formatPercent(ratioPercent(row.totalCents, data.summary.totalCents) ?? '0')+'%',777,yy,31,7,muted);
   });
   if (data.categories.length > 9) {
     text('Lista completa de categorias nas próximas páginas.',538,563,270,7,muted);

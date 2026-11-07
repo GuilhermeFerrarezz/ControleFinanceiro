@@ -1,3 +1,4 @@
+import { sumCents } from '@/src/lib/financial-math';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { currentUser } from '@/src/lib/auth';
@@ -40,7 +41,7 @@ export default async function RevenuePage({ searchParams }: {
     error = cause.message;
   }
   const rows = await listRevenue(user.empresaId, period);
-  const totalCents = rows.reduce((sum, row) => sum + row.totalCents, 0);
+  const totalCents = sumCents(rows.map(row => row.totalCents));
   const trend = buildExpenseSeries(rows, period.start, period.end);
   const coverage = buildExpenseSeries(rows.map(row => ({ ...row, totalCents: 1 })), period.start, period.end);
   const series = trend.series.map((row, index) => ({

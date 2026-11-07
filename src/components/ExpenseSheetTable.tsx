@@ -1,4 +1,5 @@
 'use client';
+import { sumCents } from '@/src/lib/financial-math';
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -164,7 +165,7 @@ export default function ExpenseSheetTable({ storageId, baseHref, manual, columns
             return <td key={id}>{amount ? <Link className={styles.sheetValueLink} href={cellHref(row.date, id)} prefetch={false}
               aria-label={`Ver gastos de ${columns[column].label} em ${displayDate(row.date)}: ${money(amount)}`}>{money(amount)}</Link> : '—'}</td>;
           })}
-          <td><strong>{money(row.amounts.reduce((sum, amount) => sum + amount, 0))}</strong></td>
+          <td><strong>{money(sumCents(row.amounts))}</strong></td>
           <td>{row.revenueCents === null ? '—' : money(row.revenueCents)}</td>
           <td>{row.profitCents === null ? '—' : money(row.profitCents)}</td>
         </tr>)}</tbody>

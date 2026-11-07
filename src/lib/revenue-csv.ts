@@ -1,3 +1,4 @@
+import { decimalCents } from './financial-math';
 import { parse } from 'csv-parse/sync';
 import { csvCell, MAX_CSV_BYTES, MAX_IMPORT_ROWS } from './expense-csv';
 import { dateValue } from './expenses';
@@ -7,7 +8,7 @@ import { InputError } from './validation';
 
 const headers = ['Data', 'Faturamento (R$)'];
 export function revenueCsv(rows: DailyRevenue[]) {
-  return '\uFEFF' + [headers, ...rows.map(row => [displayDate(row.date), (row.totalCents / 100).toFixed(2).replace('.', ',')])]
+  return '\uFEFF' + [headers, ...rows.map(row => [displayDate(row.date), decimalCents(row.totalCents)])]
     .map(row => row.map(csvCell).join(';')).join('\r\n');
 }
 

@@ -1,10 +1,8 @@
 import { expenseCsv } from '@/src/lib/expense-csv';
-import { financeDays } from '@/src/lib/revenue';
-import { listCategories } from '@/src/models/Catalog';
 import { NextResponse } from 'next/server';
 import { currentUser, jsonError, trustedOrigin } from '@/src/lib/auth';
 import { InputError, readBody } from '@/src/lib/validation';
-import { deleteExpensePeriod, createExpense, expenseDashboard, expenseFilters, expensesForExport, ExpenseError, uuidValue, validateExpense } from '@/src/lib/expenses';
+import { deleteExpensePeriod, createExpense, expenseDashboard, expenseFilters, expenseExportData, expensesForExport, ExpenseError, uuidValue, validateExpense } from '@/src/lib/expenses';
 export async function GET(request: Request) {
   const user = await currentUser();
   if (!user) return jsonError('Entre na sua conta para continuar.', 401);
@@ -17,7 +15,8 @@ export async function GET(request: Request) {
     } });
     if(params.get('format')==='xlsx') {
       const {expenseWorkbook}=await import('@/src/lib/expense-workbook');
-      const bytes=await expenseWorkbook(await expensesForExport({...user,empresaId:user.empresaId},filters),filters,user.empresaNome||'Restaurante',await listCategories(user.empresaId),await financeDays(user.empresaId,filters));
+      const data = await expenseExportData({ ...user, empresaId: user.empresaId }, filters);
+      const bytes=await expenseWorkbook(data.rows,filters,user.empresaNome||'Restaurante',data.categories,data.financial);
       return new Response(bytes,{headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':`attachment; filename="gastos-${filters.start}-${filters.end}.xlsx"`,'Cache-Control':'no-store'}});
     }
     return NextResponse.json(await expenseDashboard({ ...user, empresaId: user.empresaId }, filters), { headers: { 'Cache-Control': 'no-store' } });

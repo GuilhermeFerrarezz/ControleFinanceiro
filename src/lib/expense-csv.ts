@@ -1,3 +1,4 @@
+import { decimalCents, sumCents } from './financial-math';
 import { parse } from 'csv-parse/sync';
 import { createHash } from 'node:crypto';
 import { InputError, textValue } from './validation';
@@ -17,7 +18,7 @@ const escapedCsvText = /^[\s]*[=+@\-\t\r\n']/;
 export const csvCell=(value:string)=>`"${(escapedCsvText.test(value)?"'":'')+value.replaceAll('"','""')}"`;
 export function expenseCsv(rows:IExpense[]) {
   const lines=[CSV_HEADERS,...rows.map(row=>[
-    `Data: ${displayDate(row.date)}`,row.description,(row.amountCents/100).toFixed(2).replace('.',','),
+    `Data: ${displayDate(row.date)}`,row.description,decimalCents(row.amountCents),
     row.categoryLabel || categoryInfo(row.category).label,row.merchant,row.status==='paid'?'Pago':'A pagar',
     PAYMENT_METHODS.find(item=>item.id===row.paymentMethod)!.label,row.authorName,row.notes,row.id,
   ])];
@@ -145,7 +146,7 @@ export async function previewExpenseCsv(actor:ExpenseActor,csv:unknown,createCat
   const otherIssues=parsed.issues.filter(issue=>issue.code!=='unknown_category');
   return { unknownCategories:unknown, total,ready:rows.filter(row=>!row.duplicate&&!row.forbidden).length,duplicates:rows.filter(row=>row.duplicate).length,
     categoryPending,totalErrors:parsed.issues.length,errors:otherIssues.slice(0,30),preview:rows.slice(0,10).map(row=>({line:row.line,...row.input,categoryLabel:categoryInfo(row.input.category,options).label,duplicate:row.duplicate})),
-    totalCents:rows.filter(row=>!row.duplicate&&!row.forbidden).reduce((sum,row)=>sum+row.input.amountCents,0) };
+    totalCents:sumCents(rows.filter(row=>!row.duplicate&&!row.forbidden).map(row=>row.input.amountCents)) };
 }
 export async function importExpenseCsv(actor:ExpenseActor,csv:unknown,createCategories?:unknown) {
   const selected=categorySelection(createCategories);

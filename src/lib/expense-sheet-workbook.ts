@@ -1,3 +1,4 @@
+import { excelMoney, sumCents } from './financial-math';
 import ExcelJS from 'exceljs';
 import type { expenseSheet } from './expenses';
 import { displayDate } from './expense-shared';
@@ -17,11 +18,11 @@ export async function expenseSheetWorkbook(data: Awaited<ReturnType<typeof expen
     { header: 'Faturamento', width: 20 },
     { header: 'Resultado', width: 20 },
   ];
-  const currency = (cents: number | null) => cents === null ? null : cents / 100;
+  const currency = excelMoney;
   for (const row of rows) {
     sheet.addRow([
       new Date(`${row.date}T00:00:00Z`), ...row.amounts.map(amount => amount ? currency(amount) : null),
-      currency(row.amounts.reduce((sum, amount) => sum + amount, 0)), currency(row.revenueCents), currency(row.profitCents),
+      currency(sumCents(row.amounts)), currency(row.revenueCents), currency(row.profitCents),
     ]);
   }
   const total = sheet.addRow([
@@ -52,10 +53,11 @@ export async function expenseSheetWorkbook(data: Awaited<ReturnType<typeof expen
     ['Situação', filters.status === 'paid' ? 'Pagos' : filters.status === 'pending' ? 'A pagar' : 'Todas'],
     ['Busca', filters.q || 'Sem busca'],
     ['Faturamento informado', `${finance.recordedDays} de ${finance.periodDays} dias`],
+    ['Precisão', 'Valores com mais de 15 algarismos em centavos são exportados como texto para preservar os centavos.'],
     ['Resultado', 'Compara o faturamento informado com todos os gastos do restaurante. Pode ser parcial se faltar faturamento.'],
   ]);
   summary.getRow(1).font = { bold: true, color: { argb: 'FF254E3B' } };
-  summary.getRow(8).height = 34;
-  summary.getRow(8).alignment = { wrapText: true, vertical: 'middle' };
+  summary.getRow(9).height = 34;
+  summary.getRow(9).alignment = { wrapText: true, vertical: 'middle' };
   return new Uint8Array(await book.xlsx.writeBuffer());
 }

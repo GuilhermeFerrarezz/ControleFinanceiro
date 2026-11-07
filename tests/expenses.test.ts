@@ -67,7 +67,7 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
   await t.test('resumo e gráficos usam todos os gastos filtrados e preenchem dias sem gasto', async () => {
     const data = await list();
     assert.equal(data.count, 2); assert.equal(data.summary.totalCents, 17590); assert.equal(data.summary.paidCents, 12590); assert.equal(data.summary.pendingCents, 5000);
-    assert.equal(data.summary.previousTotalCents, 10000); assert.equal(data.summary.changePercent, 75.9); assert.equal(data.summary.averageDailyCents, 2513);
+    assert.equal(data.summary.previousTotalCents, 10000); assert.equal(data.summary.changePercent, '75.9'); assert.equal(data.summary.averageDailyCents, 2513);
     assert.equal(data.series.length, 7); assert.equal(data.series[2].totalCents, 0); assert.equal(data.categories.length, 2);
     const paid = await list(owner, `${period}&status=paid`); assert.equal(paid.count, 1); assert.equal(paid.summary.pendingCents, 0);
     assert.equal((await list(owner, `${period}&category=funcionarios`)).summary.totalCents, 5000);
@@ -510,6 +510,56 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal((await query(fixture.pool, 'SELECT id FROM expenses WHERE id=ANY($1::uuid[]) AND deleted_at IS NULL', [[outsideId, otherId]])).length, 2);
     assert.equal((await api('/expenses', owner, 'DELETE', { ...deletion, start: '2038-03-01', end: '2038-03-01' })).status, 200);
     assert.equal((await query(fixture.pool, 'SELECT id FROM expenses WHERE id=$1 AND deleted_at IS NULL', [outsideId])).length, 0);
+  });
+  await t.test('auditoria financeira reconcilia centavos entre banco, filtros, gráficos e Excel', async () => {
+    await register('audit@expenses.invalid');
+    const cookie = await login('audit@expenses.invalid');
+    const actor = (await (await api('/private', cookie)).json()).user;
+    const dates = ['2024-02-27', '2024-02-28', '2024-02-29', '2024-03-01', '2024-03-02'];
+    const categories = ['Alimentos', 'Funcionários', 'Bebidas'];
+    const amounts = Array.from({ length: 300 }, (_, index) => index % 17 === 0 ? 9999999999 : index * 37 + 1);
+    const entries = amounts.map((cents, index) => `${dates[index % 5]};Auditoria ${index};${Math.floor(cents / 100)},${String(cents % 100).padStart(2, '0')};${categories[index % 3]};${index % 2 ? 'A pagar' : 'Pago'}`);
+    entries.push('2024-02-26;Fora antes;0,16;Alimentos;Pago', '2024-03-03;Fora depois;99999999,99;Alimentos;Pago');
+    const csv = ['Data;Descrição;Valor;Categoria;Situação', ...entries].join('\n');
+    const imported = await api('/expenses/import', cookie, 'POST', { mode: 'import', csv });
+    assert.equal(imported.status, 200, await imported.clone().text());
+    const expected = amounts.reduce((sum, value) => sum + BigInt(value), BigInt(0));
+    const sales = [0, 12345, 1, 9999999999];
+    for (const [index, cents] of sales.entries()) {
+      assert.equal((await api('/revenue', cookie, 'POST', { mode: 'save', empresaId: actor.empresaId, date: dates[index], totalCents: cents })).status, 200);
+    }
+    const range = 'start=2024-02-27&end=2024-03-02';
+    const data = await list(cookie, range);
+    assert.equal(BigInt(data.summary.totalCents), expected);
+    assert.equal(data.count, 300);
+    assert.equal(BigInt(data.summary.paidCents) + BigInt(data.summary.pendingCents), expected);
+    for (const collection of [data.categories, data.series]) {
+      assert.equal(collection.reduce((sum: bigint, row: { totalCents: number }) => sum + BigInt(row.totalCents), BigInt(0)), expected);
+    }
+    assert.equal(data.summary.averageDailyCents, Number(expected / BigInt(5) + (expected % BigInt(5) >= BigInt(3) ? BigInt(1) : BigInt(0))));
+    const revenue = sales.reduce((sum, value) => sum + BigInt(value), BigInt(0));
+    assert.equal(BigInt(data.finance.revenueCents), revenue);
+    assert.equal(BigInt(data.finance.profitCents), revenue - expected);
+    assert.equal(data.finance.recordedDays, 4);
+    for (const [index, date] of dates.entries()) {
+      const cost = amounts.reduce((sum, value, position) => position % 5 === index ? sum + BigInt(value) : sum, BigInt(0));
+      const point = data.finance.series[index];
+      assert.equal(point.date, date);
+      assert.equal(BigInt(point.expenseCents), cost);
+      assert.equal(point.profitCents, index < sales.length ? Number(BigInt(sales[index]) - cost) : null);
+    }
+    const paid = await list(cookie, range + '&status=paid');
+    assert.equal(paid.summary.totalCents, data.summary.paidCents);
+    assert.deepEqual(paid.finance, data.finance);
+    const stored = await query<{ cents: string }>(fixture.pool, `SELECT SUM(amount_cents)::text AS cents FROM expenses WHERE empresa_id=$1 AND date BETWEEN '2024-02-27' AND '2024-03-02' AND deleted_at IS NULL`, [actor.empresaId]);
+    assert.equal(stored[0].cents, String(expected));
+    const response = await api('/expenses/sheet?' + range, cookie, 'POST', { empresaId: actor.empresaId, columns: ['alimentos', 'funcionarios', 'bebidas'] });
+    assert.equal(response.status, 200, await response.clone().text());
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await response.arrayBuffer());
+    const sheet = workbook.getWorksheet('Planilha de gastos')!;
+    assert.equal(Math.round(Number(sheet.getRow(7).getCell(sheet.columnCount - 2).value) * 100), Number(expected));
+    assert.equal(Math.round(Number(sheet.getRow(7).getCell(sheet.columnCount).value) * 100), Number(revenue - expected));
   });
   await t.test('revogação concorrente impede criar, editar ou excluir gastos com acesso antigo',async()=>{
     const created=await create(employee,{description:'Teste de revogação concorrente'});

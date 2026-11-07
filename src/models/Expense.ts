@@ -1,3 +1,4 @@
+import { safeInteger } from '../lib/financial-math';
 import { db } from '../lib/db';
 import type { Queryable } from '../lib/postgres';
 import type { ExpenseInput, ExpenseFilters } from '../lib/expense-shared';
@@ -12,9 +13,7 @@ const columns = `e.id,e.empresa_id AS "empresaId",e.created_by AS "createdBy",e.
   e.description,e.amount_cents AS "amountCents",to_char(e.date,'YYYY-MM-DD') AS date,e.category,e.merchant,e.status,
   e.payment_method AS "paymentMethod",e.notes,e.version,(e.demo_key IS NOT NULL) AS "isDemo",e.created_at AS "createdAt",e.deleted_at AS "deletedAt"`;
 export function integer(value: unknown) {
-  const number = Number(value);
-  if (!Number.isSafeInteger(number)) throw new Error('Valor agregado fora do intervalo seguro.');
-  return number;
+  return safeInteger(value);
 }
 function expenseRow(row: IExpense & { createdAt: string | Date }) {
   return { ...row, amountCents: integer(row.amountCents), createdAt: new Date(row.createdAt).toISOString() } as IExpense;

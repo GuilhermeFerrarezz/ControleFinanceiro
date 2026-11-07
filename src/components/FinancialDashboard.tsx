@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { formatPercent } from '@/src/lib/financial-math';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, errorMessage } from '@/src/lib/api';
 import { addDays, categoryInfo, displayDate, EXPENSE_CATEGORIES, money, monthPeriod, yearPeriod, selectedPeriodYear, todayInSaoPaulo, type CategoryOption, type ExpenseDashboardData, type ExpenseFilters, type ExpenseRecord } from '@/src/lib/expense-shared';
@@ -132,7 +133,7 @@ export default function FinancialDashboard({ initialData, view, user, restaurant
     />}
     <div aria-busy={loading} className={loading ? styles.refreshing : undefined}>
       <section className={styles.stats} aria-label="Resumo dos gastos">
-        <article className={`${styles.stat} ${styles.totalStat}`}><span><Icon name="receipt" size={18} />Total do período</span><strong>{money(summary.totalCents)}</strong><small>{summary.changePercent === null ? 'Sem base no período anterior' : `${Math.abs(summary.changePercent).toLocaleString('pt-BR')}% ${summary.changePercent > 0 ? 'a mais' : summary.changePercent < 0 ? 'a menos' : 'de variação'} em relação ao período anterior equivalente`}</small></article>
+        <article className={`${styles.stat} ${styles.totalStat}`}><span><Icon name="receipt" size={18} />Total do período</span><strong>{money(summary.totalCents)}</strong><small>{summary.changePercent === null ? 'Sem base no período anterior' : `${formatPercent(summary.changePercent.replace('-', ''))}% ${summary.changePercent === '0' ? 'de variação' : summary.changePercent.startsWith('-') ? 'a menos' : 'a mais'} em relação ao período anterior equivalente`}</small></article>
         <article className={styles.stat}><span><i className={styles.paidDot} />Já pago</span><strong>{money(summary.paidCents)}</strong><small>Pagamentos concluídos</small></article>
         <article className={styles.stat}><span><i className={styles.pendingDot} />A pagar</span><strong>{money(summary.pendingCents)}</strong><small>Gastos ainda não pagos</small></article>
         <article className={styles.stat}><span><Icon name="chart" size={18} />Média por dia</span><strong>{money(summary.averageDailyCents)}</strong><small>Considera todos os dias do período</small></article>

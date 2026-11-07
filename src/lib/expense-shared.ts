@@ -1,3 +1,5 @@
+import { formatMoney, sumCents } from './financial-math';
+
 export const EXPENSE_CATEGORIES = [
   { id: 'alimentos', label: 'Alimentos', color: '#406a4e', icon: 'leaf' },
   { id: 'funcionarios', label: 'Funcionários', color: '#a1ad6c', icon: 'team' },
@@ -23,8 +25,7 @@ export const PAYMENT_METHODS = [
 export type PaymentMethod = typeof PAYMENT_METHODS[number]['id'];
 export type ExpenseStatus = 'paid' | 'pending';
 export const MAX_AMOUNT_CENTS = 9_999_999_999;
-const currencyFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
-export const money = (cents: number) => currencyFormatter.format(cents / 100);
+export const money = formatMoney;
 export type DailyRevenue = { date: string; totalCents: number };
 export type FinancePoint = {
   date: string; revenueCents: number | null; expenseCents: number; profitCents: number | null;
@@ -64,11 +65,12 @@ export function selectedPeriodYear(period: { start: string; end: string }, today
   return period.start === expected.start && period.end === expected.end ? String(year) : '';
 }
 export function buildExpenseSeries(daily:{date:string;totalCents:number}[],start:string,end:string) {
+  daily = daily.filter(day => day.date >= start && day.date <= end);
   const duration=daysBetween(start,end);
   const seriesInterval:'day'|'month'|'year'=duration<=90?'day':duration<=366*5?'month':'year';
   const periodKey=(date:string)=>seriesInterval==='day'?date:seriesInterval==='month'?`${date.slice(0,7)}-01`:`${date.slice(0,4)}-01-01`;
   const byPeriod=new Map<string,number>();
-  for(const day of daily){const key=periodKey(day.date);byPeriod.set(key,(byPeriod.get(key)||0)+day.totalCents);}
+  for(const day of daily){const key=periodKey(day.date);byPeriod.set(key,sumCents([byPeriod.get(key)||0, day.totalCents]));}
   const series=[];
   for(let date=periodKey(start);date<=end;){
     series.push({date,totalCents:byPeriod.get(date)||0});
@@ -94,7 +96,7 @@ export type ExpenseDashboardData = {
   categoryOptions?: CategoryOption[];
   merchantOptions?: import("./catalog-shared").MerchantOption[];
   filters: ExpenseFilters; expenses: ExpenseRecord[]; count: number; pages: number; pageSize: number; years: number[];
-  summary: { totalCents: number; paidCents: number; pendingCents: number; count: number; averageDailyCents: number; previousTotalCents: number; changePercent: number | null };
+  summary: { totalCents: number; paidCents: number; pendingCents: number; count: number; averageDailyCents: number; previousTotalCents: number; changePercent: string | null };
   categories: { category: ExpenseCategory; totalCents: number; count: number }[];
   seriesInterval: 'day' | 'month' | 'year';
   peakDay: {date:string;totalCents:number} | null; daysWithExpenses:number; availablePeriod:{start:string;end:string}|null;

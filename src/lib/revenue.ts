@@ -1,3 +1,4 @@
+import { subtractCents, sumCents } from './financial-math';
 import { db } from './db';
 import { inTransaction, type Queryable } from './postgres';
 import { findMembership } from '../models/Membership';
@@ -49,13 +50,15 @@ export async function financeDays(empresaId: string, period: ExpenseFilters, cli
 
 export function financeComparison(expenses: DailyRevenue[], revenue: DailyRevenue[], period: ExpenseFilters): FinanceComparison {
   const { start, end } = period;
+  expenses = expenses.filter(row => row.date >= start && row.date <= end);
+  revenue = revenue.filter(row => row.date >= start && row.date <= end);
   const { series: costs, seriesInterval } = buildExpenseSeries(expenses, start, end);
   const sales = buildExpenseSeries(revenue, start, end).series;
   const coverage = buildExpenseSeries(revenue.map(row => ({ ...row, totalCents: 1 })), start, end).series;
-  const revenueCents = integer(revenue.reduce((total, row) => total + row.totalCents, 0));
-  const expenseCents = integer(expenses.reduce((total, row) => total + row.totalCents, 0));
+  const revenueCents = sumCents(revenue.map(row => row.totalCents));
+  const expenseCents = sumCents(expenses.map(row => row.totalCents));
   return {
-    revenueCents, expenseCents, profitCents: revenue.length ? revenueCents - expenseCents : null,
+    revenueCents, expenseCents, profitCents: revenue.length ? subtractCents(revenueCents, expenseCents) : null,
     recordedDays: revenue.length, periodDays: daysBetween(start, end), seriesInterval,
     series: costs.map((row, index) => {
       const next = new Date(`${row.date}T12:00:00Z`);
@@ -66,7 +69,7 @@ export function financeComparison(expenses: DailyRevenue[], revenue: DailyRevenu
       return {
         date: row.date, expenseCents: row.totalCents,
         revenueCents: coverage[index].totalCents ? sales[index].totalCents : null,
-        profitCents: coverage[index].totalCents ? sales[index].totalCents - row.totalCents : null,
+        profitCents: coverage[index].totalCents ? subtractCents(sales[index].totalCents, row.totalCents) : null,
         recordedDays: coverage[index].totalCents,
         periodDays: daysBetween(row.date < start ? start : row.date, bucketEnd > end ? end : bucketEnd),
       };

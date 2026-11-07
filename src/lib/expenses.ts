@@ -1,3 +1,4 @@
+import { averageCents, changePercent, subtractCents, sumCents } from './financial-math';
 import { deleteExpensesInPeriod, expenseBounds, expenseYears, expenseCategories, expenseDaily, expenseDailyByCategory, expenseTotals, findExpense, insertExpense, insertExpenseAudit, listExpenses, updateExpense, type IExpense } from '../models/Expense';
 import { inTransaction } from './postgres';
 import { financeComparison, financeDays } from './revenue';
@@ -135,8 +136,8 @@ export async function expenseDashboard(actor: ExpenseActor,requested: ExpenseFil
     const trend=buildExpenseSeries(daily,filters.start,filters.end);
     const availablePeriod=await expenseBounds(actor.empresaId,client);
     return { categoryOptions, merchantOptions, finance, filters:{...filters,page},expenses:expenses.map(row=>toRecord(row,actor)),count:totals.count,pages,pageSize,years,
-      summary:{...totals,averageDailyCents:Math.round(totals.totalCents/duration),previousTotalCents:previous.totalCents,
-        changePercent:previous.totalCents>0 ? Math.round((totals.totalCents-previous.totalCents)/previous.totalCents*1000)/10 : null},categories,...trend,availablePeriod };
+      summary:{...totals,averageDailyCents:averageCents(totals.totalCents,duration),previousTotalCents:previous.totalCents,
+        changePercent:changePercent(totals.totalCents,previous.totalCents)},categories,...trend,availablePeriod };
   },true);
 }
 async function catalogFilters(empresaId: string, requested: ExpenseFilters, client: import('./postgres').Queryable) {
@@ -199,11 +200,11 @@ export async function expenseSheet(actor: ExpenseActor, requested: ExpenseFilter
     }
     const totals = await expenseDailyByCategory(actor.empresaId, { ...filters, start, end }, client);
     const cells = new Map(totals.map(row => [`${row.date}/${row.category}`, row.totalCents]));
-    const totalCents = columns.reduce((sum, item) => sum + item.totalCents, 0);
+    const totalCents = sumCents(columns.map(item => item.totalCents));
     const rows = Array.from({ length: dayCount }, (_, index) => {
       const date = addDays(start, index);
       const revenueCents = revenueByDate.get(date) ?? null;
-      const profitCents = revenueCents === null ? null : revenueCents - (costsByDate.get(date) ?? 0);
+      const profitCents = revenueCents === null ? null : subtractCents(revenueCents, costsByDate.get(date) ?? 0);
       return { date, revenueCents, profitCents, amounts: columns.map(item => cells.get(`${date}/${item.id}`) ?? 0) };
     });
     let details = null;
@@ -218,8 +219,16 @@ export async function expenseSheet(actor: ExpenseActor, requested: ExpenseFilter
   }, true);
 }
 
-export async function expensesForExport(actor: ExpenseActor,filters: ExpenseFilters) {
-  const rows=await listExpenses(actor.empresaId,filters,10001);
+export async function expensesForExport(actor: ExpenseActor,filters: ExpenseFilters, client?: import('./postgres').Queryable) {
+  const rows=await listExpenses(actor.empresaId,filters,10001,0,client);
   if(rows.length>10000) throw new InputError('A exportação permite até 10 mil gastos. Reduza o período ou use mais filtros.');
   return rows;
+}
+
+export async function expenseExportData(actor: ExpenseActor, filters: ExpenseFilters) {
+  return inTransaction(async client => ({
+    rows: await expensesForExport(actor, filters, client),
+    categories: await listCategories(actor.empresaId, client),
+    financial: await financeDays(actor.empresaId, filters, client),
+  }), true);
 }

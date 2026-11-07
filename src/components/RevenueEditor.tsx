@@ -1,4 +1,5 @@
 'use client';
+import { decimalCents } from '@/src/lib/financial-math';
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
@@ -14,7 +15,7 @@ export default function RevenueEditor({ empresaId, today, rows, canEdit }: {
   const [date, setDate] = useState(today);
   const [amount, setAmount] = useState(() => {
     const existing = rows.find(row => row.date === today);
-    return existing ? (existing.totalCents / 100).toFixed(2).replace('.', ',') : '';
+    return existing ? decimalCents(existing.totalCents) : '';
   });
   const amountInput = useRef<HTMLInputElement>(null);
   const [csv, setCsv] = useState('');
@@ -49,7 +50,7 @@ export default function RevenueEditor({ empresaId, today, rows, canEdit }: {
   function chooseDate(value: string) {
     setDate(value);
     const existing = rows.find(row => row.date === value);
-    setAmount(existing ? (existing.totalCents / 100).toFixed(2).replace('.', ',') : '');
+    setAmount(existing ? decimalCents(existing.totalCents) : '');
   }
   async function submit(event: FormEvent) {
     event.preventDefault();

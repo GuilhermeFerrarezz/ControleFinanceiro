@@ -1,4 +1,5 @@
 'use client';
+import { decimalCents } from '@/src/lib/financial-math';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, errorMessage } from '@/src/lib/api';
 import { PAYMENT_METHODS, newExpenseRequestId, parseMoneyInput, todayInSaoPaulo, type ExpenseRecord, type CategoryOption } from '@/src/lib/expense-shared';
@@ -54,7 +55,7 @@ export default function ExpenseForm({ expense, empresaId, categoryOptions, onClo
       <p className={styles.dialogIntro}>Preencha o essencial. Os campos com * são obrigatórios.</p>
       <form ref={form} onSubmit={submit} className={styles.expenseForm} aria-busy={saving || merchantBusy}>
         <label className={styles.field} htmlFor="expense-description">Descrição *<input id="expense-description" name="description" placeholder="Ex.: Compra de hortifruti ou pagamento de diária" minLength={2} maxLength={120} defaultValue={expense?.description} required autoFocus disabled={saving || merchantBusy} /></label>
-        <div className={styles.formRow}><label className={styles.field} htmlFor="expense-amount">Valor (R$) *<input id="expense-amount" name="amount" inputMode="decimal" placeholder="0,00" defaultValue={expense ? (expense.amountCents / 100).toFixed(2).replace('.', ',') : ''} required disabled={saving || merchantBusy} autoComplete="off" maxLength={18} /></label>
+        <div className={styles.formRow}><label className={styles.field} htmlFor="expense-amount">Valor (R$) *<input id="expense-amount" name="amount" inputMode="decimal" placeholder="0,00" defaultValue={expense ? decimalCents(expense.amountCents) : ''} required disabled={saving || merchantBusy} autoComplete="off" maxLength={18} /></label>
           <label className={styles.field} htmlFor="expense-date">Data do gasto *<input id="expense-date" name="date" type="date" min="2000-01-01" max="2100-12-31" defaultValue={expense?.date || todayInSaoPaulo()} required disabled={saving || merchantBusy} /></label></div>
         <label className={styles.field} htmlFor="expense-category">Categoria *<select id="expense-category" name="category" defaultValue={expense?.category || categories.find(item => !item.archived)?.id} required disabled={saving || merchantBusy}><option value="">Selecione uma categoria</option>{categories.filter(item => !item.archived || item.id === expense?.category).map(category => <option key={category.id} value={category.id}>{category.label}</option>)}</select></label>
         <MerchantInput onBusyChange={setMerchantBusy} value={merchant} onChange={setMerchant} merchants={merchants} onCreated={item => setMerchants(current => [...current.filter(existing => existing.id !== item.id), item])} empresaId={empresaId} disabled={saving || merchantBusy} />

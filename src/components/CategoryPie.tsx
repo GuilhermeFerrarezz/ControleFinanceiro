@@ -1,4 +1,5 @@
 'use client';
+import { formatPercent, ratioPercent, sumCents } from '@/src/lib/financial-math';
 import { useState } from 'react';
 import { categoryInfo, EXPENSE_CATEGORIES, money, type CategoryOption, type ExpenseDashboardData, type ExpenseCategory } from '@/src/lib/expense-shared';
 import styles from './finance.module.css';
@@ -17,12 +18,12 @@ export default function CategoryPie({ categories,total,count,options = EXPENSE_C
   const [selectedId,setSelectedId] = useState<ExpenseCategory | null>(null);
   const selected=categories.find(item=>item.category===selectedId);
   const selectedCategory=selected ? categoryInfo(selected.category, options) : undefined;
-  const percent=(value:number)=>new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1}).format(value/total*100);
+  const percent=(value:number)=>formatPercent(ratioPercent(value, total) ?? '0');
   return <>
     <div className={styles.interactiveDonut}><svg viewBox="0 0 220 220" role="group" aria-label="Gráfico interativo de gastos por categoria">
       {categories.map((item,index)=>{
         const category=categoryInfo(item.category, options);
-        const start=categories.slice(0,index).reduce((sum,row)=>sum+row.totalCents,0)/total;
+        const start=sumCents(categories.slice(0,index).map(row=>row.totalCents))/total;
         const choose=()=>setSelectedId(item.category);
         return <path key={item.category} d={slicePath(start,item.totalCents/total)} fill={category.color} className={styles.donutSlice}
           role="button" tabIndex={0} aria-label={`Selecionar categoria ${category.label}`} aria-pressed={selected?.category===item.category}
