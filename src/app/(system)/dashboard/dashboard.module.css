@@ -58,3 +58,21 @@
 
 .editButton { background: #dcefd6; color: #315c35; }
 .editButton:hover:not(:disabled) { background: #c8e4bf; }
+
+.catalogGrid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 20px; align-items: stretch; }
+.catalogCard { display: flex; flex-direction: column; padding: 22px; min-width: 0; }
+.catalogCard > h2 { font-size: 20px; line-height: 1.35; margin: 0; min-height: 54px; }
+.catalogIntro { min-height: 72px; margin: 10px 0 18px; line-height: 1.6; font-size: 13px; }
+.catalogCreate { min-height: 248px; align-content: start; margin: 0 0 18px; }
+.catalogSearch { margin-top: auto; }
+.catalogCard input,.catalogCard select { width: 100%; min-width: 0; font-size: 16px; min-height: 46px; }
+.catalogCard button { min-height: 44px; }
+.catalogCard .catalogList { height: 340px; flex: 0 0 340px; overflow-y: scroll; overscroll-behavior-y: contain; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: #8ba17a #f0f3e9; padding-right: 10px; margin-top: 18px; }
+.catalogList::-webkit-scrollbar { width: 8px; }.catalogList::-webkit-scrollbar-track { background: #f0f3e9; border-radius: 8px; }.catalogList::-webkit-scrollbar-thumb { background: #8ba17a; border-radius: 8px; }
+.catalogCard .catalogRow { align-items: flex-start; }
+.catalogCard .catalogRow > span { flex-basis: 100%; min-width: 0; }
+.catalogCard .memberActions { width: 100%; display: flex; gap: 10px; }
+.catalogCard .memberActions button { flex: 1; margin: 0; }
+.catalogCard .catalogRow > button { flex: 1; min-width: 0; }
+@media (max-width: 1100px) { .catalogGrid { grid-template-columns: 1fr; gap: 20px; }.catalogCard > h2,.catalogIntro,.catalogCreate { min-height: 0; }.catalogCard { padding: 20px; }.catalogCreate { margin-bottom: 20px; }.catalogCard .catalogRow > span { flex-basis: auto; }.catalogCard .memberActions { width: auto; }.catalogCard .catalogList { height: 320px; flex-basis: 320px; } }
+@media (max-width: 480px) { .catalogGrid { gap: 16px; }.catalogCard { padding: 18px 14px; }.catalogCard .catalogRow { gap: 8px; }.catalogCard .catalogRow > span { flex-basis: 100%; }.catalogCard .memberActions { width: 100%; }.catalogCard .catalogList { height: 300px; flex-basis: 300px; } }

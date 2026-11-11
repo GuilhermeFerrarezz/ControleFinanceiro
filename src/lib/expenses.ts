@@ -1,7 +1,8 @@
+import { resolveExpenseProducts } from './expense-product-catalog';
 import { isDeepStrictEqual } from 'node:util';
 import { validateExpenseItems } from './expense-items';
 import { averageCents, changePercent, subtractCents, sumCents } from './financial-math';
-import { expenseProducts, deleteExpensesInPeriod, expenseBounds, expenseYears, expenseCategories, expenseDaily, expenseDailyByCategory, expenseTotals, findExpense, insertExpense, insertExpenseAudit, listExpenses, updateExpense, type IExpense } from '../models/Expense';
+import { expenseProductDaily, expenseProducts, deleteExpensesInPeriod, expenseBounds, expenseYears, expenseCategories, expenseDaily, expenseDailyByCategory, expenseTotals, findExpense, insertExpense, insertExpenseAudit, listExpenses, updateExpense, type IExpense } from '../models/Expense';
 import { inTransaction } from './postgres';
 import { financeComparison, financeDays } from './revenue';
 import { InputError } from './validation';
@@ -80,6 +81,7 @@ export async function createExpense(actor: ExpenseActor, input: ExpenseInput, re
   return inTransaction(async client => {
     if (!await findMembership(actor.id,actor.empresaId,client,true)) throw new ExpenseError('Você não tem mais acesso a este restaurante.',403);
     await requireCategory(actor.empresaId, input.category, client);
+    input = await resolveExpenseProducts(actor.empresaId, input, client);
     const { expense, created } = await insertExpense(actor.empresaId,actor.id,requestId,input,client);
     if (!created) {
       const matches = expense.createdBy === actor.id && !expense.deletedAt && isDeepStrictEqual(expense.items || [], input.items || []) && Object.entries(input).every(([field,value]) => (field === 'items' ? isDeepStrictEqual(expense.items || [], value) : expense[field as keyof IExpense] === value));
@@ -100,6 +102,7 @@ export async function changeExpense(actor: ExpenseActor,id: string,version: numb
     if (input && input.category !== expense.category) await requireCategory(actor.empresaId, input.category, client);
     if (membership.role !== 'owner' && expense.createdBy !== actor.id) throw new ExpenseError('Você pode alterar apenas os seus próprios lançamentos.',403);
     if (expense.version !== version) throw new ExpenseError('Este lançamento foi alterado por outra pessoa. Atualize a lista e tente novamente.',409);
+    if (input) input = await resolveExpenseProducts(actor.empresaId, input, client, expense);
     const updated = await updateExpense(id,actor.empresaId,actor.id,input,client);
     await insertExpenseAudit(updated,actor.id,input ? 'updated' : 'deleted',inputSnapshot(expense),inputSnapshot(updated),client);
   });
@@ -139,7 +142,8 @@ export async function expenseDashboard(actor: ExpenseActor,requested: ExpenseFil
     const trend=buildExpenseSeries(daily,filters.start,filters.end);
     const availablePeriod=await expenseBounds(actor.empresaId,client);
     const products = await expenseProducts(actor.empresaId, filters, client);
-    return { products, categoryOptions, merchantOptions, finance, filters:{...filters,page},expenses:expenses.map(row=>toRecord(row,actor)),count:totals.count,pages,pageSize,years,
+    const productDaily = await expenseProductDaily(actor.empresaId, filters, client);
+    return { productDaily, products, categoryOptions, merchantOptions, finance, filters:{...filters,page},expenses:expenses.map(row=>toRecord(row,actor)),count:totals.count,pages,pageSize,years,
       summary:{...totals,averageDailyCents:averageCents(totals.totalCents,duration),previousTotalCents:previous.totalCents,
         changePercent:changePercent(totals.totalCents,previous.totalCents)},categories,...trend,availablePeriod };
   },true);

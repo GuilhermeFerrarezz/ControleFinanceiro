@@ -1,7 +1,7 @@
 import { db } from '../lib/db';
 import type { Queryable } from '../lib/postgres';
 import { EXPENSE_CATEGORIES, type CategoryOption } from '../lib/expense-shared';
-import { normalizeCatalogName, type MerchantOption } from '../lib/catalog-shared';
+import { BASIC_PRODUCTS, normalizeCatalogName, type CatalogKind, type ProductOption, type MerchantOption } from '../lib/catalog-shared';
 import { InputError } from '../lib/validation';
 export async function lockCatalog(empresaId: string, client: Queryable) {
   await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`catalog:${empresaId}`]);
@@ -17,7 +17,7 @@ export async function listCategories(empresaId: string, client: Queryable = db):
 export async function listMerchants(empresaId: string, client: Queryable = db) {
   return (await client.query<MerchantOption>("SELECT id,name FROM restaurant_catalog WHERE empresa_id=$1 AND kind='merchant' AND deleted_at IS NULL ORDER BY name,id", [empresaId])).rows;
 }
-export async function insertCatalogEntry(empresaId: string, kind: 'category' | 'merchant', name: string, client: Queryable) {
+export async function insertCatalogEntry(empresaId: string, kind: CatalogKind, name: string, client: Queryable, defaultUnit: ProductOption['defaultUnit'] = 'un') {
   await lockCatalog(empresaId, client);
   const normalized = normalizeCatalogName(name);
   if (kind === 'category') {
@@ -27,14 +27,14 @@ export async function insertCatalogEntry(empresaId: string, kind: 'category' | '
       return { id: existing.id, name: existing.label };
     }
   }
-  const { rows } = await client.query<MerchantOption>(`INSERT INTO restaurant_catalog (empresa_id,kind,name,normalized_name) VALUES ($1,$2,$3,$4)
-    ON CONFLICT (empresa_id,kind,normalized_name) DO UPDATE SET deleted_at=NULL RETURNING id,name`, [empresaId, kind, name, normalized]);
+  const { rows } = await client.query<ProductOption>(`INSERT INTO restaurant_catalog (empresa_id,kind,name,normalized_name,default_unit) VALUES ($1,$2,$3,$4,$5)
+    ON CONFLICT (empresa_id,kind,normalized_name) DO UPDATE SET deleted_at=NULL RETURNING id,name,default_unit AS "defaultUnit"`, [empresaId, kind, name, normalized,defaultUnit]);
   return rows[0];
 }
-export async function changeCatalogEntry(empresaId: string, kind: 'category' | 'merchant', id: string, previousName: string, name: string | null, client: Queryable) {
+export async function changeCatalogEntry(empresaId: string, kind: CatalogKind, id: string, previousName: string, name: string | null, client: Queryable) {
   await lockCatalog(empresaId, client);
   const categories = kind === 'category' ? await listCategories(empresaId, client) : [];
-  const items = kind === 'category' ? categories.filter(item => !item.archived).map(item => ({ id: item.id, name: item.label })) : await listMerchants(empresaId, client);
+  const items = kind === 'category' ? categories.filter(item => !item.archived).map(item => ({ id: item.id, name: item.label })) : kind === 'product' ? (await listProducts(empresaId, client)).filter(item => !item.archived) : await listMerchants(empresaId, client);
   const existing = items.find(item => item.id === id);
   if (!existing) throw new InputError('Cadastro não encontrado. Atualize a página.');
   if (existing.name !== previousName) throw new InputError('Este cadastro foi alterado. Atualize a página antes de continuar.');
@@ -46,4 +46,14 @@ export async function changeCatalogEntry(empresaId: string, kind: 'category' | '
   }
   if (name === null) await client.query('UPDATE restaurant_catalog SET deleted_at=CURRENT_TIMESTAMP WHERE empresa_id=$1 AND kind=$2 AND COALESCE(category_key,id::text)=$3', [empresaId, kind, id]);
   else await client.query('UPDATE restaurant_catalog SET name=$4,normalized_name=$5 WHERE empresa_id=$1 AND kind=$2 AND COALESCE(category_key,id::text)=$3', [empresaId, kind, id, name, normalizeCatalogName(name)]);
+}
+
+export async function listProducts(empresaId: string, client: Queryable = db): Promise<ProductOption[]> {
+  return (await client.query<ProductOption>(`SELECT id,name,default_unit AS "defaultUnit",(deleted_at IS NOT NULL) AS archived
+    FROM restaurant_catalog WHERE empresa_id=$1 AND kind='product' ORDER BY name,id`, [empresaId])).rows;
+}
+export async function seedProducts(empresaId: string, client: Queryable) {
+  await client.query(`INSERT INTO restaurant_catalog (empresa_id,kind,name,normalized_name,default_unit)
+    SELECT $1,'product',name,normalized,unit FROM jsonb_to_recordset($2::jsonb) AS p(name text,normalized text,unit text)
+    ON CONFLICT (empresa_id,kind,normalized_name) DO NOTHING`, [empresaId, JSON.stringify(BASIC_PRODUCTS.map(item => ({ name: item.name, normalized: normalizeCatalogName(item.name), unit: item.defaultUnit })))]);
 }

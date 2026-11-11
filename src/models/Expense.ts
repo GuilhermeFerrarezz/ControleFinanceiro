@@ -71,7 +71,7 @@ function scope(empresaId: string, filters: ExpenseFilters) {
   if (filters.status) { values.push(filters.status); conditions.push(`e.status=$${values.length}`); }
   if (filters.q) {
     values.push(`%${filters.q.replace(/[\\%_]/g, '\\$&')}%`);
-    conditions.push(`(e.description ILIKE $${values.length} ESCAPE E'\\\\' OR e.merchant ILIKE $${values.length} ESCAPE E'\\\\' OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.items) item WHERE item->>'name' ILIKE $${values.length} ESCAPE E'\\\\'))`);
+    conditions.push(`(e.description ILIKE $${values.length} ESCAPE E'\\\\' OR e.merchant ILIKE $${values.length} ESCAPE E'\\\\' OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.items) item LEFT JOIN restaurant_catalog product ON product.empresa_id=e.empresa_id AND product.kind='product' AND product.id::text=item->>'productId' WHERE coalesce(product.name,item->>'name') ILIKE $${values.length} ESCAPE E'\\\\'))`);
   }
   return { clause: conditions.join(' AND '), values };
 }
@@ -152,15 +152,25 @@ export async function insertImportedExpenses(empresaId:string,userId:string,item
   return rows[0].imported;
 }
 
-// Aggregate every matching purchase, independently of the expense-list pagination.
+// Identity and display names follow the catalog, even after a product is renamed or archived.
+const productJoin = `LEFT JOIN restaurant_catalog p ON p.empresa_id=e.empresa_id AND p.kind='product' AND p.id::text=item->>'productId'`;
 export async function expenseProducts(empresaId: string, filters: ExpenseFilters, client: Queryable) {
   const { clause, values } = scope(empresaId, filters);
-  const { rows } = await client.query<{ name: string; unit: import('../lib/expense-shared').ExpenseItem['unit']; quantity: string; amountCents: string; purchases: string }>(`
-    SELECT min(btrim(item->>'name')) AS name, item->>'unit' AS unit,
+  const { rows } = await client.query<{ productId: string; name: string; unit: import('../lib/expense-shared').ExpenseItem['unit']; quantity: string; amountCents: string; purchases: string }>(`
+    SELECT coalesce(p.id::text,lower(btrim(item->>'name'))) AS "productId",coalesce(min(p.name),min(btrim(item->>'name'))) AS name, item->>'unit' AS unit,
       sum((item->>'quantity')::numeric)::text AS quantity,
       sum((item->>'amountCents')::bigint)::text AS "amountCents", count(DISTINCT e.id)::text AS purchases
-    FROM expenses e CROSS JOIN LATERAL jsonb_array_elements(e.items) item
-    WHERE ${clause} GROUP BY lower(btrim(item->>'name')), item->>'unit'
+    FROM expenses e CROSS JOIN LATERAL jsonb_array_elements(e.items) item ${productJoin}
+    WHERE ${clause} GROUP BY coalesce(p.id::text,lower(btrim(item->>'name'))), item->>'unit'
     ORDER BY sum((item->>'amountCents')::bigint) DESC, name, unit`, values);
   return rows.map(row => ({ ...row, quantity: Number(row.quantity), amountCents: integer(row.amountCents), purchases: integer(row.purchases) }));
+}
+export async function expenseProductDaily(empresaId: string, filters: ExpenseFilters, client: Queryable) {
+  const { clause, values } = scope(empresaId, filters);
+  const { rows } = await client.query<{ date: string; productId: string; name: string; totalCents: string }>(`
+    SELECT to_char(e.date,'YYYY-MM-DD') AS date,coalesce(p.id::text,lower(btrim(item->>'name'))) AS "productId",
+      coalesce(min(p.name),min(btrim(item->>'name'))) AS name,sum((item->>'amountCents')::bigint)::text AS "totalCents"
+    FROM expenses e CROSS JOIN LATERAL jsonb_array_elements(e.items) item ${productJoin}
+    WHERE ${clause} GROUP BY e.date,coalesce(p.id::text,lower(btrim(item->>'name'))) ORDER BY e.date`, values);
+  return rows.map(row => ({ ...row, totalCents: integer(row.totalCents) }));
 }

@@ -563,6 +563,8 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
   });
   await t.test('produtos persistem, somam além da paginação e respeitam edição, exclusão e restaurante', async () => {
     const items = [{ name: 'Carne bovina', quantity: 1.25, unit: 'kg', amountCents: 4500 }, { name: 'Arroz', quantity: 2, unit: 'pacote', amountCents: 2000 }];
+    const catalog = (await (await api('/catalog', owner)).json()).products;
+    const registered = items.map(item => ({ ...item, productId: catalog.find((product: { name: string }) => product.name === item.name).id }));
     const purchase = { description: 'Compra BH', date: '2040-05-10', amountCents: 10000, items };
     const requestId = randomUUID();
     const created = await create(owner, { ...purchase, requestId });
@@ -578,7 +580,7 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal(data.expenses.length, 15);
     assert.equal(data.count, 17);
     assert.equal(data.summary.totalCents, 161000);
-    assert.deepEqual(data.products.find((item: { name: string }) => item.name === 'Carne bovina'), { name: 'Carne bovina', quantity: 20, unit: 'kg', amountCents: 72000, purchases: 16 });
+    assert.deepEqual(data.products.find((item: { name: string }) => item.name === 'Carne bovina'), { name: 'Carne bovina', productId: registered[0].productId, quantity: 20, unit: 'kg', amountCents: 72000, purchases: 16 });
     assert.equal((await list(owner, range + '&q=Carne')).count, 16);
     assert.equal((await list(owner, range + '&q=%25')).count, 0);
     assert.deepEqual((await list(other, range)).products, []);
@@ -589,11 +591,46 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     data = await list(owner, range);
     assert.equal(data.products.find((item: { unit: string }) => item.unit === 'g').quantity, 500);
     const audit = await query<{ before: { items: unknown }; after: { items: unknown } }>(fixture.pool, "SELECT before,after FROM expense_audit WHERE expense_id=$1 AND action='updated'", [id]);
-    assert.deepEqual(audit[0].before.items, items); assert.deepEqual(audit[0].after.items, changed);
+    assert.deepEqual(audit[0].before.items, registered); assert.deepEqual(audit[0].after.items, [{ ...changed[0], name: 'Carne bovina', productId: registered[0].productId }]);
     assert.equal((await api(`/expenses/${id}`, owner, 'DELETE', { version: 2 })).status, 200);
     data = await list(owner, range);
     assert.equal(data.products.find((item: { name: string }) => item.name === 'Carne bovina').quantity, 18.75);
     assert.equal(data.products.some((item: { unit: string }) => item.unit === 'g'), false);
+  });
+  await t.test('cadastro de produtos vem pronto, evita duplicados e mantém gráficos após renomear e excluir', async () => {
+    const catalog = (await (await api('/catalog', owner)).json()).products;
+    const rice = catalog.find((item: { name: string }) => item.name === 'Arroz');
+    const beans = catalog.find((item: { name: string }) => item.name === 'Feijão');
+    assert.equal(rice.defaultUnit, 'kg'); assert.ok(beans);
+    assert.equal((await (await api('/catalog', owner, 'POST', { empresaId: ownerUser.empresaId, kind: 'product', name: '  FEIJAO ' })).json()).id, beans.id);
+    const payload = { empresaId: ownerUser.empresaId, kind: 'product', name: 'Filé de tilápia', defaultUnit: 'kg' };
+    assert.equal((await api('/catalog', other, 'POST', payload)).status, 409);
+    assert.equal((await api('/catalog', owner, 'POST', { ...payload, defaultUnit: 'invalid' })).status, 400);
+    const product = await (await api('/catalog', employee, 'POST', payload)).json();
+    assert.equal(product.defaultUnit, 'kg');
+    const otherProducts = (await (await api('/catalog', other)).json()).products;
+    assert.ok(!otherProducts.some((item: { id: string }) => item.id === product.id));
+    const foreignRice = otherProducts.find((item: { name: string }) => item.name === 'Arroz');
+    const purchase = { date: '2041-06-10', amountCents: 5000, items: [{ productId: product.id, name: product.name, unit: 'kg', quantity: 2, amountCents: 4000 }] };
+    assert.equal((await create(owner, { ...purchase, items: [{ ...purchase.items[0], productId: foreignRice.id }] })).status, 400);
+    assert.equal((await create(owner, { ...purchase, items: [{ ...purchase.items[0], productId: undefined, name: 'Não cadastrado' }] })).status, 400);
+    const response = await create(owner, purchase); assert.equal(response.status, 201);
+    const id = (await response.json()).id;
+    const update = { ...payload, id: product.id, previousName: product.name, name: 'Tilápia em filé' };
+    assert.equal((await api('/catalog', owner, 'PATCH', update)).status, 200);
+    const range = 'start=2041-06-01&end=2041-06-30';
+    let data = await list(owner, range);
+    assert.equal(data.products[0].productId, product.id); assert.equal(data.products[0].name, update.name);
+    assert.equal(data.products[0].amountCents, 4000); assert.equal(data.productDaily[0].totalCents, 4000);
+    assert.equal((await list(owner, range + '&q=' + encodeURIComponent('Tilápia em filé'))).count, 1);
+    const html = await (await fetch(`${origin}/dashboard/expenses?${range}`, { headers: { Cookie: owner } })).text();
+    assert.match(html, /O peso de cada produto/); assert.match(html, /Produtos que mais pesam na conta/); assert.match(html, /Evolução das compras detalhadas/);
+    assert.equal((await api('/catalog', employee, 'DELETE', { ...update, previousName: update.name, confirm: true })).status, 200);
+    assert.equal((await create(owner, purchase)).status, 400);
+    assert.equal((await api(`/expenses/${id}`, owner, 'PATCH', { ...body, ...purchase, version: 1, notes: 'Preserva produto arquivado' })).status, 200);
+    data = await list(owner, range); assert.equal(data.products[0].amountCents, 4000);
+    const restored = await (await api('/catalog', owner, 'POST', { ...payload, name: update.name })).json();
+    assert.equal(restored.id, product.id);
   });
   await t.test('revogação concorrente impede criar, editar ou excluir gastos com acesso antigo',async()=>{
     const created=await create(employee,{description:'Teste de revogação concorrente'});

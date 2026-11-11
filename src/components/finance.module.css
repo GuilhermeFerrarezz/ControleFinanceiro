@@ -266,3 +266,23 @@
 .productSearch { margin: 0 24px 20px; max-width: 420px; }
 
 .productSummary { margin-bottom: 24px; }
+
+.productCharts { padding: 0 24px 24px; }
+.productChartGrid { display: grid; grid-template-columns: minmax(0,1.3fr) minmax(0,1fr); gap: 20px; }
+.productChartGrid h3 { margin: 0; font-size: 19px; font-weight: 600; }
+.productCharts .chartCard { display: block; min-width: 0; }
+.productRanking { list-style: none; padding: 0; margin: 20px 0 0; display: grid; gap: 13px; }
+.productRanking button { display: grid; gap: 8px; width: 100%; padding: 10px; border: 1px solid transparent; border-radius: 8px; background: none; color: var(--ink); text-align: left; cursor: pointer; }
+.productRanking button:hover,.productRanking button[aria-pressed='true'] { background: #f0f5ed; border-color: #cbd7bf; }
+.productRanking button > span:first-child { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+.productRanking b { font-weight: 500; overflow-wrap: anywhere; }.productRanking strong { white-space: nowrap; }
+.productRanking small { color: #596654; font-size: 12px; }
+.productBar { display: block; height: 8px; border-radius: 8px; background: #eef1e8; overflow: hidden; }
+.productBar i { display: block; height: 100%; border-radius: inherit; min-width: 2px; }
+.productTrend { margin-top: 0; }.productTrend > label { max-width: 420px; }.productTrend > p { margin-block: 12px 20px; }
+@media (max-width: 900px) { .productChartGrid { grid-template-columns: 1fr; }.productCharts { padding: 0 16px 18px; } }
+
+.productTrend > .field { margin-top: 20px; }
+.productCharts > .chartCard { margin-top: 20px; }
+.productRanking { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px 24px; }
+@media (max-width: 900px) { .productRanking { grid-template-columns: 1fr; } }

@@ -2,17 +2,20 @@
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, errorMessage } from '@/src/lib/api';
-import { type CategoryOption } from '@/src/lib/expense-shared';
-import { type MerchantOption } from '@/src/lib/catalog-shared';
+import { ITEM_UNITS, type CategoryOption } from '@/src/lib/expense-shared';
+import { normalizeCatalogName, type CatalogKind, type ProductOption, type MerchantOption } from '@/src/lib/catalog-shared';
 import styles from '../dashboard.module.css';
 import formStyles from '@/src/components/auth.module.css';
-function CatalogSection({ empresaId, kind, items }: { empresaId: string; kind: 'category' | 'merchant'; items: MerchantOption[] }) {
+function CatalogSection({ empresaId, kind, items }: { empresaId: string; kind: CatalogKind; items: MerchantOption[] }) {
+  const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [action, setAction] = useState<{ type: 'edit' | 'delete'; item: MerchantOption } | null>(null);
   const router = useRouter();
   const category = kind === 'category';
+  const product = kind === 'product';
+  const filtered = items.filter(item => normalizeCatalogName(item.name).includes(normalizeCatalogName(query)));
   async function change(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!action || busy) return;
     const data = { empresaId, kind, id: action.item.id, previousName: action.item.name, name: new FormData(event.currentTarget).get('name'), confirm: true };
@@ -28,36 +31,39 @@ function CatalogSection({ empresaId, kind, items }: { empresaId: string; kind: '
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (busy) return;
     const form = event.currentTarget;
-    const name = new FormData(form).get('name');
+    const fields = new FormData(form);
+    const name = fields.get('name');
+    const defaultUnit = fields.get('defaultUnit') || 'un';
     setBusy(true); setError(''); setNotice('');
     try {
-      const response = await api.post<MerchantOption>('/catalog', { empresaId, kind, name });
+      const response = await api.post<MerchantOption>('/catalog', { empresaId, kind, name, defaultUnit });
       form.reset(); setNotice(`“${response.data.name}” está disponível para os lançamentos.`); router.refresh();
     } catch (err) { setError(errorMessage(err)); }
     finally { setBusy(false); }
   }
-  return <section className={styles.teamCard}><h2>{category ? 'Categorias' : 'Locais / favorecidos'}</h2>
-    <p className={styles.subtitle}>{category ? 'Cadastre, renomeie ou exclua categorias para organizar seus gastos.' : 'Cadastre mercados, fornecedores e favorecidos para encontrá-los ao digitar um lançamento.'}</p>
-    <form className={formStyles.form} onSubmit={submit} aria-busy={busy}>
-      <label className={formStyles.field} htmlFor={`catalog-${kind}`}>{category ? 'Nome da categoria' : 'Nome do local'}<input id={`catalog-${kind}`} className={formStyles.input} name="name" minLength={2} maxLength={120} required disabled={busy} placeholder={category ? 'Ex.: Marketing' : 'Ex.: Atacadão'} /></label>
-      <button className={formStyles.button} disabled={busy}>{busy ? 'Salvando...' : category ? 'Cadastrar categoria' : 'Cadastrar local'}</button>
+  return <section className={`${styles.teamCard} ${styles.catalogCard}`}><h2>{category ? 'Categorias' : product ? 'Produtos e ingredientes' : 'Locais / favorecidos'}</h2>
+    <p className={`${styles.subtitle} ${styles.catalogIntro}`}>{category ? 'Cadastre, renomeie ou exclua categorias para organizar seus gastos.' : product ? 'Itens básicos já estão disponíveis. Cadastre ingredientes, produtos de limpeza e embalagens para toda a equipe.' : 'Cadastre mercados, fornecedores e favorecidos para encontrá-los ao digitar um lançamento.'}</p>
+    <form className={`${formStyles.form} ${styles.catalogCreate}`} onSubmit={submit} aria-busy={busy}>
+      <label className={formStyles.field} htmlFor={`catalog-${kind}`}>{category ? 'Nome da categoria' : product ? 'Nome do produto' : 'Nome do local'}<input id={`catalog-${kind}`} className={formStyles.input} name="name" minLength={2} maxLength={120} required disabled={busy} placeholder={category ? 'Ex.: Marketing' : product ? 'Ex.: Filé de tilápia' : 'Ex.: Atacadão'} /></label>
+      {product && <label className={formStyles.field} htmlFor="catalog-product-unit">Unidade sugerida<select id="catalog-product-unit" className={formStyles.input} name="defaultUnit" disabled={busy}>{ITEM_UNITS.map(unit => <option key={unit}>{unit}</option>)}</select></label>}
+      <button className={formStyles.button} disabled={busy}>{busy ? 'Salvando...' : category ? 'Cadastrar categoria' : product ? 'Cadastrar produto' : 'Cadastrar local'}</button>
     </form>
     {error && <p className={styles.error} role="alert">{error}</p>}
     {notice && <p className={styles.teamNotice} role="status">{notice}</p>}
-    <ul className={styles.catalogList} aria-label={category ? 'Categorias cadastradas' : 'Locais cadastrados'}>{items.map(item => <li key={item.id}>
+    <label className={`${formStyles.field} ${styles.catalogSearch}`} htmlFor={`catalog-search-${kind}`}>{category ? "Buscar categoria" : product ? "Buscar produto" : "Buscar local"}<input id={`catalog-search-${kind}`} className={formStyles.input} type="search" placeholder={category ? "Ex.: alimentos" : product ? "Ex.: arroz ou carne" : "Ex.: mercado"} value={query} onChange={event => setQuery(event.target.value)} /></label>
+    <ul className={styles.catalogList} tabIndex={0} aria-label={category ? 'Categorias cadastradas' : product ? 'Produtos cadastrados' : 'Locais cadastrados'}>{filtered.map(item => <li key={item.id}>
       <div className={styles.catalogRow}><span>{item.name}</span><div className={styles.memberActions}>
         <button type="button" className={`${styles.removeMember} ${styles.editButton}`} disabled={busy} aria-label={`Editar ${item.name}`} onClick={() => { setAction({ type: 'edit', item }); setError(''); setNotice(''); }}>Editar</button>
         <button type="button" className={styles.removeMember} disabled={busy} aria-label={`Excluir ${item.name}`} onClick={() => { setAction({ type: 'delete', item }); setError(''); setNotice(''); }}>Excluir</button>
       </div></div>
       {action?.item.id === item.id && <form key={`${item.id}-${action.type}`} className={formStyles.form} onSubmit={change} aria-busy={busy}>
         {action.type === 'edit' ? <><label className={formStyles.field} htmlFor={`edit-${kind}-${item.id}`}>Novo nome<input autoFocus className={formStyles.input} id={`edit-${kind}-${item.id}`} name="name" defaultValue={item.name} minLength={2} maxLength={120} required disabled={busy} /></label>
-          <p className={styles.subtitle}>{category ? 'O novo nome também será exibido nos lançamentos e relatórios existentes.' : 'O novo nome será usado nas sugestões. Os lançamentos já salvos conservarão o local informado na época.'}</p></> : <p>Excluir “{item.name}”? {category ? 'Esta categoria deixará de estar disponível para novos lançamentos. Os gastos existentes e seus relatórios serão preservados.' : 'O local sairá das sugestões. Os locais informados nos lançamentos existentes serão preservados.'}</p>}
+          <p className={styles.subtitle}>{category || product ? 'O novo nome também será exibido nos lançamentos e relatórios existentes.' : 'O novo nome será usado nas sugestões. Os lançamentos já salvos conservarão o local informado na época.'}</p></> : <p>Excluir “{item.name}”? {product ? 'O produto sairá das sugestões. As compras e os gráficos existentes serão preservados.' : category ? 'Esta categoria deixará de estar disponível para novos lançamentos. Os gastos existentes e seus relatórios serão preservados.' : 'O local sairá das sugestões. Os locais informados nos lançamentos existentes serão preservados.'}</p>}
         <div className={styles.catalogRow}><button type="button" className={styles.removeMember} disabled={busy} onClick={() => setAction(null)}>Cancelar</button><button className={formStyles.button} disabled={busy}>{busy ? 'Salvando...' : action.type === 'edit' ? 'Salvar nome' : 'Confirmar exclusão'}</button></div>
       </form>}
-    </li>)}</ul>
-    {!items.length && <p className={styles.subtitle}>{category ? 'Nenhuma categoria ativa.' : 'Nenhum local cadastrado.'}</p>}
+    </li>)}{!filtered.length && <li><span role="status">{query ? "Nenhum cadastro encontrado com essa busca." : "Nenhum cadastro disponível. Adicione o primeiro acima."}</span></li>}</ul>
   </section>;
 }
-export default function CatalogPanel({ empresaId, categories, merchants }: { empresaId: string; categories: CategoryOption[]; merchants: MerchantOption[] }) {
-  return <div className={styles.teamGrid}><CatalogSection empresaId={empresaId} kind="category" items={categories.filter(item => !item.archived).map(item => ({ id: item.id, name: item.label }))} /><CatalogSection empresaId={empresaId} kind="merchant" items={merchants} /></div>;
+export default function CatalogPanel({ empresaId, categories, merchants, products }: { empresaId: string; categories: CategoryOption[]; merchants: MerchantOption[]; products: ProductOption[] }) {
+  return <div className={styles.catalogGrid}><CatalogSection empresaId={empresaId} kind="category" items={categories.filter(item => !item.archived).map(item => ({ id: item.id, name: item.label }))} /><CatalogSection empresaId={empresaId} kind="merchant" items={merchants} /><CatalogSection empresaId={empresaId} kind="product" items={products.filter(item => !item.archived)} /></div>;
 }

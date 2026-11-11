@@ -1,3 +1,4 @@
+import { resolveExpenseProducts } from './expense-product-catalog';
 import { decimalCents, sumCents } from './financial-math';
 import { parse } from 'csv-parse/sync';
 import { createHash } from 'node:crypto';
@@ -164,6 +165,7 @@ export async function importExpenseCsv(actor:ExpenseActor,csv:unknown,createCate
     if(parsed.issues.length)throw new InputError(`Corrija o CSV antes de importar. Linha ${parsed.issues[0].line}: ${parsed.issues[0].message}`);
     const rows=await classify(parsed.rows,{...actor,role:member.role},client,true);
     if(rows.some(row=>row.forbidden))throw new InputError('Apenas o dono ou o autor pode restaurar um gasto excluído.');
+    for (const row of rows) if (!row.duplicate) row.input = await resolveExpenseProducts(actor.empresaId, row.input, client, undefined, true);
     let imported=await insertImportedExpenses(actor.empresaId,actor.id,rows.filter(row=>!row.duplicate&&!row.restoreId),client);
     for(const row of rows)if(row.restoreId&&await restoreImportedExpense(row.restoreId,actor.empresaId,actor.id,row.input,client))imported++;
     const dates=rows.map(row=>row.input.date).sort();

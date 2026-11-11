@@ -156,4 +156,57 @@ CREATE TABLE IF NOT EXISTS daily_revenue (
 
 ALTER TABLE expenses ADD COLUMN IF NOT EXISTS items JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(items) = 'array');
 
+-- Product catalogs are shared by each restaurant's team.
+ALTER TABLE restaurant_catalog DROP CONSTRAINT IF EXISTS restaurant_catalog_kind_check;
+ALTER TABLE restaurant_catalog ADD CONSTRAINT restaurant_catalog_kind_check CHECK (kind IN ('category','merchant','product'));
+ALTER TABLE restaurant_catalog ADD COLUMN IF NOT EXISTS default_unit TEXT NOT NULL DEFAULT 'un'
+    CHECK (default_unit IN ('un','kg','g','L','ml','pacote','caixa'));
+
+-- Run once: seed existing restaurants and retain the identity of historical items.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version='20261111_product_catalog') THEN
+    INSERT INTO restaurant_catalog (empresa_id,kind,name,normalized_name,default_unit)
+    SELECT e.id,'product',p.name,p.normalized,p.unit FROM empresas e CROSS JOIN (VALUES
+        ('Arroz','arroz','kg'),
+        ('Feijão','feijao','kg'),
+        ('Carne bovina','carne bovina','kg'),
+        ('Carne suína','carne suina','kg'),
+        ('Frango','frango','kg'),
+        ('Peixe','peixe','kg'),
+        ('Batata','batata','kg'),
+        ('Batata frita congelada','batata frita congelada','kg'),
+        ('Tomate','tomate','kg'),
+        ('Cebola','cebola','kg'),
+        ('Alho','alho','kg'),
+        ('Alface','alface','un'),
+        ('Cenoura','cenoura','kg'),
+        ('Óleo de soja','oleo de soja','L'),
+        ('Azeite','azeite','L'),
+        ('Sal','sal','kg'),
+        ('Açúcar','acucar','kg'),
+        ('Farinha de trigo','farinha de trigo','kg'),
+        ('Macarrão','macarrao','pacote'),
+        ('Molho de tomate','molho de tomate','pacote'),
+        ('Leite','leite','L'),
+        ('Queijo','queijo','kg'),
+        ('Ovos','ovos','un'),
+        ('Café','cafe','kg'),
+        ('Detergente','detergente','L'),
+        ('Água sanitária','agua sanitaria','L'),
+        ('Embalagem para marmita','embalagem para marmita','un')
+    ) p(name,normalized,unit) ON CONFLICT (empresa_id,kind,normalized_name) DO NOTHING;
+    INSERT INTO restaurant_catalog (empresa_id,kind,name,normalized_name,default_unit)
+    SELECT e.empresa_id,'product',min(btrim(item->>'name')), translate(lower(regexp_replace(btrim(item->>'name'), '\s+', ' ', 'g')), 'áàâãäéèêëíìîïóòôõöúùûüç', 'aaaaaeeeeiiiiooooouuuuc'),min(item->>'unit')
+    FROM expenses e CROSS JOIN LATERAL jsonb_array_elements(e.items) item
+    WHERE length(btrim(item->>'name')) BETWEEN 1 AND 120
+    GROUP BY e.empresa_id,translate(lower(regexp_replace(btrim(item->>'name'), '\s+', ' ', 'g')), 'áàâãäéèêëíìîïóòôõöúùûüç', 'aaaaaeeeeiiiiooooouuuuc')
+    ON CONFLICT (empresa_id,kind,normalized_name) DO NOTHING;
+    UPDATE expenses e SET items=(SELECT coalesce(jsonb_agg(item || jsonb_build_object('productId',p.id) ORDER BY position),'[]'::jsonb)
+      FROM jsonb_array_elements(e.items) WITH ORDINALITY AS entries(item,position)
+      JOIN restaurant_catalog p ON p.empresa_id=e.empresa_id AND p.kind='product' AND p.normalized_name=translate(lower(regexp_replace(btrim(item->>'name'), '\s+', ' ', 'g')), 'áàâãäéèêëíìîïóòôõöúùûüç', 'aaaaaeeeeiiiiooooouuuuc'))
+    WHERE jsonb_array_length(e.items)>0;
+    INSERT INTO schema_migrations(version) VALUES ('20261111_product_catalog');
+  END IF;
+END $$;
+
 COMMIT;
