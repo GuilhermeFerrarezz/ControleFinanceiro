@@ -14,7 +14,7 @@ test('pacote XLSX tem um único filtro e não contém tabelas sobrepostas',async
     assert.equal(Object.keys(zip.files).filter(name=>name.startsWith('xl/tables/')).length,0);
     const xml=await zip.file('xl/worksheets/sheet1.xml')!.async('string');
     assert.equal((xml.match(/<autoFilter\b/g)||[]).length,1);
-    assert.match(xml,new RegExp(`autoFilter ref="A1:J${rows.length+1}"`));
+    assert.match(xml,new RegExp(`autoFilter ref="A1:K${rows.length+1}"`));
     assert.doesNotMatch(xml,/<tableParts\b/);
   }
 });

@@ -64,3 +64,12 @@ test('identificadores de importação são estáveis e preservam repetições le
   assert.equal(first.rows[0].requestId,second.rows[0].requestId);assert.notEqual(first.rows[0].requestId,first.rows[1].requestId);
   assert.notEqual(first.rows[0].requestId,parseExpenseCsv(csv,randomUUID()).rows[0].requestId);
 });
+
+
+test('CSV preserva produtos e quantidades ao exportar e reimportar', () => {
+  const items = [{ name: 'Feijão; carioca', quantity: 2.5, unit: 'kg', amountCents: 4512 }];
+  const row = { id: randomUUID(), description: 'Mercado BH', amountCents: 10000, date: '2030-01-12', category: 'alimentos', merchant: 'BH', status: 'paid', paymentMethod: 'pix', notes: '', authorName: 'Autor', items } as IExpense;
+  const parsed = parseExpenseCsv(expenseCsv([row]), company);
+  assert.deepEqual(parsed.issues, []);
+  assert.deepEqual(parsed.rows[0].input.items, items);
+});

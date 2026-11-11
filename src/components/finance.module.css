@@ -258,3 +258,11 @@
   .monthFilter .filterField:first-of-type { grid-column: auto; }
   .monthFilter .filterField { max-width: none; }
 }
+
+.purchaseItems { display: grid; gap: 14px; border: 1px solid var(--border, #dce4d8); padding: 16px; border-radius: 12px; }
+.purchaseItems p { color: #596654; font-size: .875rem; line-height: 1.6; margin: 6px 0; }
+.purchaseItem { display: grid; gap: 12px; border: 1px solid #dce4d8; border-radius: 10px; padding: 14px; min-width: 0; margin: 0; }
+.purchaseItem legend { font-size: .85rem; padding: 0 5px; color: #406a4e; font-weight: 600; }
+.productSearch { margin: 0 24px 20px; max-width: 420px; }
+
+.productSummary { margin-bottom: 24px; }

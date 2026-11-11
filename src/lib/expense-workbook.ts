@@ -6,15 +6,20 @@ import type { IExpense } from '../models/Expense';
 export async function expenseWorkbook(rows:IExpense[],filters:ExpenseFilters,restaurant:string,categories:readonly CategoryOption[]=EXPENSE_CATEGORIES, financial?:{expenses:DailyRevenue[];revenue:DailyRevenue[]}) {
   const book=new ExcelJS.Workbook();book.creator='Saldo da Casa';book.created=new Date();
   const sheet=book.addWorksheet('Lançamentos',{views:[{state:'frozen',ySplit:1}]});
-  const widths=[17,40,19,25,35,17,25,30,60,40];
+  const widths=[17,40,19,25,35,17,25,30,60,40,80];
   sheet.columns=CSV_HEADERS.map((header,index)=>({header,width:widths[index]}));
   // A plain styled range needs only one filter, including exports with no data.
-  sheet.addRows(rows.map(row=>[new Date(`${row.date}T00:00:00Z`),row.description,excelMoney(row.amountCents),row.categoryLabel || categoryInfo(row.category,categories).label,row.merchant,row.status==='paid'?'Pago':'A pagar',PAYMENT_METHODS.find(item=>item.id===row.paymentMethod)!.label,row.authorName,row.notes,row.id]));
+  sheet.addRows(rows.map(row=>[new Date(`${row.date}T00:00:00Z`),row.description,excelMoney(row.amountCents),row.categoryLabel || categoryInfo(row.category,categories).label,row.merchant,row.status==='paid'?'Pago':'A pagar',PAYMENT_METHODS.find(item=>item.id===row.paymentMethod)!.label,row.authorName,row.notes,row.id,JSON.stringify(row.items || [])]));
   sheet.getColumn(10).hidden=true;
   sheet.getColumn(1).numFmt='dd/mm/yyyy';sheet.getColumn(3).numFmt='"R$" #,##0.00';
   sheet.eachRow((row,index)=>{row.height=index===1?30:28;row.font={name:'Calibri',size:11};row.alignment={vertical:'middle',wrapText:true};if(index===1){row.font={name:'Calibri',size:11,bold:true,color:{argb:'FFFFFFFF'}};}});
   sheet.eachRow((row,index)=>row.eachCell(cell=>{cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:index===1?'FF254E3B':index%2===0?'FFF0F5ED':'FFFFFFFF'}};}));
-  sheet.autoFilter={from:'A1',to:`J${rows.length+1}`};
+  sheet.autoFilter={from:'A1',to:`K${rows.length+1}`};
+  const products = book.addWorksheet('Produtos');
+  products.columns = [{ header: 'Data', width: 18 }, { header: 'Compra', width: 35 }, { header: 'Local', width: 30 }, { header: 'Produto', width: 35 }, { header: 'Quantidade', width: 18 }, { header: 'Unidade', width: 15 }, { header: 'Valor total do item (R$)', width: 27 }];
+  for (const row of rows) for (const item of row.items || []) products.addRow([displayDate(row.date), row.description, row.merchant, item.name, item.quantity, item.unit, excelMoney(item.amountCents)]);
+  products.getColumn(7).numFmt = '"R$" #,##0.00';
+  products.getRow(1).font = { bold: true, color: { argb: 'FF254E3B' } };
   const summary=book.addWorksheet('Resumo');summary.columns=[{width:32},{width:65}];
   summary.addRows([['Saldo da Casa','Resumo da exportação'],['Restaurante',restaurant],['Período',`${displayDate(filters.start)} a ${displayDate(filters.end)}`],['Categoria',filters.category ? categoryInfo(filters.category,categories).label : 'Todas'],['Situação',filters.status==='paid'?'Pagos':filters.status==='pending'?'A pagar':'Todas'],['Busca',filters.q||'Sem busca'],['Lançamentos',rows.length],['Total (R$)',excelMoney(sumCents(rows.map(row=>row.amountCents)))],['Já pago (R$)',excelMoney(sumCents(rows.filter(row=>row.status==='paid').map(row=>row.amountCents)))],['A pagar (R$)',excelMoney(sumCents(rows.filter(row=>row.status==='pending').map(row=>row.amountCents)))],['Autoria','Cada gasto mantém a identificação de quem o registrou.']]);
   summary.getRow(1).font={bold:true,size:15,color:{argb:'FF254E3B'}};

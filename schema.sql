@@ -154,4 +154,6 @@ CREATE TABLE IF NOT EXISTS daily_revenue (
     PRIMARY KEY (empresa_id, date)
 );
 
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS items JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(items) = 'array');
+
 COMMIT;

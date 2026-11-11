@@ -14,6 +14,10 @@ A central financeira reúne o resumo dos gastos, valores pagos e a pagar, média
 
 Em **Novo gasto**, informe descrição, valor, data e categoria. Você também pode registrar o local de compra ou favorecido, a forma de pagamento e observações. Há categorias para alimentos, funcionários, produtos, bebidas, embalagens, contas, manutenção, impostos e outros gastos.
 
+O detalhamento de produtos é opcional: em **O que você comprou?**, adicione nome, quantidade, unidade e valor total de cada produto (até 50 por compra). Use **Usar soma dos produtos como valor da compra** para preencher o total. Você pode detalhar apenas parte da compra; o restante aparece como **Sem detalhamento**. A soma dos produtos não pode superar o valor da compra.
+
+Em **Compras por produto**, consulte as quantidades e valores de todo o período filtrado, inclusive além da página atual de lançamentos. Produtos com o mesmo nome, sem distinguir maiúsculas e minúsculas, são agrupados por unidade; kg e g permanecem separados. A busca geral também encontra os produtos de uma compra. CSV preserva os detalhes para reimportação e Excel inclui uma aba **Produtos**. Para atualizar um banco existente, execute `npm run db:migrate` antes de iniciar esta versão.
+
 Na área **Lançamentos**, consulte e exporte os dados filtrados em CSV ou Excel. O CSV apresenta datas como texto legível (`Data: 30/10/2026`); a planilha Excel tem datas, valores e larguras de coluna formatados. Funcionários podem editar e excluir os próprios gastos; o dono pode administrar todos os lançamentos do restaurante. A área **Equipe** mantém os convites e os acessos individuais. O dono pode remover funcionários: o acesso ao restaurante é revogado e os gastos anteriores continuam identificados com o nome de quem os lançou.
 
 ## Como iniciar o projeto

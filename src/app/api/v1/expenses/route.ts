@@ -28,7 +28,7 @@ export async function POST(request: Request) {
   if (!user) return jsonError('Entre na sua conta para continuar.', 401);
   if (!user.empresaId) return jsonError('Selecione um restaurante para continuar.', 403);
   try {
-    const body = await readBody(request);
+    const body = await readBody(request, 32768);
     if (body.expectedEmpresaId !== undefined && body.expectedEmpresaId !== user.empresaId) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
     const result = await createExpense({ ...user, empresaId: user.empresaId }, validateExpense(body), uuidValue(body.requestId));
     return NextResponse.json(result, { status: result.replayed ? 200 : 201 });
@@ -40,7 +40,7 @@ export async function DELETE(request: Request) {
   if (!user) return jsonError('Entre na sua conta para continuar.', 401);
   if (!user.empresaId || user.role !== 'owner') return jsonError('Somente o admin pode excluir os lançamentos de um período.', 403);
   try {
-    const result = await deleteExpensePeriod({ ...user, empresaId: user.empresaId }, await readBody(request));
+    const result = await deleteExpensePeriod({ ...user, empresaId: user.empresaId }, await readBody(request, 32768));
     return NextResponse.json(result);
   } catch (error) {
     return jsonError(error instanceof InputError || error instanceof ExpenseError ? error.message : 'Não foi possível excluir os lançamentos.', error instanceof ExpenseError ? error.status : error instanceof InputError ? 400 : 500);

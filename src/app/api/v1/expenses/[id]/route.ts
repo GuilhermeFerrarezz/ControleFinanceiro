@@ -10,7 +10,7 @@ async function mutate(request: Request, context: Context, remove: boolean) {
   if (!user.empresaId) return jsonError('Selecione um restaurante para continuar.', 403);
   try {
     const id = uuidValue((await context.params).id);
-    const body = await readBody(request);
+    const body = await readBody(request, 32768);
     if (body.expectedEmpresaId !== undefined && body.expectedEmpresaId !== user.empresaId) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
     await changeExpense({ ...user, empresaId: user.empresaId }, id, versionValue(body.version), remove ? null : validateExpense(body));
     return NextResponse.json({ message: remove ? 'Gasto excluído.' : 'Gasto atualizado.' });

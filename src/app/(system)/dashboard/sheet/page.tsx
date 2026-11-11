@@ -1,3 +1,4 @@
+import ExpenseItemDetails from '@/src/components/ExpenseItemDetails';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { currentUser } from '@/src/lib/auth';
@@ -136,7 +137,7 @@ export default async function ExpenseSheetPage({ searchParams }: {
             <div><dt>Situação</dt><dd>{expense.status === 'paid' ? 'Pago' : 'A pagar'}</dd></div>
             <div><dt>Pagamento</dt><dd>{PAYMENT_METHODS.find(method => method.id === expense.paymentMethod)?.label}</dd></div>
             <div><dt>Lançado por</dt><dd>{expense.authorName}</dd></div>
-            {expense.notes && <div><dt>Observações</dt><dd>{expense.notes}</dd></div>}
+            <div><dt>Produtos</dt><dd><ExpenseItemDetails expense={expense} /></dd></div>{expense.notes && <div><dt>Observações</dt><dd>{expense.notes}</dd></div>}
           </dl>
         </details>)}
         {(details.page > 1 || details.hasNext) && <nav className={styles.pagination} aria-label="Páginas dos lançamentos da célula">

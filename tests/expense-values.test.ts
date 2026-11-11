@@ -55,3 +55,21 @@ test('intervalos extensos usam pontos anuais sem perder totais ou inflar dias co
   assert.equal(result.series.reduce((sum,row)=>sum+row.totalCents,0),1100);
   assert.equal(result.daysWithExpenses,2);assert.equal(result.peakDay?.date,'2030-12-01');
 });
+
+
+test('produtos opcionais aceitam quantidades fracionadas e detalhamento parcial sem duplicar o total', () => {
+  const base = { description: 'Mercado BH', amountCents: 10000, date: '2026-11-11', category: 'alimentos' };
+  const item = { name: ' Carne  bovina ', quantity: 1.125, unit: 'kg', amountCents: 4500 };
+  assert.equal(validateExpense(base).items, undefined);
+  assert.deepEqual(validateExpense({ ...base, items: [] }).items, undefined);
+  const detailed = validateExpense({ ...base, items: [item] });
+  assert.equal(detailed.amountCents, 10000);
+  assert.equal(detailed.items![0].name, 'Carne bovina');
+  assert.equal(detailed.items![0].quantity, 1.125);
+  for (const patch of [{ name: '' }, { name: 'x'.repeat(121) }, { name: 'a\0b' }, { quantity: 0 }, { quantity: -1 }, { quantity: 1.1234 }, { quantity: '2' }, { quantity: Infinity }, { unit: 'inválida' }, { amountCents: 1.5 }, { amountCents: 0 }]) {
+    assert.throws(() => validateExpense({ ...base, items: [{ ...item, ...patch }] }));
+  }
+  for (const items of [null, {}, [null], Array(51).fill(item), [{ ...item, amountCents: 10001 }], [item, item, item]]) {
+    assert.throws(() => validateExpense({ ...base, items }));
+  }
+});

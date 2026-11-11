@@ -11,7 +11,7 @@ export interface IExpense extends ExpenseInput {
 export interface IExpenseAudit { id: string; expenseId: string; empresaId: string; actorId: string; action: 'created' | 'updated' | 'deleted'; before: Record<string, unknown> | null; after: Record<string, unknown> | null; createdAt: Date }
 const columns = `e.id,e.empresa_id AS "empresaId",e.created_by AS "createdBy",e.updated_by AS "updatedBy",e.request_id AS "requestId",
   e.description,e.amount_cents AS "amountCents",to_char(e.date,'YYYY-MM-DD') AS date,e.category,e.merchant,e.status,
-  e.payment_method AS "paymentMethod",e.notes,e.version,(e.demo_key IS NOT NULL) AS "isDemo",e.created_at AS "createdAt",e.deleted_at AS "deletedAt"`;
+  e.payment_method AS "paymentMethod",e.notes,e.items,e.version,(e.demo_key IS NOT NULL) AS "isDemo",e.created_at AS "createdAt",e.deleted_at AS "deletedAt"`;
 export function integer(value: unknown) {
   return safeInteger(value);
 }
@@ -24,18 +24,18 @@ export async function findExpense(id: string, empresaId: string, client: Queryab
 }
 export async function insertExpense(empresaId: string, userId: string, requestId: string, input: ExpenseInput, client: Queryable) {
   const { rows } = await client.query<{ id: string }>(`INSERT INTO expenses
-    (empresa_id,created_by,updated_by,request_id,description,amount_cents,date,category,merchant,status,payment_method,notes)
-    VALUES ($1,$2,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT (empresa_id,request_id) DO NOTHING RETURNING id`,
-    [empresaId,userId,requestId,input.description,input.amountCents,input.date,input.category,input.merchant,input.status,input.paymentMethod,input.notes]);
+    (empresa_id,created_by,updated_by,request_id,description,amount_cents,date,category,merchant,status,payment_method,notes,items)
+    VALUES ($1,$2,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb) ON CONFLICT (empresa_id,request_id) DO NOTHING RETURNING id`,
+    [empresaId,userId,requestId,input.description,input.amountCents,input.date,input.category,input.merchant,input.status,input.paymentMethod,input.notes,JSON.stringify(input.items || [])]);
   const created = !!rows[0];
   // A concurrent INSERT with the same key commits before this SELECT runs.
   const result = await client.query<IExpense>(`SELECT ${columns} FROM expenses e WHERE e.empresa_id=$1 AND e.request_id=$2 FOR UPDATE`, [empresaId, requestId]);
   return { expense: expenseRow(result.rows[0]), created };
 }
 export async function updateExpense(id: string, empresaId: string, userId: string, input: ExpenseInput | null, client: Queryable) {
-  if (input) await client.query(`UPDATE expenses SET description=$1,amount_cents=$2,date=$3,category=$4,merchant=$5,status=$6,payment_method=$7,notes=$8,
+  if (input) await client.query(`UPDATE expenses SET description=$1,amount_cents=$2,date=$3,category=$4,merchant=$5,status=$6,payment_method=$7,notes=$8,items=$12::jsonb,
     updated_by=$9,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=$10 AND empresa_id=$11`,
-    [input.description,input.amountCents,input.date,input.category,input.merchant,input.status,input.paymentMethod,input.notes,userId,id,empresaId]);
+    [input.description,input.amountCents,input.date,input.category,input.merchant,input.status,input.paymentMethod,input.notes,userId,id,empresaId,JSON.stringify(input.items || [])]);
   else await client.query(`UPDATE expenses SET deleted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP,updated_by=$1,version=version+1 WHERE id=$2 AND empresa_id=$3`, [userId,id,empresaId]);
   const result = await client.query<IExpense>(`SELECT ${columns} FROM expenses e WHERE e.id=$1 AND e.empresa_id=$2`, [id,empresaId]);
   return expenseRow(result.rows[0]);
@@ -71,7 +71,7 @@ function scope(empresaId: string, filters: ExpenseFilters) {
   if (filters.status) { values.push(filters.status); conditions.push(`e.status=$${values.length}`); }
   if (filters.q) {
     values.push(`%${filters.q.replace(/[\\%_]/g, '\\$&')}%`);
-    conditions.push(`(e.description ILIKE $${values.length} ESCAPE E'\\\\' OR e.merchant ILIKE $${values.length} ESCAPE E'\\\\')`);
+    conditions.push(`(e.description ILIKE $${values.length} ESCAPE E'\\\\' OR e.merchant ILIKE $${values.length} ESCAPE E'\\\\' OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.items) item WHERE item->>'name' ILIKE $${values.length} ESCAPE E'\\\\'))`);
   }
   return { clause: conditions.join(' AND '), values };
 }
@@ -137,17 +137,30 @@ export async function restoreImportedExpense(id:string,empresaId:string,userId:s
 
 export async function insertImportedExpenses(empresaId:string,userId:string,items:{requestId:string;input:ExpenseInput}[],client:Queryable) {
   if(!items.length)return 0;
-  const payload=items.map(({requestId,input})=>({request_id:requestId,description:input.description,amount_cents:input.amountCents,date:input.date,category:input.category,merchant:input.merchant,status:input.status,payment_method:input.paymentMethod,notes:input.notes}));
+  const payload=items.map(({requestId,input})=>({request_id:requestId,description:input.description,amount_cents:input.amountCents,date:input.date,category:input.category,merchant:input.merchant,status:input.status,payment_method:input.paymentMethod,notes:input.notes,items:input.items || []}));
   const {rows}=await client.query<{imported:number}>(`WITH source AS (
-    SELECT * FROM jsonb_to_recordset($3::jsonb) AS r(request_id uuid,description text,amount_cents bigint,date date,category text,merchant text,status text,payment_method text,notes text)
+    SELECT * FROM jsonb_to_recordset($3::jsonb) AS r(request_id uuid,description text,amount_cents bigint,date date,category text,merchant text,status text,payment_method text,notes text,items jsonb)
   ), inserted AS (
-    INSERT INTO expenses (empresa_id,created_by,updated_by,request_id,description,amount_cents,date,category,merchant,status,payment_method,notes)
-    SELECT $1,$2,$2,request_id,description,amount_cents,date,category,merchant,status,payment_method,notes FROM source
+    INSERT INTO expenses (empresa_id,created_by,updated_by,request_id,description,amount_cents,date,category,merchant,status,payment_method,notes,items)
+    SELECT $1,$2,$2,request_id,description,amount_cents,date,category,merchant,status,payment_method,notes,items FROM source
     ON CONFLICT (empresa_id,request_id) DO NOTHING RETURNING *
   ), audited AS (
     INSERT INTO expense_audit (expense_id,empresa_id,actor_id,action,after)
-    SELECT id,$1,$2,'created',jsonb_build_object('description',description,'amountCents',amount_cents,'date',to_char(date,'YYYY-MM-DD'),'category',category,'merchant',merchant,'status',status,'paymentMethod',payment_method,'notes',notes,'version',version,'source','csv') FROM inserted
+    SELECT id,$1,$2,'created',jsonb_build_object('description',description,'amountCents',amount_cents,'date',to_char(date,'YYYY-MM-DD'),'category',category,'merchant',merchant,'status',status,'paymentMethod',payment_method,'notes',notes,'items',items,'version',version,'source','csv') FROM inserted
     RETURNING id
   ) SELECT count(*)::integer AS imported FROM audited`,[empresaId,userId,JSON.stringify(payload)]);
   return rows[0].imported;
+}
+
+// Aggregate every matching purchase, independently of the expense-list pagination.
+export async function expenseProducts(empresaId: string, filters: ExpenseFilters, client: Queryable) {
+  const { clause, values } = scope(empresaId, filters);
+  const { rows } = await client.query<{ name: string; unit: import('../lib/expense-shared').ExpenseItem['unit']; quantity: string; amountCents: string; purchases: string }>(`
+    SELECT min(btrim(item->>'name')) AS name, item->>'unit' AS unit,
+      sum((item->>'quantity')::numeric)::text AS quantity,
+      sum((item->>'amountCents')::bigint)::text AS "amountCents", count(DISTINCT e.id)::text AS purchases
+    FROM expenses e CROSS JOIN LATERAL jsonb_array_elements(e.items) item
+    WHERE ${clause} GROUP BY lower(btrim(item->>'name')), item->>'unit'
+    ORDER BY sum((item->>'amountCents')::bigint) DESC, name, unit`, values);
+  return rows.map(row => ({ ...row, quantity: Number(row.quantity), amountCents: integer(row.amountCents), purchases: integer(row.purchases) }));
 }

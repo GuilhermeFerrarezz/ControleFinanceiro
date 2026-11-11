@@ -13,20 +13,20 @@ import { findMembership } from '../models/Membership';
 
 export const MAX_IMPORT_ROWS=2000;
 export const MAX_CSV_BYTES=2*1024*1024;
-export const CSV_HEADERS=['Data do gasto','Descrição','Valor (R$)','Categoria','Local de compra / favorecido','Situação','Forma de pagamento','Lançado por','Observações','ID do lançamento'];
+export const CSV_HEADERS=['Data do gasto','Descrição','Valor (R$)','Categoria','Local de compra / favorecido','Situação','Forma de pagamento','Lançado por','Observações','ID do lançamento','Produtos (JSON)'];
 const escapedCsvText = /^[\s]*[=+@\-\t\r\n']/;
 export const csvCell=(value:string)=>`"${(escapedCsvText.test(value)?"'":'')+value.replaceAll('"','""')}"`;
 export function expenseCsv(rows:IExpense[]) {
   const lines=[CSV_HEADERS,...rows.map(row=>[
     `Data: ${displayDate(row.date)}`,row.description,decimalCents(row.amountCents),
     row.categoryLabel || categoryInfo(row.category).label,row.merchant,row.status==='paid'?'Pago':'A pagar',
-    PAYMENT_METHODS.find(item=>item.id===row.paymentMethod)!.label,row.authorName,row.notes,row.id,
+    PAYMENT_METHODS.find(item=>item.id===row.paymentMethod)!.label,row.authorName,row.notes,row.id,JSON.stringify(row.items || []),
   ])];
   return '\uFEFF'+lines.map(line=>line.map(csvCell).join(';')).join('\r\n');
 }
 export function csvTemplate() {
   return '\uFEFF'+[
-    CSV_HEADERS.filter(header=>!['Lançado por','ID do lançamento'].includes(header)),
+    CSV_HEADERS.filter(header=>!['Lançado por','ID do lançamento','Produtos (JSON)'].includes(header)),
     ['15/01/2025','Compra de hortifruti','125,90','Alimentos','Feira do Bairro','Pago','Pix','Compra da cozinha'],
   ].map(row=>row.map(csvCell).join(';')).join('\r\n');
 }
@@ -36,7 +36,7 @@ const headerAliases:Record<string,string>={
   valor:'amount',valorr:'amount',amount:'amount',categoria:'category',category:'category',
   local:'merchant',localfavorecido:'merchant',localdecomprafavorecido:'merchant',localdecompra:'merchant',merchant:'merchant',
   situacao:'status',status:'status',pagamento:'paymentMethod',formadepagamento:'paymentMethod',paymentmethod:'paymentMethod',
-  observacoes:'notes',notes:'notes',iddolancamento:'sourceId',id:'sourceId',
+  produtosjson:'items',observacoes:'notes',notes:'notes',iddolancamento:'sourceId',id:'sourceId',
 };
 export interface ImportRow { line:number; input:ExpenseInput; requestId:string; legacyRequestId?:string; sourceId:string | null }
 export interface CsvIssue { line:number; message:string; code?:'unknown_category' }
@@ -76,7 +76,7 @@ export function parseExpenseCsv(csv:unknown,empresaId:string,categories:readonly
   if(new Set(fields).size!==fields.length)throw new InputError('O CSV possui colunas repetidas. Use uma coluna para cada campo.');
   if(records.length<2)throw new InputError('O CSV não contém lançamentos.');
   if(records.length-1>MAX_IMPORT_ROWS)throw new InputError(`Importe até ${MAX_IMPORT_ROWS} lançamentos por arquivo.`);
-  const systemExport=records[0].record.length===CSV_HEADERS.length && records[0].record.every((header,index)=>header===CSV_HEADERS[index]);
+  const systemExport=[CSV_HEADERS.length, CSV_HEADERS.length - 1].includes(records[0].record.length) && records[0].record.every((header,index)=>header===CSV_HEADERS[index]);
   const rows:ImportRow[]=[],issues:CsvIssue[]=[],occurrences=new Map<string,number>(),unknownCategories=new Map<string,string>();
   for(const {record,info} of records.slice(1)) {
     if(record.every(value=>!value.trim()))continue;
@@ -94,7 +94,9 @@ export function parseExpenseCsv(csv:unknown,empresaId:string,categories:readonly
       if(!paid&&!pending)throw new InputError('Situação inválida. Use Pago ou A pagar.');
       const method=PAYMENT_METHODS.find(item=>normalize(item.id)===normalize(data.paymentMethod||'not_informed')||normalize(item.label)===normalize(data.paymentMethod||'Não informado'));
       if(!method)throw new InputError('Forma de pagamento desconhecida. Confira o modelo.');
-      const input=validateExpense({description:data.description,amountCents:importAmount(data.amount),date:importDate(data.date),category:category.id,merchant:data.merchant||'',status:paid?'paid':'pending',paymentMethod:method.id,notes:data.notes||''});
+      let items: unknown;
+      if (data.items) { try { items = JSON.parse(data.items); } catch { throw new InputError('Produtos (JSON): formato inválido.'); } }
+      const input=validateExpense({items,description:data.description,amountCents:importAmount(data.amount),date:importDate(data.date),category:category.id,merchant:data.merchant||'',status:paid?'paid':'pending',paymentMethod:method.id,notes:data.notes||''});
       const sourceId=data.sourceId?.toLowerCase()||null;
       if(sourceId&&!/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(sourceId))throw new InputError('ID do lançamento inválido. Deixe vazio para criar um novo gasto.');
       const canonical=JSON.stringify(input),occurrence=occurrences.get(canonical)||0;occurrences.set(canonical,occurrence+1);

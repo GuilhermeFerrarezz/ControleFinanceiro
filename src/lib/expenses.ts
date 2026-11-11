@@ -1,5 +1,7 @@
+import { isDeepStrictEqual } from 'node:util';
+import { validateExpenseItems } from './expense-items';
 import { averageCents, changePercent, subtractCents, sumCents } from './financial-math';
-import { deleteExpensesInPeriod, expenseBounds, expenseYears, expenseCategories, expenseDaily, expenseDailyByCategory, expenseTotals, findExpense, insertExpense, insertExpenseAudit, listExpenses, updateExpense, type IExpense } from '../models/Expense';
+import { expenseProducts, deleteExpensesInPeriod, expenseBounds, expenseYears, expenseCategories, expenseDaily, expenseDailyByCategory, expenseTotals, findExpense, insertExpense, insertExpenseAudit, listExpenses, updateExpense, type IExpense } from '../models/Expense';
 import { inTransaction } from './postgres';
 import { financeComparison, financeDays } from './revenue';
 import { InputError } from './validation';
@@ -29,7 +31,8 @@ export function validateExpense(body: Record<string, unknown>): ExpenseInput {
   const paymentMethod = body.paymentMethod ?? 'not_informed';
   if (status !== 'paid' && status !== 'pending') throw new InputError('Escolha uma situação de pagamento válida.');
   if (!PAYMENT_METHODS.some(method => method.id === paymentMethod)) throw new InputError('Escolha uma forma de pagamento válida.');
-  return { description: text(body.description, 'Descrição', 120, true), merchant: text(body.merchant, 'Local ou favorecido', 120),
+  const items = validateExpenseItems(body.items, Number(body.amountCents));
+  return { ...(items.length ? { items } : {}), description: text(body.description, 'Descrição', 120, true), merchant: text(body.merchant, 'Local ou favorecido', 120),
     notes: text(body.notes, 'Observações', 1000), amountCents: body.amountCents as number, date: dateValue(body.date),
     category: body.category as ExpenseInput['category'], status, paymentMethod: paymentMethod as ExpenseInput['paymentMethod'] };
 }
@@ -72,14 +75,14 @@ export function expenseFilters(params = new URLSearchParams()): ExpenseFilters {
   if (q.length > 120 || !Number.isSafeInteger(page) || page < 1 || page > 100000) throw new InputError('Filtros inválidos.');
   return { start, end, category, merchant, status, q, page };
 }
-const inputSnapshot = (expense: IExpense) => Object.fromEntries(['description','amountCents','date','category','merchant','status','paymentMethod','notes','version','deletedAt'].map(field => [field, expense[field as keyof IExpense]]));
+const inputSnapshot = (expense: IExpense) => Object.fromEntries(['description','amountCents','date','category','merchant','status','paymentMethod','notes','items','version','deletedAt'].map(field => [field, expense[field as keyof IExpense]]));
 export async function createExpense(actor: ExpenseActor, input: ExpenseInput, requestId: string) {
   return inTransaction(async client => {
     if (!await findMembership(actor.id,actor.empresaId,client,true)) throw new ExpenseError('Você não tem mais acesso a este restaurante.',403);
     await requireCategory(actor.empresaId, input.category, client);
     const { expense, created } = await insertExpense(actor.empresaId,actor.id,requestId,input,client);
     if (!created) {
-      const matches = expense.createdBy === actor.id && !expense.deletedAt && Object.entries(input).every(([field,value]) => expense[field as keyof IExpense] === value);
+      const matches = expense.createdBy === actor.id && !expense.deletedAt && isDeepStrictEqual(expense.items || [], input.items || []) && Object.entries(input).every(([field,value]) => (field === 'items' ? isDeepStrictEqual(expense.items || [], value) : expense[field as keyof IExpense] === value));
       if (!matches) throw new ExpenseError('Este envio já foi utilizado. Atualize a página antes de tentar novamente.',409);
       return { id: expense.id, replayed: true };
     }
@@ -116,7 +119,7 @@ export async function deleteExpensePeriod(actor: ExpenseActor, body: Record<stri
 function toRecord(row: IExpense,actor: ExpenseActor): ExpenseRecord {
   // Keep persistence metadata out of the API response.
   return { id:row.id,description:row.description,amountCents:row.amountCents,date:row.date,category:row.category,merchant:row.merchant,
-    status:row.status,paymentMethod:row.paymentMethod,notes:row.notes,createdBy:row.createdBy,authorName:row.authorName,
+    status:row.status,paymentMethod:row.paymentMethod,notes:row.notes,items:row.items || [],createdBy:row.createdBy,authorName:row.authorName,
     version:row.version,createdAt:row.createdAt,isDemo:row.isDemo,canManage:actor.role === 'owner' || row.createdBy === actor.id };
 }
 export async function expenseDashboard(actor: ExpenseActor,requested: ExpenseFilters): Promise<ExpenseDashboardData> {
@@ -135,7 +138,8 @@ export async function expenseDashboard(actor: ExpenseActor,requested: ExpenseFil
     const previous = await expenseTotals(actor.empresaId,{...filters,start:addDays(previousEnd,-(duration-1)),end:previousEnd},client);
     const trend=buildExpenseSeries(daily,filters.start,filters.end);
     const availablePeriod=await expenseBounds(actor.empresaId,client);
-    return { categoryOptions, merchantOptions, finance, filters:{...filters,page},expenses:expenses.map(row=>toRecord(row,actor)),count:totals.count,pages,pageSize,years,
+    const products = await expenseProducts(actor.empresaId, filters, client);
+    return { products, categoryOptions, merchantOptions, finance, filters:{...filters,page},expenses:expenses.map(row=>toRecord(row,actor)),count:totals.count,pages,pageSize,years,
       summary:{...totals,averageDailyCents:averageCents(totals.totalCents,duration),previousTotalCents:previous.totalCents,
         changePercent:changePercent(totals.totalCents,previous.totalCents)},categories,...trend,availablePeriod };
   },true);
