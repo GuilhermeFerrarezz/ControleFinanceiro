@@ -9,12 +9,12 @@ import styles from './finance.module.css';
 
 export default function MoneyTrendChart({
   titleId, title, metric, emptyTitle, peakLabel, daysLabel, series, interval,
-  start, end, totalCents, peak, recordedDays, hasRecords, showZeros = false, className, children,
+  start, end, totalCents, peak, recordedDays, hasRecords, showZeros = false, className, children, readoutLabel = 'Total do período',
 }: {
   titleId: string; title: string; metric: string; emptyTitle: string; peakLabel: string; daysLabel: string;
   series: { date: string; totalCents: number | null }[]; interval: 'day' | 'month' | 'year';
   start: string; end: string; totalCents: number; peak: { date: string; totalCents: number } | null;
-  recordedDays: number; hasRecords: boolean; showZeros?: boolean; className?: string; children?: ReactNode;
+  recordedDays: number; hasRecords: boolean; showZeros?: boolean; className?: string; children?: ReactNode; readoutLabel?: string;
 }) {
   const [activeDate, setActiveDate] = useState<string | null>(null);
   const activeIndex=series.findIndex(day=>day.date===activeDate);
@@ -44,7 +44,7 @@ export default function MoneyTrendChart({
     <section className={className ?? styles.chartCard} aria-labelledby={titleId}><div className={styles.cardHeading}><div><h2 id={titleId}>{title}</h2><p>{yearly ? 'Evolução anual no período selecionado' : monthly ? 'Evolução mensal no período selecionado' : 'Evolução diária no período selecionado'}</p></div><span className={styles.chartBadge}><span />{metric}</span></div>
       {children}
       {!hasRecords ? <div className={styles.chartEmpty}><Icon name="chart" size={36} /><strong>{emptyTitle}</strong><p>Os registros deste período aparecerão aqui.</p></div> : <>
-        <div className={styles.chartReadout} aria-live="polite">{active !== null ? <><span>{periodLabel(series[active].date)}</span><strong>{activeValue === null ? 'Sem registro' : money(activeValue)}</strong></> : <><span>Total do período</span><strong>{money(totalCents)}</strong></>}</div>
+        <div className={styles.chartReadout} aria-live="polite">{active !== null ? <><span>{periodLabel(series[active].date)}</span><strong>{activeValue === null ? 'Sem registro' : money(activeValue)}</strong></> : <><span>{readoutLabel}</span><strong>{money(totalCents)}</strong></>}</div>
         <svg className={styles.lineChart} viewBox="0 0 720 270" role="img" aria-label={`${metric} de ${displayDate(start)} a ${displayDate(end)}. Total de ${money(totalCents)}. Valores disponíveis na tabela abaixo.`} onPointerMove={inspect} onPointerLeave={event => { if (event.pointerType === 'mouse') setActiveDate(null); }} onPointerDown={inspect}>
           <defs><linearGradient id={titleId + '-area'} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#829d62" stopOpacity="0.28" /><stop offset="100%" stopColor="#829d62" stopOpacity="0.01" /></linearGradient></defs>
           <text x={left} y="14" fill="#506249" fontSize="11">R$</text>

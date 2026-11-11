@@ -286,3 +286,9 @@
 .productCharts > .chartCard { margin-top: 20px; }
 .productRanking { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px 24px; }
 @media (max-width: 900px) { .productRanking { grid-template-columns: 1fr; } }
+
+.packagingFields { display: grid; gap: 12px; min-width: 0; }.packagingFields p { margin: 0; }
+.ingredientAnalysis { border-top: 1px solid var(--line); }.ingredientAnalysis h3 { margin: 0; font-size: 20px; }
+.ingredientPriceCard { padding: 24px; }.ingredientPriceCard > label { max-width: 460px; margin-bottom: 20px; }
+.priceDate { display: block; color: #64735a; font-size: 12px; margin-top: 5px; }.priceUp { color: #a34832; }.priceDown { color: #315f37; }
+@media (max-width: 600px) { .ingredientPriceCard { padding: 18px 14px; } }

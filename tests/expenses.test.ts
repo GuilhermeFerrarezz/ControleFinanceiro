@@ -1,3 +1,4 @@
+import JSZip from 'jszip';
 import { parseExpenseCsv, expenseCsv } from '../src/lib/expense-csv';
 import type { IExpense } from '../src/models/Expense';
 import { test } from 'node:test';
@@ -582,7 +583,8 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal(data.expenses.length, 15);
     assert.equal(data.count, 17);
     assert.equal(data.summary.totalCents, 161000);
-    assert.deepEqual(data.products.find((item: { name: string }) => item.name === 'Carne bovina'), { name: 'Carne bovina', productId: registered[0].productId, quantity: 20, unit: 'kg', amountCents: 72000, purchases: 16 });
+    const meat = data.products.find((item: { name: string }) => item.name === 'Carne bovina');
+    assert.equal(meat.quantity, 20); assert.equal(meat.unit, 'kg'); assert.equal(meat.amountCents, 72000); assert.equal(meat.purchases, 16); assert.equal(meat.productId, registered[0].productId); assert.equal(meat.averagePriceCents, '3600');
     assert.equal((await list(owner, range + '&q=Carne')).count, 16);
     assert.equal((await list(owner, range + '&q=%25')).count, 0);
     assert.deepEqual((await list(other, range)).products, []);
@@ -591,7 +593,8 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     const changed = [{ name: 'carne bovina', quantity: 500, unit: 'g', amountCents: 3000 }];
     assert.equal((await api(`/expenses/${id}`, owner, 'PATCH', { ...body, ...purchase, items: changed, version: 1 })).status, 200);
     data = await list(owner, range);
-    assert.equal(data.products.find((item: { unit: string }) => item.unit === 'g').quantity, 500);
+    assert.equal(data.products.find((item: { name: string }) => item.name === 'Carne bovina').quantity, 19.25);
+    assert.equal(data.products.some((item: { unit: string }) => item.unit === 'g'), false);
     const audit = await query<{ before: { items: unknown }; after: { items: unknown } }>(fixture.pool, "SELECT before,after FROM expense_audit WHERE expense_id=$1 AND action='updated'", [id]);
     assert.deepEqual(audit[0].before.items, registered); assert.deepEqual(audit[0].after.items, [{ ...changed[0], name: 'Carne bovina', productId: registered[0].productId }]);
     assert.equal((await api(`/expenses/${id}`, owner, 'DELETE', { version: 2 })).status, 200);
@@ -703,6 +706,71 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     const created = await create(owner, { date: '2046-01-01' }); const id = (await created.json()).id;
     assert.equal((await api('/expenses/' + id, owner, 'DELETE', { version: 1, expectedEmpresaId: stale })).status, 409);
     assert.equal((await list(owner, 'start=2046-01-01&end=2046-01-31')).count, 1);
+  });
+  await t.test('insumos convertem medidas, preservam embalagem histórica e calculam preço ponderado', async () => {
+    const createProduct = await api('/catalog', owner, 'POST', { empresaId: ownerUser.empresaId, kind: 'product', name: 'Arroz ensacado para análise', defaultUnit: 'pacote', packageContent: { quantity: 5, unit: 'kg' } });
+    assert.equal(createProduct.status, 200); const product = await createProduct.json();
+    assert.deepEqual(product.packageContent, { quantity: 5, unit: 'kg' });
+    const item = { productId: product.id, name: product.name, quantity: 2, unit: 'pacote', amountCents: 5000, packageContent: product.packageContent };
+    const first = await create(owner, { description: 'Pacotes de arroz', date: '2049-01-01', amountCents: 5000, items: [item] }); assert.equal(first.status, 201); const firstId = (await first.json()).id;
+    const metadata = { empresaId: ownerUser.empresaId, kind: 'product', id: product.id, previousName: product.name, name: product.name, defaultUnit: 'pacote', packageContent: { quantity: 10, unit: 'kg' }, previousProduct: { defaultUnit: 'pacote', packageContent: product.packageContent } };
+    assert.equal((await api('/catalog', owner, 'PATCH', metadata)).status, 200);
+    assert.equal((await api('/catalog', owner, 'PATCH', metadata)).status, 400);
+    assert.equal((await create(owner, { date: '2049-01-02', amountCents: 400, items: [{ ...item, unit: 'g', quantity: 500, amountCents: 400, packageContent: undefined }] })).status, 201);
+    assert.equal((await create(owner, { date: '2049-01-03', amountCents: 1500, items: [{ ...item, quantity: 1, amountCents: 1500, packageContent: { quantity: 2, unit: 'kg' } }] })).status, 201);
+    assert.equal((await create(owner, { date: '2049-01-04', amountCents: 900, items: [{ ...item, quantity: 3, amountCents: 900, packageContent: undefined }] })).status, 201);
+    const range = 'start=2049-01-01&end=2049-01-31';
+    const data = await list(owner, range), normalized = data.products.find((row: { unit: string }) => row.unit === 'kg');
+    assert.equal(normalized.quantityText, '12.5'); assert.equal(normalized.amountCents, 6900); assert.equal(normalized.averagePriceCents, '552'); assert.equal(normalized.purchases, 3);
+    assert.equal(normalized.recentPrices[0].priceCents, '750'); assert.equal(normalized.recentPrices[1].priceCents, '800');
+    assert.equal(data.products.find((row: { unit: string }) => row.unit === 'pacote').quantityText, '3');
+    assert.deepEqual(data.expenses.find((row: { id: string }) => row.id === firstId).items[0].packageContent, { quantity: 5, unit: 'kg' });
+    assert.deepEqual(data.ingredientDaily.filter((row: { unit: string }) => row.unit === 'kg').map((row: { quantity: string }) => row.quantity), ['10', '0.5', '2']);
+    const xlsx = await api('/expenses?' + range + '&format=xlsx', owner); assert.equal(xlsx.status, 200);
+    const book = new ExcelJS.Workbook(); await book.xlsx.load(await xlsx.arrayBuffer());
+    const ingredients = book.getWorksheet('Insumos')!;
+    assert.equal(ingredients.getCell('B2').value, 12.5); assert.equal(ingredients.getCell('E2').value, 5.52);
+    const csv = await (await api('/expenses?' + range + '&format=csv', owner)).text();
+    const exported = parseExpenseCsv(csv, ownerUser.empresaId);
+    assert.deepEqual(exported.issues, []); assert.deepEqual(exported.rows.find(row => row.sourceId === firstId)!.input.items![0].packageContent, product.packageContent);
+    assert.equal((await api('/expenses/' + firstId, owner, 'DELETE', { version: 1 })).status, 200);
+    assert.equal((await api('/expenses/import', owner, 'POST', { mode: 'import', csv })).status, 200);
+    assert.equal((await list(owner, range)).products.find((row: { unit: string }) => row.unit === 'kg').quantityText, '12.5');
+    const otherProducts = (await (await api('/catalog', other)).json()).products;
+    assert.ok(!otherProducts.some((row: { id: string }) => row.id === product.id));
+    assert.equal((await api('/catalog', owner, 'POST', { empresaId: ownerUser.empresaId, kind: 'product', name: 'Embalagem inválida', defaultUnit: 'kg', packageContent: { quantity: 5, unit: 'kg' } })).status, 400);
+  });
+  await t.test('ZIP exporta mais de 10 mil gastos em partes reimportáveis sem perda ou duplicação', async () => {
+    await query(fixture.pool, `INSERT INTO expenses (empresa_id,created_by,updated_by,request_id,description,amount_cents,date,category)
+      SELECT $1,$2,$2,gen_random_uuid(),'Gasto para exportação ' || n,1,'2048-01-01','alimentos' FROM generate_series(1,10001) n`, [ownerUser.empresaId, ownerUser.id]);
+    const product = (await (await api('/catalog', owner)).json()).products.find((row: { name: string }) => row.name === 'Arroz');
+    const items = [{ productId: product.id, name: product.name, quantity: 2, unit: 'pacote', amountCents: 5000, packageContent: { quantity: 5, unit: 'kg' } }];
+    assert.equal((await create(owner, { date: '2048-01-02', description: 'Compra detalhada do ZIP', amountCents: 5000, items })).status, 201);
+    const range = 'start=2048-01-01&end=2048-01-31';
+    assert.equal((await api('/expenses?' + range + '&format=csv', owner)).status, 400);
+    assert.equal((await api('/expenses?' + range + '&format=csv-zip')).status, 401);
+    assert.equal((await api('/expenses?' + range + '&format=csv-zip&expectedEmpresaId=' + randomUUID(), owner)).status, 409);
+    const response = await api('/expenses?' + range + '&format=csv-zip', owner); assert.equal(response.status, 200, await response.clone().text());
+    assert.equal(response.headers.get('content-type'), 'application/zip');
+    const zip = await JSZip.loadAsync(await response.arrayBuffer());
+    const files = Object.keys(zip.files).filter(name => name.endsWith('.csv')).sort(); assert.equal(files.length, 6);
+    const manifest = JSON.parse(await zip.file('manifesto.json')!.async('string')); assert.equal(manifest.lancamentos, 10002); assert.equal(manifest.totalCentavos, 15001);
+    const ids: string[] = [];
+    let detailedFound = false;
+    for (const name of files) {
+      const csv = await zip.file(name)!.async('string'); assert.ok(Buffer.byteLength(csv, 'utf8') <= 2 * 1024 * 1024);
+      const parsed = parseExpenseCsv(csv, ownerUser.empresaId); assert.deepEqual(parsed.issues, []); assert.ok(parsed.rows.length <= 2000);
+      ids.push(...parsed.rows.map(row => row.sourceId!));
+      const detailed = parsed.rows.find(row => row.input.description === 'Compra detalhada do ZIP');
+      if (detailed) { detailedFound = true; assert.deepEqual(detailed.input.items, items); }
+      const imported = await api('/expenses/import', other, 'POST', { mode: 'import', csv }); assert.equal(imported.status, 200, await imported.clone().text()); assert.equal((await imported.json()).imported, parsed.rows.length);
+    }
+    assert.ok(detailedFound); assert.equal(ids.length, 10002); assert.equal(new Set(ids).size, ids.length);
+    const copied = await list(other, range); assert.equal(copied.count, 10002); assert.equal(copied.summary.totalCents, 15001);
+    const firstPart = await zip.file(files[0])!.async('string');
+    const repeated = await api('/expenses/import', other, 'POST', { mode: 'import', csv: firstPart }); assert.equal(repeated.status, 200); assert.equal((await repeated.json()).imported, 0);
+    const empty = await JSZip.loadAsync(await (await api('/expenses?start=2055-01-01&end=2055-01-01&format=csv-zip', owner)).arrayBuffer());
+    assert.equal(Object.keys(empty.files).filter(name => name.endsWith('.csv')).length, 0);
   });
   await t.test('revogação concorrente impede criar, editar ou excluir gastos com acesso antigo',async()=>{
     const created=await create(employee,{description:'Teste de revogação concorrente'});

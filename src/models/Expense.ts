@@ -1,3 +1,4 @@
+import { measuredQuantity, quantityText } from '../lib/ingredient-analysis';
 import { safeInteger } from '../lib/financial-math';
 import { db } from '../lib/db';
 import type { Queryable } from '../lib/postgres';
@@ -154,16 +155,40 @@ export async function insertImportedExpenses(empresaId:string,userId:string,item
 
 // Identity and display names follow the catalog, even after a product is renamed or archived.
 const productJoin = `LEFT JOIN restaurant_catalog p ON p.empresa_id=e.empresa_id AND p.kind='product' AND p.id::text=item->>'productId'`;
-export async function expenseProducts(empresaId: string, filters: ExpenseFilters, client: Queryable) {
+function ingredientSource(empresaId: string, filters: ExpenseFilters) {
   const { clause, values } = scope(empresaId, filters);
-  const { rows } = await client.query<{ productId: string; name: string; unit: import('../lib/expense-shared').ExpenseItem['unit']; quantity: string; amountCents: string; purchases: string }>(`
-    SELECT coalesce(p.id::text,lower(btrim(item->>'name'))) AS "productId",coalesce(min(p.name),min(btrim(item->>'name'))) AS name, item->>'unit' AS unit,
-      sum((item->>'quantity')::numeric)::text AS quantity,
-      sum((item->>'amountCents')::bigint)::text AS "amountCents", count(DISTINCT e.id)::text AS purchases
-    FROM expenses e CROSS JOIN LATERAL jsonb_array_elements(e.items) item ${productJoin}
-    WHERE ${clause} GROUP BY coalesce(p.id::text,lower(btrim(item->>'name'))), item->>'unit'
-    ORDER BY sum((item->>'amountCents')::bigint) DESC, name, unit`, values);
-  return rows.map(row => ({ ...row, quantity: Number(row.quantity), amountCents: integer(row.amountCents), purchases: integer(row.purchases) }));
+  const packed = `(item->>'unit' IN ('pacote','caixa') AND jsonb_typeof(item->'packageContent')='object')`;
+  return { values, sql: `WITH expanded AS (
+    SELECT coalesce(p.id::text,lower(btrim(item->>'name'))) AS "productId",coalesce(p.name,btrim(item->>'name')) AS name,
+      e.id AS "expenseId",e.date,e.created_at,e.merchant,
+      CASE WHEN ${packed} THEN item->'packageContent'->>'unit' ELSE item->>'unit' END AS source_unit,
+      (item->>'quantity')::numeric * CASE WHEN ${packed} THEN (item->'packageContent'->>'quantity')::numeric ELSE 1 END AS quantity,
+      (item->>'amountCents')::bigint AS cents
+    FROM expenses e CROSS JOIN LATERAL jsonb_array_elements(e.items) item ${productJoin} WHERE ${clause}
+  ), normalized AS (
+    SELECT "productId",name,"expenseId",date,created_at,merchant,cents,
+      CASE source_unit WHEN 'g' THEN 'kg' WHEN 'ml' THEN 'L' ELSE source_unit END AS unit,
+      quantity / CASE WHEN source_unit IN ('g','ml') THEN 1000 ELSE 1 END AS quantity FROM expanded
+  )` };
+}
+export async function expenseProducts(empresaId: string, filters: ExpenseFilters, client: Queryable) {
+  const { sql, values } = ingredientSource(empresaId, filters);
+  const { rows } = await client.query<{ productId: string; name: string; unit: import('../lib/expense-shared').ExpenseItem['unit']; quantityText: string; amountCents: string; purchases: string; averagePriceCents: string; recentPrices: import('../lib/expense-shared').IngredientPrice[] }>(`${sql},
+    purchases AS (SELECT "productId",min(name) AS name,unit,"expenseId",date,created_at,sum(quantity) AS quantity,sum(cents) AS cents
+      FROM normalized GROUP BY "productId",unit,"expenseId",date,created_at),
+    ranked AS (SELECT *,row_number() OVER (PARTITION BY "productId",unit ORDER BY date DESC,created_at DESC,"expenseId" DESC) AS position FROM purchases)
+    SELECT "productId",min(name) AS name,unit,sum(quantity)::text AS "quantityText",sum(cents)::text AS "amountCents",count(*)::text AS purchases,
+      round(sum(cents)/sum(quantity))::text AS "averagePriceCents",
+      jsonb_agg(jsonb_build_object('date',to_char(date,'YYYY-MM-DD'),'quantity',quantity::text,'amountCents',cents,'priceCents',round(cents/quantity)::text) ORDER BY position) FILTER (WHERE position<=2) AS "recentPrices"
+    FROM ranked GROUP BY "productId",unit ORDER BY sum(cents) DESC,name,unit`, values);
+  return rows.map(row => ({ ...row, quantity: Number(row.quantityText), quantityText: quantityText(measuredQuantity(row.quantityText)), recentPrices: row.recentPrices.map(price => ({ ...price, quantity: quantityText(measuredQuantity(price.quantity)) })), amountCents: integer(row.amountCents), purchases: integer(row.purchases) }));
+}
+export async function expenseIngredientDaily(empresaId: string, filters: ExpenseFilters, client: Queryable) {
+  const { sql, values } = ingredientSource(empresaId, filters);
+  const { rows } = await client.query<{ productId: string; unit: string; date: string; quantity: string; totalCents: string }>(`${sql}
+    SELECT "productId",unit,to_char(date,'YYYY-MM-DD') AS date,sum(quantity)::text AS quantity,sum(cents)::text AS "totalCents"
+    FROM normalized GROUP BY "productId",unit,date ORDER BY date`, values);
+  return rows.map(row => ({ ...row, quantity: quantityText(measuredQuantity(row.quantity)), totalCents: integer(row.totalCents) }));
 }
 export async function expenseProductDaily(empresaId: string, filters: ExpenseFilters, client: Queryable) {
   const { clause, values } = scope(empresaId, filters);
@@ -173,4 +198,20 @@ export async function expenseProductDaily(empresaId: string, filters: ExpenseFil
     FROM expenses e CROSS JOIN LATERAL jsonb_array_elements(e.items) item ${productJoin}
     WHERE ${clause} GROUP BY e.date,coalesce(p.id::text,lower(btrim(item->>'name'))) ORDER BY e.date`, values);
   return rows.map(row => ({ ...row, totalCents: integer(row.totalCents) }));
+}
+
+// One transaction/snapshot for the complete export, without growing OFFSET scans.
+export async function* iterateExpenses(empresaId: string, filters: ExpenseFilters, client: Queryable) {
+  const { clause, values } = scope(empresaId, filters);
+  await client.query(`DECLARE expense_export NO SCROLL CURSOR FOR SELECT ${columns},u.nome AS "authorName",c.name AS "categoryLabel"
+    FROM expenses e JOIN usuarios u ON u.id=e.created_by
+    LEFT JOIN restaurant_catalog c ON COALESCE(c.category_key,c.id::text)=e.category AND c.empresa_id=e.empresa_id AND c.kind='category'
+    WHERE ${clause} ORDER BY e.date DESC,e.created_at DESC,e.id DESC`, values);
+  try {
+    while (true) {
+      const { rows } = await client.query<IExpense>('FETCH FORWARD 500 FROM expense_export');
+      if (!rows.length) break;
+      for (const row of rows) yield expenseRow(row);
+    }
+  } finally { await client.query('CLOSE expense_export'); }
 }

@@ -22,8 +22,8 @@ export async function resolveExpenseProducts(empresaId: string, input: ExpenseIn
     // Exported IDs belong to their source restaurant. Import resolves by name locally.
     if (importing && !product) product = catalog.byName.get(normalizeCatalogName(item.name));
     if (!product && importing) {
-      const created = await insertCatalogEntry(empresaId, 'product', item.name, client, item.unit);
-      product = { ...created, defaultUnit: item.unit, archived: false };
+      const created = await insertCatalogEntry(empresaId, 'product', item.name, client, item.unit, item.packageContent || null);
+      product = { ...created, defaultUnit: item.unit, packageContent: item.packageContent || null, archived: false };
       catalog.byId.set(product.id, product);
       catalog.byName.set(normalizeCatalogName(product.name), product);
     }

@@ -89,13 +89,18 @@ export function newExpenseRequestId() {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 export const ITEM_UNITS = ["un", "kg", "g", "L", "ml", "pacote", "caixa"] as const;
-export type ExpenseItem = { productId?: string; name: string; quantity: number; unit: typeof ITEM_UNITS[number]; amountCents: number };
-export type ProductTotal = ExpenseItem & { purchases: number };
+export const CONTENT_UNITS = ["kg", "g", "L", "ml", "un"] as const;
+export type PackageContent = { quantity: number; unit: typeof CONTENT_UNITS[number] };
+export type IngredientDay = { productId: string; unit: string; date: string; quantity: string; totalCents: number };
+export type IngredientPrice = { date: string; quantity: string; amountCents: number; priceCents: string };
+export type ExpenseItem = { packageContent?: PackageContent; productId?: string; name: string; quantity: number; unit: typeof ITEM_UNITS[number]; amountCents: number };
+export type ProductTotal = ExpenseItem & { purchases: number; quantityText?: string; averagePriceCents?: string; recentPrices?: IngredientPrice[] };
 export type ExpenseInput = { items?: ExpenseItem[]; description: string; amountCents: number; date: string; category: ExpenseCategory; merchant: string; status: ExpenseStatus; paymentMethod: PaymentMethod; notes: string };
 export type ExpenseRecord = ExpenseInput & { id: string; createdBy: string; authorName: string; version: number; createdAt: string; canManage: boolean; isDemo: boolean };
 export type ExpenseFilters = { start: string; end: string; category: string; merchant?: string; status: string; q: string; page: number };
 export type ExpenseDashboardData = {
   products?: ProductTotal[];
+  ingredientDaily?: IngredientDay[];
   productDaily?: { date: string; productId: string; name: string; totalCents: number }[];
   finance?: FinanceComparison;
   categoryOptions?: CategoryOption[];

@@ -4,7 +4,7 @@ export function normalizeCatalogName(value: string) {
 export type MerchantOption = { id: string; name: string };
 
 export type CatalogKind = 'category' | 'merchant' | 'product';
-export type ProductOption = MerchantOption & { defaultUnit: import('./expense-shared').ExpenseItem['unit']; archived?: boolean };
+export type ProductOption = MerchantOption & { packageContent?: import('./expense-shared').PackageContent | null; defaultUnit: import('./expense-shared').ExpenseItem['unit']; archived?: boolean };
 export const BASIC_PRODUCTS: readonly { name: string; defaultUnit: ProductOption['defaultUnit'] }[] = [
   { name: 'Arroz', defaultUnit: 'kg' },
   { name: 'Feijão', defaultUnit: 'kg' },

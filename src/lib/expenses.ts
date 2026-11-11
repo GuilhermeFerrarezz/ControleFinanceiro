@@ -2,7 +2,7 @@ import { resolveExpenseProducts } from './expense-product-catalog';
 import { isDeepStrictEqual } from 'node:util';
 import { validateExpenseItems } from './expense-items';
 import { averageCents, changePercent, subtractCents, sumCents } from './financial-math';
-import { expenseProductDaily, expenseProducts, deleteExpensesInPeriod, expenseBounds, expenseYears, expenseCategories, expenseDaily, expenseDailyByCategory, expenseTotals, findExpense, insertExpense, insertExpenseAudit, listExpenses, updateExpense, type IExpense } from '../models/Expense';
+import { expenseIngredientDaily, expenseProductDaily, expenseProducts, deleteExpensesInPeriod, expenseBounds, expenseYears, expenseCategories, expenseDaily, expenseDailyByCategory, expenseTotals, findExpense, insertExpense, insertExpenseAudit, listExpenses, updateExpense, type IExpense } from '../models/Expense';
 import { inTransaction } from './postgres';
 import { financeComparison, financeDays } from './revenue';
 import { InputError } from './validation';
@@ -143,7 +143,8 @@ export async function expenseDashboard(actor: ExpenseActor,requested: ExpenseFil
     const availablePeriod=await expenseBounds(actor.empresaId,client);
     const products = await expenseProducts(actor.empresaId, filters, client);
     const productDaily = await expenseProductDaily(actor.empresaId, filters, client);
-    return { productDaily, products, categoryOptions, merchantOptions, finance, filters:{...filters,page},expenses:expenses.map(row=>toRecord(row,actor)),count:totals.count,pages,pageSize,years,
+    const ingredientDaily = await expenseIngredientDaily(actor.empresaId, filters, client);
+    return { ingredientDaily, productDaily, products, categoryOptions, merchantOptions, finance, filters:{...filters,page},expenses:expenses.map(row=>toRecord(row,actor)),count:totals.count,pages,pageSize,years,
       summary:{...totals,averageDailyCents:averageCents(totals.totalCents,duration),previousTotalCents:previous.totalCents,
         changePercent:changePercent(totals.totalCents,previous.totalCents)},categories,...trend,availablePeriod };
   },true);

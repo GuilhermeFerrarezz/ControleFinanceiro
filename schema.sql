@@ -209,4 +209,6 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+ALTER TABLE restaurant_catalog ADD COLUMN IF NOT EXISTS package_content JSONB CHECK (package_content IS NULL OR jsonb_typeof(package_content)='object');
+
 COMMIT;

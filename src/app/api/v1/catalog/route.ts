@@ -1,3 +1,4 @@
+import { validatePackageContent } from '@/src/lib/expense-items';
 import { ITEM_UNITS } from '@/src/lib/expense-shared';
 import { NextResponse } from 'next/server';
 import { matchesRestaurantContext, currentUser, jsonError, trustedOrigin } from '@/src/lib/auth';
@@ -11,6 +12,13 @@ export async function GET(request: Request) {
   if (!user.empresaId) return jsonError('Selecione um restaurante.', 403);
   if (!matchesRestaurantContext(request, user.empresaId)) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
   return NextResponse.json({ empresaId: user.empresaId, categories: await listCategories(user.empresaId), merchants: await listMerchants(user.empresaId), products: await listProducts(user.empresaId) }, { headers: { 'Cache-Control': 'no-store' } });
+}
+function productDetails(body: Record<string, unknown>) {
+  const defaultUnit = body.defaultUnit ?? 'un';
+  if (!ITEM_UNITS.includes(defaultUnit as typeof ITEM_UNITS[number])) throw new InputError('Escolha uma unidade válida.');
+  const packageContent = validatePackageContent(body.packageContent);
+  if (packageContent && defaultUnit !== 'pacote' && defaultUnit !== 'caixa') throw new InputError('Conteúdo por embalagem só se aplica a pacotes ou caixas.');
+  return { defaultUnit: defaultUnit as typeof ITEM_UNITS[number], packageContent };
 }
 async function mutate(request: Request, remove: boolean) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
@@ -28,9 +36,11 @@ async function mutate(request: Request, remove: boolean) {
     const previousName = textValue(body.previousName, 'O nome anterior');
     if (remove && body.confirm !== true) throw new InputError('Confirme a exclusão.');
     const name = remove ? null : textValue(body.name, 'O nome').replace(/\s+/g, ' ');
+    const details = !remove && kind === 'product' && body.defaultUnit !== undefined ? productDetails(body) : undefined;
+    const previous = body.previousProduct && typeof body.previousProduct === 'object' ? productDetails(body.previousProduct as Record<string, unknown>) : undefined;
     await inTransaction(async client => {
       if (!await findMembership(user.id, empresaId, client, true)) throw new InputError('Você não tem mais acesso a este restaurante.');
-      await changeCatalogEntry(empresaId, kind, id, previousName, name, client);
+      await changeCatalogEntry(empresaId, kind, id, previousName, name, client, details ? { ...details, previous } : undefined);
     });
     return NextResponse.json({ message: remove ? 'Cadastro excluído.' : 'Cadastro atualizado.' });
   } catch (error) {
@@ -52,11 +62,10 @@ export async function POST(request: Request) {
     if (body.kind !== 'category' && body.kind !== 'merchant' && body.kind !== 'product') throw new InputError('Escolha categoria, local ou produto.');
     const kind = body.kind;
     const name = textValue(body.name, 'O nome').replace(/\s+/g, ' ');
-    const defaultUnit = body.defaultUnit ?? 'un';
-    if (!ITEM_UNITS.includes(defaultUnit as typeof ITEM_UNITS[number])) throw new InputError('Escolha uma unidade válida.');
+    const details = productDetails(body);
     return await inTransaction(async client => {
       if (!await findMembership(user.id, empresaId, client, true)) return jsonError('Você não tem mais acesso a este restaurante.', 403);
-      return NextResponse.json(await insertCatalogEntry(empresaId, kind, name, client, defaultUnit as typeof ITEM_UNITS[number]));
+      return NextResponse.json(await insertCatalogEntry(empresaId, kind, name, client, details.defaultUnit, details.packageContent));
     });
   } catch (error) { return jsonError(error instanceof InputError ? error.message : 'Não foi possível salvar o cadastro.', error instanceof InputError ? 400 : 500); }
 }

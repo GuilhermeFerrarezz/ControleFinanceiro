@@ -11,6 +11,11 @@ export async function GET(request: Request) {
   try {
     const params = new URL(request.url).searchParams;
     const filters = expenseFilters(params);
+    if (params.get('format') === 'csv-zip') {
+      const { expenseCsvArchive } = await import('@/src/lib/expense-csv-archive');
+      const bytes = await expenseCsvArchive({ ...user, empresaId: user.empresaId }, filters);
+      return new Response(bytes, { headers: { 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="gastos-${filters.start}-${filters.end}.zip"`, 'Cache-Control': 'no-store' } });
+    }
     if (params.get('format') === 'csv') return new Response(expenseCsv(await expensesForExport({ ...user, empresaId: user.empresaId }, filters)), { headers: {
       'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="gastos-${filters.start}-${filters.end}.csv"`, 'Cache-Control': 'no-store',
     } });

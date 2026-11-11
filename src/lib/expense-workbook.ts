@@ -1,3 +1,4 @@
+import { aggregateIngredientItems, excelPrice, excelQuantity, ingredientPrice, normalizeIngredient } from './ingredient-analysis';
 import { excelMoney, subtractCents, sumCents } from './financial-math';
 import ExcelJS from 'exceljs';
 import { CSV_HEADERS } from './expense-csv';
@@ -16,10 +17,19 @@ export async function expenseWorkbook(rows:IExpense[],filters:ExpenseFilters,res
   sheet.eachRow((row,index)=>row.eachCell(cell=>{cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:index===1?'FF254E3B':index%2===0?'FFF0F5ED':'FFFFFFFF'}};}));
   sheet.autoFilter={from:'A1',to:`K${rows.length+1}`};
   const products = book.addWorksheet('Produtos');
-  products.columns = [{ header: 'Data', width: 18 }, { header: 'Compra', width: 35 }, { header: 'Local', width: 30 }, { header: 'Produto', width: 35 }, { header: 'Quantidade', width: 18 }, { header: 'Unidade', width: 15 }, { header: 'Valor total do item (R$)', width: 27 }];
-  for (const row of rows) for (const item of row.items || []) products.addRow([displayDate(row.date), row.description, row.merchant, item.name, item.quantity, item.unit, excelMoney(item.amountCents)]);
+  products.columns = [{ header: 'Data', width: 18 }, { header: 'Compra', width: 35 }, { header: 'Local', width: 30 }, { header: 'Produto', width: 35 }, { header: 'Quantidade', width: 18 }, { header: 'Unidade', width: 15 }, { header: 'Valor total do item (R$)', width: 27 }, { header: 'Conteúdo por embalagem', width: 24 }, { header: 'Unidade do conteúdo', width: 20 }, { header: 'Quantidade convertida', width: 24 }, { header: 'Medida comparável', width: 20 }, { header: 'Preço por medida (R$)', width: 26 }];
+  for (const row of rows) for (const item of row.items || []) {
+    const normalized = normalizeIngredient(item);
+    products.addRow([displayDate(row.date), row.description, row.merchant, item.name, item.quantity, item.unit, excelMoney(item.amountCents), item.packageContent?.quantity ?? null, item.packageContent?.unit ?? null, excelQuantity(normalized.quantity), normalized.unit, excelPrice(ingredientPrice(item.amountCents, normalized.quantity)!)]);
+  }
   products.getColumn(7).numFmt = '"R$" #,##0.00';
   products.getRow(1).font = { bold: true, color: { argb: 'FF254E3B' } };
+  products.getColumn(12).numFmt = '"R$" #,##0.00';
+  const ingredients = book.addWorksheet('Insumos');
+  ingredients.columns = [{ header: 'Insumo', width: 35 }, { header: 'Quantidade total', width: 24 }, { header: 'Medida', width: 18 }, { header: 'Valor gasto (R$)', width: 26 }, { header: 'Preço médio ponderado (R$)', width: 32 }];
+  for (const item of aggregateIngredientItems(rows.flatMap(row => row.items || []))) ingredients.addRow([item.name, excelQuantity(item.quantity), item.unit, excelMoney(item.amountCents), excelPrice(item.priceCents)]);
+  ingredients.getColumn(4).numFmt = ingredients.getColumn(5).numFmt = '"R$" #,##0.00';
+  ingredients.getRow(1).font = { bold: true, color: { argb: 'FF254E3B' } };
   const summary=book.addWorksheet('Resumo');summary.columns=[{width:32},{width:65}];
   summary.addRows([['Saldo da Casa','Resumo da exportação'],['Restaurante',restaurant],['Período',`${displayDate(filters.start)} a ${displayDate(filters.end)}`],['Categoria',filters.category ? categoryInfo(filters.category,categories).label : 'Todas'],['Situação',filters.status==='paid'?'Pagos':filters.status==='pending'?'A pagar':'Todas'],['Busca',filters.q||'Sem busca'],['Lançamentos',rows.length],['Total (R$)',excelMoney(sumCents(rows.map(row=>row.amountCents)))],['Já pago (R$)',excelMoney(sumCents(rows.filter(row=>row.status==='paid').map(row=>row.amountCents)))],['A pagar (R$)',excelMoney(sumCents(rows.filter(row=>row.status==='pending').map(row=>row.amountCents)))],['Autoria','Cada gasto mantém a identificação de quem o registrou.']]);
   summary.getRow(1).font={bold:true,size:15,color:{argb:'FF254E3B'}};

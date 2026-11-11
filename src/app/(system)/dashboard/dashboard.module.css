@@ -76,3 +76,5 @@
 .catalogCard .catalogRow > button { flex: 1; min-width: 0; }
 @media (max-width: 1100px) { .catalogGrid { grid-template-columns: 1fr; gap: 20px; }.catalogCard > h2,.catalogIntro,.catalogCreate { min-height: 0; }.catalogCard { padding: 20px; }.catalogCreate { margin-bottom: 20px; }.catalogCard .catalogList { height: 320px; flex-basis: 320px; } }
 @media (max-width: 480px) { .catalogGrid { gap: 16px; }.catalogCard { padding: 18px 14px; }.catalogCard .catalogItemRow { gap: 8px; }.catalogCard .catalogList { height: 300px; flex-basis: 300px; } }
+
+.catalogPackaging { display: block; color: #64735a; font-size: 12px; line-height: 1.5; margin-top: 4px; }

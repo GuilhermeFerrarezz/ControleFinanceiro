@@ -17,13 +17,15 @@ export const MAX_CSV_BYTES=2*1024*1024;
 export const CSV_HEADERS=['Data do gasto','Descrição','Valor (R$)','Categoria','Local de compra / favorecido','Situação','Forma de pagamento','Lançado por','Observações','ID do lançamento','Produtos (JSON)'];
 const escapedCsvText = /^[\s]*[=+@\-\t\r\n']/;
 export const csvCell=(value:string)=>`"${(escapedCsvText.test(value)?"'":'')+value.replaceAll('"','""')}"`;
-export function expenseCsv(rows:IExpense[]) {
-  const lines=[CSV_HEADERS,...rows.map(row=>[
+export function expenseCsvLine(row:IExpense) {
+  return [
     `Data: ${displayDate(row.date)}`,row.description,decimalCents(row.amountCents),
     row.categoryLabel || categoryInfo(row.category).label,row.merchant,row.status==='paid'?'Pago':'A pagar',
     PAYMENT_METHODS.find(item=>item.id===row.paymentMethod)!.label,row.authorName,row.notes,row.id,JSON.stringify(row.items || []),
-  ])];
-  return '\uFEFF'+lines.map(line=>line.map(csvCell).join(';')).join('\r\n');
+  ].map(csvCell).join(';');
+}
+export function expenseCsv(rows:IExpense[]) {
+  return '\uFEFF'+[CSV_HEADERS.map(csvCell).join(';'),...rows.map(expenseCsvLine)].join('\r\n');
 }
 export function csvTemplate() {
   return '\uFEFF'+[

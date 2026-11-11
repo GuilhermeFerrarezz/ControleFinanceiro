@@ -1,4 +1,4 @@
-import { ITEM_UNITS, MAX_AMOUNT_CENTS, type ExpenseItem } from './expense-shared';
+import { CONTENT_UNITS, ITEM_UNITS, MAX_AMOUNT_CENTS, type ExpenseItem, type PackageContent } from './expense-shared';
 import { sumCents } from './financial-math';
 import { InputError } from './validation';
 
@@ -20,8 +20,18 @@ export function validateExpenseItems(value: unknown, totalCents: number): Expens
       !ITEM_UNITS.includes(row.unit as ExpenseItem['unit']) || !Number.isSafeInteger(row.amountCents) ||
       Number(row.amountCents) <= 0 || Number(row.amountCents) > MAX_AMOUNT_CENTS) throw fail();
     if (row.productId !== undefined && (typeof row.productId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(row.productId))) throw fail();
-    return { ...(row.productId ? { productId: String(row.productId).toLowerCase() } : {}), name: row.name.trim().replace(/\s+/g, ' '), quantity: row.quantity, unit: row.unit as ExpenseItem['unit'], amountCents: Number(row.amountCents) };
+    const packageContent = validatePackageContent(row.packageContent);
+    if (packageContent && row.unit !== 'pacote' && row.unit !== 'caixa') throw new InputError('Informe conteúdo por embalagem apenas para pacotes ou caixas.');
+    return { ...(packageContent ? { packageContent } : {}), ...(row.productId ? { productId: String(row.productId).toLowerCase() } : {}), name: row.name.trim().replace(/\s+/g, ' '), quantity: row.quantity, unit: row.unit as ExpenseItem['unit'], amountCents: Number(row.amountCents) };
   });
   if (sumCents(items.map(item => item.amountCents)) > totalCents) throw new InputError('A soma dos produtos não pode ultrapassar o valor total da compra.');
   return items;
+}
+
+export function validatePackageContent(value: unknown): PackageContent | null {
+  if (value === undefined || value === null) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new InputError('Informe o conteúdo de cada embalagem.');
+  const content = value as Record<string, unknown>;
+  if (typeof content.quantity !== 'number' || parseQuantity(String(content.quantity)) === null || !CONTENT_UNITS.includes(content.unit as PackageContent['unit'])) throw new InputError('Conteúdo por embalagem: use quantidade positiva, até 3 casas decimais, e kg, g, L, ml ou un.');
+  return { quantity: content.quantity, unit: content.unit as PackageContent['unit'] };
 }

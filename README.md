@@ -18,7 +18,7 @@ O detalhamento de produtos é opcional: em **O que você comprou?**, adicione no
 
 Em **Compras por produto**, consulte as quantidades e valores de todo o período filtrado, inclusive além da página atual de lançamentos. O gráfico de rosca mostra a participação no valor detalhado, as barras destacam os produtos de maior custo e o gráfico de evolução acompanha todos os itens ou um produto selecionado. Clique em uma fatia ou barra, ou escolha um produto no seletor, para consultar sua evolução. Os gastos sem detalhamento aparecem separados e não são atribuídos a ingredientes.
 
-A área **Cadastros** reúne categorias, locais e produtos. Cada restaurante começa com 27 itens básicos, como arroz, feijão, carnes, hortifruti, óleo, limpeza e embalagens. No lançamento, digite para buscar (com ou sem acento), selecione uma sugestão ou use **Cadastrar** para incluir um novo produto para toda a equipe. A unidade sugerida é preenchida ao selecionar o item e pode ser ajustada na compra. Produtos têm identificação própria: renomeá-los mantém os totais e arquivá-los preserva as compras anteriores. Quantidades em kg, g, pacotes etc. continuam separadas na tabela; os gráficos somam o valor gasto no produto em todas as unidades. Compras representam aquisições, sem controle de estoque ou consumo da cozinha.
+A área **Cadastros** reúne categorias, locais e produtos. Cada restaurante começa com 27 itens básicos, como arroz, feijão, carnes, hortifruti, óleo, limpeza e embalagens. No lançamento, digite para buscar (com ou sem acento), selecione uma sugestão ou use **Cadastrar** para incluir um novo produto para toda a equipe. A unidade sugerida é preenchida ao selecionar o item e pode ser ajustada na compra. Produtos têm identificação própria: renomeá-los mantém os totais e arquivá-los preserva as compras anteriores. A análise de insumos reúne kg/g em kg e L/ml em L. Pacotes e caixas só são convertidos se o conteúdo tiver sido informado na compra; os demais permanecem separados. Os gráficos de gastos somam o custo do produto em todas as unidades. Compras representam aquisições, sem controle de estoque ou consumo da cozinha.
 
 A busca geral também encontra os produtos de uma compra. CSV preserva os detalhes e a importação associa os produtos ao cadastro do restaurante de destino, cadastrando itens ausentes. Excel inclui uma aba **Produtos**. Para atualizar um banco existente, execute `npm run db:migrate` antes de iniciar esta versão: os itens antigos serão vinculados ao cadastro, preservando os valores e a ordem da compra.
 
@@ -94,3 +94,18 @@ No painel, **O ritmo dos gastos** aparece primeiro. Em seguida, **Evolução das
 
 
 Na aba **Lançamentos**, o painel exibe **O ritmo dos gastos** e a lista dos lançamentos. Os gráficos e totais por produto ficam na **Visão geral**. O detalhamento opcional continua disponível ao cadastrar ou editar uma compra.
+
+
+### Arquivos grandes prontos para reimportar
+
+Em **Lançamentos**, use **CSV em partes (ZIP)** para baixar o período filtrado em arquivos menores. Cada parte tem cabeçalho próprio, no máximo **2.000 gastos** e **2 MB em UTF-8**, contando acentos, aspas e detalhamento de produtos. Extraia o ZIP e importe um CSV de cada vez. Os IDs são preservados, mantendo a proteção contra duplicação e a restauração de registros excluídos.
+
+O ZIP inclui um guia e um manifesto com quantidade, bytes e total em centavos por parte. Esta opção suporta até **100.000 lançamentos** e **64 MB de dados CSV** por solicitação; acima disso, reduza o período ou aplique filtros. O CSV único e o Excel continuam com limite de 10.000 gastos. Os registros do ZIP são lidos em lotes, a partir de um único snapshot consistente do banco.
+
+### Preço e quantidade dos insumos
+
+Em **Visão geral > Compras por produto**, a tabela **Quantidades e preços dos insumos** mostra quantidade convertida, custo total, preço médio ponderado, último preço e variação entre as duas últimas compras do período. Escolha um insumo para acompanhar o preço por kg, litro, unidade, pacote ou caixa ao longo do tempo. Cada ponto do gráfico também é ponderado pela quantidade; datas sem compras ficam em branco.
+
+No cadastro do produto, escolha **pacote** ou **caixa** e, opcionalmente, informe seu conteúdo. Exemplo: pacote de arroz com **5 kg**, ou caixa com **12 un**. A seleção preenche essa sugestão na compra; o conteúdo pode ser ajustado para aquela compra específica. Duas embalagens de 5 kg equivalem a 10 kg para a análise. Alterar a sugestão no cadastro não muda compras antigas. Sem conteúdo informado, o sistema compara apenas o preço por pacote ou caixa, sem estimar peso ou volume.
+
+O CSV e o ZIP preservam o conteúdo das embalagens em Produtos (JSON). No Excel, **Produtos** mantém os valores originais e acrescenta quantidade convertida e preço por medida; **Insumos** resume os totais e o preço ponderado. As conversões usam quantidades decimais exatas e o preço é arredondado apenas no resultado em centavos. A análise representa compras e não movimentações de estoque ou consumo da cozinha.
