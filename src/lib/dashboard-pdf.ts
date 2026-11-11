@@ -22,7 +22,7 @@ export async function dashboardPdf(data:ExpenseDashboardData,restaurant:string,a
   text(`${displayDate(data.filters.start)} a ${displayDate(data.filters.end)}  |  ${data.count} lançamentos`,36,108,770,11,green,true);
   const category=data.filters.category ? categoryInfo(data.filters.category,data.categoryOptions).label : 'Todas as categorias';
   const status=data.filters.status==='paid'?'Pagos':data.filters.status==='pending'?'A pagar':'Todas as situações';
-  text(`Filtros: ${category}  |  ${status}${data.filters.q?`  |  Busca: ${data.filters.q}`:''}`,36,132,770,9,muted,false,30);
+  text(`Filtros: ${category}  |  Local: ${data.filters.merchant || 'Todos'}  |  ${status}${data.filters.q?`  |  Busca: ${data.filters.q}`:''}`,36,132,770,9,muted,false,30);
   const finance = data.finance;
   if (finance) {
     const revenue = finance.recordedDays ? money(finance.revenueCents) : 'sem registro';
@@ -105,7 +105,7 @@ export async function dashboardPdf(data:ExpenseDashboardData,restaurant:string,a
     text(finance ? 'Gastos, faturamento e resultado' : detailTitle,36,51,770,20,ink,true,30);
     text(restaurant,36,87,770,11,ink,true);
     text(`${displayDate(data.filters.start)} a ${displayDate(data.filters.end)}  |  ${data.count} lançamentos`,36,108,770,11,green,true);
-    text(`Filtros: ${category}  |  ${status}${data.filters.q?`  |  Busca: ${data.filters.q}`:''}`,36,132,770,9,muted,false,30);
+    text(`Filtros: ${category}  |  Local: ${data.filters.merchant || 'Todos'}  |  ${status}${data.filters.q?`  |  Busca: ${data.filters.q}`:''}`,36,132,770,9,muted,false,30);
     doc.rect(36,169,770,24).fill(green);
     text(periodTitle,48,174,190,9,'#ffffff',true);
     if (finance) {

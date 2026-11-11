@@ -8,13 +8,13 @@ import { decodeCsv } from '@/src/lib/csv-encoding';
 import { displayDate, money, parseMoneyInput, type DailyRevenue } from '@/src/lib/expense-shared';
 import styles from './finance.module.css';
 
-export default function RevenueEditor({ empresaId, today, rows, canEdit }: {
-  empresaId: string; today: string; rows: DailyRevenue[]; canEdit: boolean;
+export default function RevenueEditor({ empresaId, today, rows, existingRows = rows, canEdit }: {
+  empresaId: string; today: string; rows: DailyRevenue[]; existingRows?: DailyRevenue[]; canEdit: boolean;
 }) {
   const router = useRouter();
   const [date, setDate] = useState(today);
   const [amount, setAmount] = useState(() => {
-    const existing = rows.find(row => row.date === today);
+    const existing = existingRows.find(row => row.date === today);
     return existing ? decimalCents(existing.totalCents) : '';
   });
   const amountInput = useRef<HTMLInputElement>(null);
@@ -49,7 +49,7 @@ export default function RevenueEditor({ empresaId, today, rows, canEdit }: {
 
   function chooseDate(value: string) {
     setDate(value);
-    const existing = rows.find(row => row.date === value);
+    const existing = existingRows.find(row => row.date === value);
     setAmount(existing ? decimalCents(existing.totalCents) : '');
   }
   async function submit(event: FormEvent) {
@@ -102,7 +102,7 @@ export default function RevenueEditor({ empresaId, today, rows, canEdit }: {
       <details className={styles.revenueImport}>
         <summary>Importar faturamento CSV</summary>
         <p>Use uma linha por dia, com as colunas Data e Faturamento. Dias já cadastrados serão preservados.</p>
-        <a className={styles.textButton} href="/api/v1/revenue?format=template">Baixar modelo CSV</a>
+        <a className={styles.textButton} href={`/api/v1/revenue?format=template&expectedEmpresaId=${empresaId}`}>Baixar modelo CSV</a>
         <label className={styles.filterField}>Arquivo CSV<input type="file" accept=".csv,text/csv" disabled={busy}
           onChange={event => { void reviewFile(event.target.files?.[0]); event.target.value = ''; }} /></label>
         {preview && <div className={styles.importReview}>

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { currentUser, jsonError, trustedOrigin } from '@/src/lib/auth';
+import { matchesRestaurantContext, currentUser, jsonError, trustedOrigin } from '@/src/lib/auth';
 import { inTransaction } from '@/src/lib/postgres';
 import { removeEmployeeMembership } from '@/src/models/Membership';
 import { uuidValue } from '@/src/lib/expenses';
@@ -10,6 +10,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const user = await currentUser();
   if (!user) return jsonError('Entre na sua conta para continuar.',401);
   if (user.role !== 'owner' || !user.empresaId) return jsonError('Apenas o dono pode remover funcionários.',403);
+  if (!matchesRestaurantContext(request, user.empresaId)) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
   try {
     const id = uuidValue((await params).id);
     const result = await inTransaction(client => removeEmployeeMembership(id,user.empresaId!,user.id,client));

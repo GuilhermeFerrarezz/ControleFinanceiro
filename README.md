@@ -91,3 +91,6 @@ node --env-file-if-exists=.env --import tsx scripts/seed-demo-data.ts EMAIL_DA_C
 O comando adiciona até 16 gastos nas últimas semanas, com produtos, unidades, valores, situações de pagamento e lançamentos sem detalhamento. Eles recebem o selo **Exemplo** e observações indicando que são fictícios. A execução novamente no mesmo mês não duplica os exemplos. Os valores entram nos totais do restaurante escolhido. Os gastos existentes são preservados.
 
 No painel, **O ritmo dos gastos** aparece primeiro. Em seguida, **Evolução das compras detalhadas** fica ao lado de **O peso de cada produto** em telas maiores; no celular, os gráficos ficam um abaixo do outro. Em **Cadastros**, as três listas têm altura uniforme, busca e rolagem independente.
+
+
+Na aba **Lançamentos**, o painel exibe **O ritmo dos gastos** e a lista dos lançamentos. Os gráficos e totais por produto ficam na **Visão geral**. O detalhamento opcional continua disponível ao cadastrar ou editar uma compra.

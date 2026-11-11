@@ -1,3 +1,5 @@
+import { parseExpenseCsv, expenseCsv } from '../src/lib/expense-csv';
+import type { IExpense } from '../src/models/Expense';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -623,7 +625,7 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal(data.products[0].productId, product.id); assert.equal(data.products[0].name, update.name);
     assert.equal(data.products[0].amountCents, 4000); assert.equal(data.productDaily[0].totalCents, 4000);
     assert.equal((await list(owner, range + '&q=' + encodeURIComponent('Tilápia em filé'))).count, 1);
-    const html = await (await fetch(`${origin}/dashboard/expenses?${range}`, { headers: { Cookie: owner } })).text();
+    const html = await (await fetch(`${origin}/dashboard?${range}`, { headers: { Cookie: owner } })).text();
     assert.match(html, /O peso de cada produto/); assert.match(html, /Produtos que mais pesam na conta/); assert.match(html, /Evolução das compras detalhadas/);
     assert.equal((await api('/catalog', employee, 'DELETE', { ...update, previousName: update.name, confirm: true })).status, 200);
     assert.equal((await create(owner, purchase)).status, 400);
@@ -631,6 +633,76 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     data = await list(owner, range); assert.equal(data.products[0].amountCents, 4000);
     const restored = await (await api('/catalog', owner, 'POST', { ...payload, name: update.name })).json();
     assert.equal(restored.id, product.id);
+  });
+  await t.test('lançamentos mostram ritmo e lista; detalhes por produto permanecem na visão geral', async () => {
+    const html = await (await fetch(`${origin}/dashboard/expenses?${period}`, { headers: { Cookie: owner } })).text();
+    assert.match(html, /O ritmo dos gastos/); assert.match(html, /Lançamentos do período/);
+    assert.doesNotMatch(html, /id="product-summary-title"/); assert.doesNotMatch(html, /id="categories-title"/);
+  });
+  await t.test('CSV, Excel e PDF preservam compras detalhadas, exemplos e totais na ida e volta', async () => {
+    const custom = await (await api('/catalog', owner, 'POST', { empresaId: ownerUser.empresaId, kind: 'product', name: '=Ingrediente "especial"; caseiro', defaultUnit: 'kg' })).json();
+    const catalog = await (await api('/catalog', owner)).json();
+    const rice = catalog.products.find((item: { name: string }) => item.name === 'Arroz');
+    const items = [{ productId: custom.id, name: custom.name, quantity: 1.125, unit: 'kg', amountCents: 6000 }, { productId: rice.id, name: rice.name, quantity: 500, unit: 'g', amountCents: 2500 }];
+    const response = await create(owner, { date: '2044-04-10', description: 'Compra detalhada da revisão', amountCents: 10000, items });
+    assert.equal(response.status, 201); const id = (await response.json()).id;
+    await query(fixture.pool, "UPDATE expenses SET demo_key='review-example' WHERE id=$1", [id]);
+    assert.equal((await create(owner, { date: '2044-04-11', description: 'Compra apenas pelo total', amountCents: 1000, status: 'pending' })).status, 201);
+    const range = 'start=2044-04-01&end=2044-04-30';
+    const data = await list(owner, range);
+    assert.equal(data.summary.totalCents, 11000); assert.equal(data.products.reduce((total: number, item: { amountCents: number }) => total + item.amountCents, 0), 8500);
+    const csv = await (await api('/expenses?' + range + '&format=csv', owner)).text();
+    const parsed = parseExpenseCsv(csv, ownerUser.empresaId, data.categoryOptions);
+    assert.deepEqual(parsed.issues, []); assert.equal(parsed.rows.length, 2);
+    assert.deepEqual(parsed.rows.find(row => row.sourceId === id)!.input.items, items);
+    const xlsx = await api('/expenses?' + range + '&format=xlsx', owner);
+    assert.equal(xlsx.status, 200); const book = new ExcelJS.Workbook(); await book.xlsx.load(await xlsx.arrayBuffer());
+    assert.equal(book.getWorksheet('Resumo')!.getCell('B8').value, 110);
+    const products = book.getWorksheet('Produtos')!; assert.equal(products.rowCount, 3);
+    assert.equal(products.getCell('D2').value, custom.name); assert.equal(products.getCell('D2').type, ExcelJS.ValueType.String);
+    assert.equal(products.getCell('E2').value, 1.125); assert.equal(products.getCell('F3').value, 'g'); assert.equal(products.getCell('G2').value, 60);
+    const encodedItems = book.getWorksheet('Lançamentos')!.getColumn(11).values.find(value => typeof value === 'string' && value.includes(custom.id));
+    assert.deepEqual(JSON.parse(String(encodedItems)), items);
+    const pdf = await api('/expenses/report?' + range, owner); assert.equal(pdf.status, 200); assert.equal(Buffer.from(await pdf.arrayBuffer()).subarray(0, 4).toString(), '%PDF');
+    const again = await api('/expenses/import', owner, 'POST', { mode: 'import', csv }); assert.equal(again.status, 200); assert.equal((await again.json()).duplicates, 2);
+    const renamed = 'Ingrediente especial revisado';
+    assert.equal((await api('/catalog', owner, 'PATCH', { empresaId: ownerUser.empresaId, kind: 'product', id: custom.id, previousName: custom.name, name: renamed })).status, 200);
+    assert.equal((await api('/catalog', owner, 'DELETE', { empresaId: ownerUser.empresaId, kind: 'product', id: custom.id, previousName: renamed, confirm: true })).status, 200);
+    assert.equal((await api(`/expenses/${id}`, owner, 'DELETE', { version: 1 })).status, 200);
+    const restored = await api('/expenses/import', owner, 'POST', { mode: 'import', csv }); assert.equal(restored.status, 200); assert.equal((await restored.json()).imported, 1);
+    const after = await list(owner, range); const saved = after.expenses.find((row: { id: string }) => row.id === id);
+    assert.equal(after.summary.totalCents, 11000); assert.equal(saved.isDemo, true); assert.equal(saved.createdBy, ownerUser.id); assert.equal(saved.version, 3);
+    assert.deepEqual(saved.items, [{ ...items[0], name: renamed }, items[1]]);
+    const copy = await api('/expenses/import', other, 'POST', { mode: 'import', csv }); assert.equal(copy.status, 200); assert.equal((await copy.json()).imported, 2);
+    const copied = await list(other, range); assert.equal(copied.summary.totalCents, 11000);
+    const copiedProduct = copied.products.find((item: { name: string }) => item.name === custom.name);
+    assert.ok(copiedProduct); assert.notEqual(copiedProduct.productId, custom.id);
+    assert.equal((await (await api('/expenses/import', other, 'POST', { mode: 'import', csv })).json()).duplicates, 2);
+  });
+  await t.test('falha na importação de produtos reverte também os novos cadastros', async () => {
+    const prototype = { date: '2045-01-01', amountCents: 1000, category: 'alimentos', merchant: 'Exemplo', status: 'paid', paymentMethod: 'pix', authorName: 'Autor', notes: '' };
+    const csv = expenseCsv(['Importação válida', 'Importação com falha'].map((description, index) => ({ ...prototype, id: randomUUID(), description, items: [{ name: `Ingrediente temporário ${index}`, quantity: 1, unit: 'un', amountCents: 900 }] }) as IExpense));
+    await query(fixture.pool, `CREATE FUNCTION review_import_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.description='Importação com falha' THEN RAISE EXCEPTION 'rollback'; END IF; RETURN NEW; END $$`);
+    await query(fixture.pool, 'CREATE TRIGGER review_import_failure BEFORE INSERT ON expenses FOR EACH ROW EXECUTE FUNCTION review_import_failure()');
+    try {
+      assert.equal((await api('/expenses/import', owner, 'POST', { mode: 'import', csv })).status, 500);
+      assert.equal((await query(fixture.pool, "SELECT id FROM restaurant_catalog WHERE empresa_id=$1 AND name LIKE 'Ingrediente temporário %'", [ownerUser.empresaId])).length, 0);
+      assert.equal((await list(owner, 'start=2045-01-01&end=2045-01-31')).count, 0);
+    } finally {
+      await query(fixture.pool, 'DROP TRIGGER review_import_failure ON expenses'); await query(fixture.pool, 'DROP FUNCTION review_import_failure()');
+    }
+  });
+  await t.test('consultas, arquivos e ações de abas antigas rejeitam restaurante divergente', async () => {
+    const stale = randomUUID();
+    for (const path of ['/expenses?' + period, '/expenses?' + period + '&format=csv', '/expenses?' + period + '&format=xlsx', '/expenses/report?' + period, '/revenue?' + period, '/catalog?']) {
+      assert.equal((await api(path + '&expectedEmpresaId=' + stale, owner)).status, 409, path);
+    }
+    assert.equal((await api('/invitations?expectedEmpresaId=' + stale, owner, 'POST', { email: 'stale@example.invalid' })).status, 409);
+    assert.equal((await api('/invitations/' + randomUUID() + '?expectedEmpresaId=' + stale, owner, 'DELETE')).status, 409);
+    assert.equal((await api('/members/' + randomUUID() + '?expectedEmpresaId=' + stale, owner, 'DELETE')).status, 409);
+    const created = await create(owner, { date: '2046-01-01' }); const id = (await created.json()).id;
+    assert.equal((await api('/expenses/' + id, owner, 'DELETE', { version: 1, expectedEmpresaId: stale })).status, 409);
+    assert.equal((await list(owner, 'start=2046-01-01&end=2046-01-31')).count, 1);
   });
   await t.test('revogação concorrente impede criar, editar ou excluir gastos com acesso antigo',async()=>{
     const created=await create(employee,{description:'Teste de revogação concorrente'});

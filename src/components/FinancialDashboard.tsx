@@ -7,7 +7,7 @@ import { addDays, categoryInfo, displayDate, EXPENSE_CATEGORIES, money, monthPer
 import RestaurantSwitcher from '@/src/app/(system)/dashboard/RestaurantSwitcher';
 import MonthFilter from './MonthFilter';
 import PeriodFilters from './PeriodFilters';
-import ExpenseCharts from './ExpenseCharts';
+import ExpenseCharts, { ExpenseTrend } from './ExpenseCharts';
 import ProductSummary from './ProductSummary';
 import ExpenseItemDetails from './ExpenseItemDetails';
 import ExpenseForm from './ExpenseForm';
@@ -45,7 +45,8 @@ export default function FinancialDashboard({ initialData, view, user, restaurant
     const request = new AbortController(); controller.current = request;
     setLoading(true); setError('');
     try {
-      const response = await api.get<ExpenseDashboardData>(`/expenses?${filterParams(filters)}`, { signal: request.signal });
+      const params = filterParams(filters); params.set('expectedEmpresaId', selectedRestaurant);
+      const response = await api.get<ExpenseDashboardData>(`/expenses?${params}`, { signal: request.signal });
       if (!request.signal.aborted) { setData(response.data); setDraft(response.data.filters); }
     } catch (error) { if (!request.signal.aborted) setError(errorMessage(error)); }
     finally { if (!request.signal.aborted) setLoading(false); }
@@ -59,7 +60,7 @@ export default function FinancialDashboard({ initialData, view, user, restaurant
   async function remove() {
     if (!deleting || deleteBusy) return;
     setDeleteBusy(true); setError('');
-    try { await api.delete(`/expenses/${deleting.id}`, { data: { version: deleting.version } }); setDeleting(null); setNotice('Gasto excluído. Os totais foram atualizados.'); await load(); }
+    try { await api.delete(`/expenses/${deleting.id}`, { data: { version: deleting.version, expectedEmpresaId: selectedRestaurant } }); setDeleting(null); setNotice('Gasto excluído. Os totais foram atualizados.'); await load(); }
     catch (error) { setError(errorMessage(error)); setDeleting(null); }
     finally { setDeleteBusy(false); }
   }
@@ -75,7 +76,7 @@ export default function FinancialDashboard({ initialData, view, user, restaurant
   async function download(format:'csv'|'xlsx'='csv') {
     setExportBusy(true); setError('');
     try {
-      const params = filterParams(data.filters); params.set('format', format);
+      const params = filterParams(data.filters); params.set('format', format); params.set('expectedEmpresaId', selectedRestaurant);
       const response = await api.get(`/expenses?${params}`, { responseType: 'blob', timeout:60000 });
       downloadBlob(response.data,`gastos-${data.filters.start}-${data.filters.end}.${format}`);
     } catch { setError('Não foi possível exportar os gastos. Tente reduzir o período ou aplicar mais filtros.'); }
@@ -83,7 +84,7 @@ export default function FinancialDashboard({ initialData, view, user, restaurant
   }
   async function report() {
     setPdfBusy(true);setError('');
-    try{const response=await api.get(`/expenses/report?${filterParams(data.filters)}`,{responseType:'blob',timeout:60000});downloadBlob(response.data,`resumo-${data.filters.start}-${data.filters.end}.pdf`);}
+    try{const params=filterParams(data.filters);params.set('expectedEmpresaId',selectedRestaurant);const response=await api.get(`/expenses/report?${params}`,{responseType:'blob',timeout:60000});downloadBlob(response.data,`resumo-${data.filters.start}-${data.filters.end}.pdf`);}
     catch{setError('Não foi possível gerar o PDF. Tente novamente.');}finally{setPdfBusy(false);}
   }
   const summary = data.summary;
@@ -140,9 +141,8 @@ export default function FinancialDashboard({ initialData, view, user, restaurant
         <article className={styles.stat}><span><i className={styles.pendingDot} />A pagar</span><strong>{money(summary.pendingCents)}</strong><small>Gastos ainda não pagos</small></article>
         <article className={styles.stat}><span><Icon name="chart" size={18} />Média por dia</span><strong>{money(summary.averageDailyCents)}</strong><small>Considera todos os dias do período</small></article>
       </section>
-      {view === 'overview' && <ExpenseCharts key={`${data.filters.start}-${data.filters.end}`} data={data} />}
-      <ProductSummary key={`${data.filters.start}/${data.filters.end}/${data.filters.q}/${data.filters.category}/${data.filters.merchant}/${data.filters.status}`} products={data.products || []} totalCents={summary.totalCents} daily={data.productDaily} start={data.filters.start} end={data.filters.end} />
-      <section className={styles.listCard} aria-labelledby="expense-list-title"><div className={styles.listHeading}><div><h2 id="expense-list-title">{view === 'overview' ? 'Últimos lançamentos' : 'Lançamentos do período'}</h2><p>{view === 'overview' ? 'Os registros mais recentes da sua equipe.' : user.role === 'owner' ? 'Você pode administrar todos os gastos deste restaurante.' : 'Você pode editar e excluir os gastos que lançou.'}</p></div><div className={styles.listActions}><button className={styles.textButton} onClick={()=>setImporting(true)}>Importar gastos CSV</button><button className={styles.textButton} onClick={()=>void download('xlsx')} disabled={exportBusy||(!data.count&&!data.finance?.recordedDays)}>Excel formatado <Icon name="download" size={16}/></button><button className={styles.textButton} onClick={()=>void download('csv')} disabled={exportBusy || data.count === 0}>{exportBusy ? 'Exportando...' : 'Exportar gastos CSV'} <Icon name="download" size={16} /></button>{(data.finance?.recordedDays ?? 0) > 0 && <a className={styles.textButton} href={`/api/v1/revenue?${filterParams(data.filters)}`}>Exportar faturamento CSV</a>}{view === 'overview' && <Link href={`/dashboard/expenses?${filterParams({ ...data.filters, page: 1 })}`} className={styles.textButton}>Ver todos <Icon name="arrow" size={16} /></Link>}</div></div>
+      {view === 'overview' ? <><ExpenseCharts key={`${data.filters.start}-${data.filters.end}`} data={data} /><ProductSummary key={`${data.filters.start}/${data.filters.end}/${data.filters.q}/${data.filters.category}/${data.filters.merchant}/${data.filters.status}`} products={data.products || []} totalCents={summary.totalCents} daily={data.productDaily} start={data.filters.start} end={data.filters.end} /></> : <ExpenseTrend data={data} className={`${styles.chartCard} ${styles.revenueTrend}`} />}
+      <section className={styles.listCard} aria-labelledby="expense-list-title"><div className={styles.listHeading}><div><h2 id="expense-list-title">{view === 'overview' ? 'Últimos lançamentos' : 'Lançamentos do período'}</h2><p>{view === 'overview' ? 'Os registros mais recentes da sua equipe.' : user.role === 'owner' ? 'Você pode administrar todos os gastos deste restaurante.' : 'Você pode editar e excluir os gastos que lançou.'}</p></div><div className={styles.listActions}><button className={styles.textButton} onClick={()=>setImporting(true)}>Importar gastos CSV</button><button className={styles.textButton} onClick={()=>void download('xlsx')} disabled={exportBusy||(!data.count&&!data.finance?.recordedDays)}>Excel formatado <Icon name="download" size={16}/></button><button className={styles.textButton} onClick={()=>void download('csv')} disabled={exportBusy || data.count === 0}>{exportBusy ? 'Exportando...' : 'Exportar gastos CSV'} <Icon name="download" size={16} /></button>{(data.finance?.recordedDays ?? 0) > 0 && <a className={styles.textButton} href={`/api/v1/revenue?${filterParams(data.filters)}&expectedEmpresaId=${selectedRestaurant}`}>Exportar faturamento CSV</a>}{view === 'overview' && <Link href={`/dashboard/expenses?${filterParams({ ...data.filters, page: 1 })}`} className={styles.textButton}>Ver todos <Icon name="arrow" size={16} /></Link>}</div></div>
         {rows.length === 0 ? <div className={styles.empty}><span><Icon name="receipt" size={36} /></span><h3>{hasFilters ? 'Nenhum gasto com esses filtros.' : 'Tudo começa com o primeiro registro.'}</h3><p>{hasFilters ? 'Tente outra categoria, situação ou termo de busca.' : 'Registre um gasto para começar a enxergar os números da sua casa.'}</p><button className="button" onClick={() => setForm('new')}><Icon name="plus" size={17} />Lançar um gasto</button></div> : <>
           <div className={styles.tableWrap}><table className={styles.expenseTable}><caption className={styles.srOnly}>Gastos do restaurante no período selecionado</caption><thead><tr><th>Gasto</th><th>Categoria</th><th>Data</th><th>Situação</th><th>Valor</th><th><span className={styles.srOnly}>Ações</span></th></tr></thead><tbody>{rows.map(expense => {
             const category = categoryInfo(expense.category, categoryOptions);

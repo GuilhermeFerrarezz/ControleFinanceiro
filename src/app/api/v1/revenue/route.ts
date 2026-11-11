@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { currentUser, jsonError, trustedOrigin } from '@/src/lib/auth';
+import { matchesRestaurantContext, currentUser, jsonError, trustedOrigin } from '@/src/lib/auth';
 import { dateValue, expenseFilters } from '@/src/lib/expenses';
 import { MAX_AMOUNT_CENTS } from '@/src/lib/expense-shared';
 import { deleteRevenue, listRevenue, saveRevenue } from '@/src/lib/revenue';
@@ -16,6 +16,7 @@ function revenueAmount(value: unknown) {
 export async function GET(request: Request) {
   const user = await currentUser();
   if (!user?.empresaId) return jsonError('Entre na conta e selecione um restaurante.', user ? 403 : 401);
+  if (!matchesRestaurantContext(request, user.empresaId)) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
   try {
     const params = new URL(request.url).searchParams;
     const template = params.get('format') === 'template';

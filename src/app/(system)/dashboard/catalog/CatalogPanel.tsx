@@ -52,7 +52,7 @@ function CatalogSection({ empresaId, kind, items }: { empresaId: string; kind: C
     {notice && <p className={styles.teamNotice} role="status">{notice}</p>}
     <label className={`${formStyles.field} ${styles.catalogSearch}`} htmlFor={`catalog-search-${kind}`}>{category ? "Buscar categoria" : product ? "Buscar produto" : "Buscar local"}<input id={`catalog-search-${kind}`} className={formStyles.input} type="search" placeholder={category ? "Ex.: alimentos" : product ? "Ex.: arroz ou carne" : "Ex.: mercado"} value={query} onChange={event => setQuery(event.target.value)} /></label>
     <ul className={styles.catalogList} tabIndex={0} aria-label={category ? 'Categorias cadastradas' : product ? 'Produtos cadastrados' : 'Locais cadastrados'}>{filtered.map(item => <li key={item.id}>
-      <div className={styles.catalogRow}><span>{item.name}</span><div className={styles.memberActions}>
+      <div className={`${styles.catalogRow} ${styles.catalogItemRow}`}><span>{item.name}</span><div className={styles.memberActions}>
         <button type="button" className={`${styles.removeMember} ${styles.editButton}`} disabled={busy} aria-label={`Editar ${item.name}`} onClick={() => { setAction({ type: 'edit', item }); setError(''); setNotice(''); }}>Editar</button>
         <button type="button" className={styles.removeMember} disabled={busy} aria-label={`Excluir ${item.name}`} onClick={() => { setAction({ type: 'delete', item }); setError(''); setNotice(''); }}>Excluir</button>
       </div></div>

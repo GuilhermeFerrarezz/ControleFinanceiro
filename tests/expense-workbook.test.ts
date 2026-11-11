@@ -38,3 +38,15 @@ test('XLSX preserva centavos, data bissexta e fórmulas como texto',async()=>{
   assert.equal(summary.getCell('B9').value,0);
   assert.equal(Math.round(Number(summary.getCell('B10').value)*100),row.amountCents);
 });
+
+
+test('Excel identifica o filtro de local e mantém JSON técnico oculto, com produtos legíveis em aba própria', async () => {
+  const row = { id: 'id', description: 'Compra', amountCents: 1000, date: '2024-02-29', category: 'alimentos', merchant: 'Mercado BH', status: 'paid', paymentMethod: 'pix', notes: '', authorName: 'Autor', items: [{ name: 'Feijão', quantity: 1.5, unit: 'kg', amountCents: 900 }] } as IExpense;
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.load(Uint8Array.from(await expenseWorkbook([row], { ...filters, merchant: 'Mercado BH' }, 'Restaurante')).buffer);
+  assert.equal(book.getWorksheet('Lançamentos')!.getColumn(11).hidden, true);
+  assert.deepEqual(JSON.parse(String(book.getWorksheet('Lançamentos')!.getCell('K2').value)), row.items);
+  assert.equal(book.getWorksheet('Produtos')!.getCell('D2').value, 'Feijão');
+  const local = book.getWorksheet('Resumo')!.getColumn(1).values.findIndex(value => value === 'Local');
+  assert.equal(book.getWorksheet('Resumo')!.getCell(`B${local}`).value, 'Mercado BH');
+});

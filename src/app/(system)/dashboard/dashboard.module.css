@@ -69,10 +69,10 @@
 .catalogCard button { min-height: 44px; }
 .catalogCard .catalogList { height: 340px; flex: 0 0 340px; overflow-y: scroll; overscroll-behavior-y: contain; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: #8ba17a #f0f3e9; padding-right: 10px; margin-top: 18px; }
 .catalogList::-webkit-scrollbar { width: 8px; }.catalogList::-webkit-scrollbar-track { background: #f0f3e9; border-radius: 8px; }.catalogList::-webkit-scrollbar-thumb { background: #8ba17a; border-radius: 8px; }
-.catalogCard .catalogRow { align-items: flex-start; }
-.catalogCard .catalogRow > span { flex-basis: 100%; min-width: 0; }
-.catalogCard .memberActions { width: 100%; display: flex; gap: 10px; }
-.catalogCard .memberActions button { flex: 1; margin: 0; }
+.catalogCard .catalogItemRow { align-items: center; flex-wrap: nowrap; gap: 10px; }
+.catalogCard .catalogItemRow > span { flex: 1 1 0; min-width: 0; }
+.catalogCard .memberActions { width: auto; flex: 0 0 auto; display: flex; flex-wrap: nowrap; gap: 6px; }
+.catalogCard .memberActions button { flex: 0 0 auto; margin: 0; white-space: nowrap; padding-inline: 8px; }
 .catalogCard .catalogRow > button { flex: 1; min-width: 0; }
-@media (max-width: 1100px) { .catalogGrid { grid-template-columns: 1fr; gap: 20px; }.catalogCard > h2,.catalogIntro,.catalogCreate { min-height: 0; }.catalogCard { padding: 20px; }.catalogCreate { margin-bottom: 20px; }.catalogCard .catalogRow > span { flex-basis: auto; }.catalogCard .memberActions { width: auto; }.catalogCard .catalogList { height: 320px; flex-basis: 320px; } }
-@media (max-width: 480px) { .catalogGrid { gap: 16px; }.catalogCard { padding: 18px 14px; }.catalogCard .catalogRow { gap: 8px; }.catalogCard .catalogRow > span { flex-basis: 100%; }.catalogCard .memberActions { width: 100%; }.catalogCard .catalogList { height: 300px; flex-basis: 300px; } }
+@media (max-width: 1100px) { .catalogGrid { grid-template-columns: 1fr; gap: 20px; }.catalogCard > h2,.catalogIntro,.catalogCreate { min-height: 0; }.catalogCard { padding: 20px; }.catalogCreate { margin-bottom: 20px; }.catalogCard .catalogList { height: 320px; flex-basis: 320px; } }
+@media (max-width: 480px) { .catalogGrid { gap: 16px; }.catalogCard { padding: 18px 14px; }.catalogCard .catalogItemRow { gap: 8px; }.catalogCard .catalogList { height: 300px; flex-basis: 300px; } }

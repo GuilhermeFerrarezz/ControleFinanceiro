@@ -30,8 +30,8 @@ export default function ExpenseForm({ expense, empresaId, categoryOptions, onClo
   const [categories, setCategories] = useState(categoryOptions);
   useEffect(() => {
     const controller = new AbortController();
-    void api.get<{ empresaId: string; categories: CategoryOption[]; merchants: MerchantOption[]; products: ProductOption[] }>('/catalog', { signal: controller.signal }).then(response => {
-      if (response.data.empresaId === empresaId) { setMerchants(response.data.merchants); setProducts(response.data.products); setCategories(response.data.categories); }
+    void api.get<{ empresaId: string; categories: CategoryOption[]; merchants: MerchantOption[]; products: ProductOption[] }>('/catalog', { params: { expectedEmpresaId: empresaId }, signal: controller.signal }).then(response => {
+      if (response.data.empresaId === empresaId) { setMerchants(response.data.merchants); setProducts(response.data.products); setItems(current => current.map(item => { const product = response.data.products.find(product => product.id === item.productId); return product ? { ...item, name: product.name } : item; })); setCategories(response.data.categories); }
       else setMessage('O restaurante ativo mudou. Atualize a página.');
     }).catch(error => { if (!controller.signal.aborted) setMessage(errorMessage(error)); });
     return () => controller.abort();

@@ -38,3 +38,9 @@ export function clearSession(response: NextResponse) {
 export function jsonError(erro: string, status: number) {
   return NextResponse.json({ erro }, { status, headers: { 'Cache-Control': 'no-store' } });
 }
+
+// Bind requests from an already-open page to the restaurant shown on that page.
+export function matchesRestaurantContext(request: Request, empresaId: string) {
+  const expected = new URL(request.url).searchParams.get('expectedEmpresaId');
+  return expected === null || expected === empresaId;
+}

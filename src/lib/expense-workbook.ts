@@ -10,7 +10,7 @@ export async function expenseWorkbook(rows:IExpense[],filters:ExpenseFilters,res
   sheet.columns=CSV_HEADERS.map((header,index)=>({header,width:widths[index]}));
   // A plain styled range needs only one filter, including exports with no data.
   sheet.addRows(rows.map(row=>[new Date(`${row.date}T00:00:00Z`),row.description,excelMoney(row.amountCents),row.categoryLabel || categoryInfo(row.category,categories).label,row.merchant,row.status==='paid'?'Pago':'A pagar',PAYMENT_METHODS.find(item=>item.id===row.paymentMethod)!.label,row.authorName,row.notes,row.id,JSON.stringify(row.items || [])]));
-  sheet.getColumn(10).hidden=true;
+  sheet.getColumn(10).hidden=true;sheet.getColumn(11).hidden=true;
   sheet.getColumn(1).numFmt='dd/mm/yyyy';sheet.getColumn(3).numFmt='"R$" #,##0.00';
   sheet.eachRow((row,index)=>{row.height=index===1?30:28;row.font={name:'Calibri',size:11};row.alignment={vertical:'middle',wrapText:true};if(index===1){row.font={name:'Calibri',size:11,bold:true,color:{argb:'FFFFFFFF'}};}});
   sheet.eachRow((row,index)=>row.eachCell(cell=>{cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:index===1?'FF254E3B':index%2===0?'FFF0F5ED':'FFFFFFFF'}};}));
@@ -56,6 +56,7 @@ export async function expenseWorkbook(rows:IExpense[],filters:ExpenseFilters,res
     summary.addRow(['Dias com faturamento', revenue.size]);
     summary.addRow(['Resultado', 'Inclui todos os gastos do período. Pode ser parcial se faltar faturamento.']);
   }
+  summary.addRow(['Local', filters.merchant || 'Todos']);
   summary.addRow(['Precisão', 'Valores com mais de 15 algarismos em centavos são exportados como texto para preservar os centavos.']);
   return new Uint8Array(await book.xlsx.writeBuffer());
 }

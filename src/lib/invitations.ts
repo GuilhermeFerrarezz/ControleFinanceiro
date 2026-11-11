@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { PoolClient } from 'pg';
-import { acceptInvitation, findValidInvitation, insertInvitation, lockInvitationCreation, revokePendingInvitations } from '../models/Invitation';
+import { acceptInvitation, findValidInvitation, insertInvitation, lockInvitationCreation, revokeInvitation, revokePendingInvitations } from '../models/Invitation';
 import { createMembership, findMembership } from '../models/Membership';
 import { findUsuarioByEmail } from '../models/Usuario';
 import { db } from './db';
@@ -28,7 +28,7 @@ export async function createInvitation(ownerId: string, empresaId: string, email
   const token = randomBytes(32).toString('base64url');
   await inTransaction(async client => {
     await lockInvitationCreation(empresaId, email, client);
-    const owner = await findMembership(ownerId, empresaId, client);
+    const owner = await findMembership(ownerId, empresaId, client, true);
     if (owner?.role !== 'owner') throw new InvitationError('Apenas o dono pode convidar funcionários.', 403);
     const existingUser = await findUsuarioByEmail(email, client);
     if (existingUser && await findMembership(existingUser.id, empresaId, client)) throw new InvitationError('Esta pessoa já faz parte do restaurante.', 409);
@@ -36,4 +36,11 @@ export async function createInvitation(ownerId: string, empresaId: string, email
     await insertInvitation(empresaId, ownerId, email, digest(token), new Date(Date.now() + 7 * 86400_000), client);
   });
   return token;
+}
+
+export async function cancelInvitation(ownerId: string, empresaId: string, invitationId: string) {
+  return inTransaction(async client => {
+    if ((await findMembership(ownerId, empresaId, client, true))?.role !== 'owner') throw new InvitationError('Apenas o dono pode revogar convites.', 403);
+    if (!await revokeInvitation(invitationId, empresaId, client)) throw new InvitationError('Convite não encontrado.', 404);
+  });
 }

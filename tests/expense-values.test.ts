@@ -73,3 +73,8 @@ test('produtos opcionais aceitam quantidades fracionadas e detalhamento parcial 
     assert.throws(() => validateExpense({ ...base, items }));
   }
 });
+
+
+test('buscas com caracteres nulos são rejeitadas antes de consultar PostgreSQL', () => {
+  assert.throws(() => expenseFilters(new URLSearchParams({ q: 'arroz\0' })), /Filtros inválidos/);
+});

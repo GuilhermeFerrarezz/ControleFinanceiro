@@ -23,8 +23,8 @@ export async function listInvitations(empresaId: string) {
   return (await db.query<IInvitation>(`SELECT ${columns} FROM restaurant_invitations i WHERE empresa_id=$1
     AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP ORDER BY created_at DESC,id`, [empresaId])).rows;
 }
-export async function revokeInvitation(id: string, empresaId: string) {
-  return (await db.query(`UPDATE restaurant_invitations SET revoked_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
+export async function revokeInvitation(id: string, empresaId: string, client: Queryable = db) {
+  return (await client.query(`UPDATE restaurant_invitations SET revoked_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
     WHERE id=$1 AND empresa_id=$2 AND accepted_at IS NULL AND revoked_at IS NULL RETURNING id`, [id, empresaId])).rowCount === 1;
 }
 export async function lockInvitationCreation(empresaId: string, email: string, client: Queryable) {

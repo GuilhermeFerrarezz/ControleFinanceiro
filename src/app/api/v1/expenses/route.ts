@@ -1,12 +1,13 @@
 import { expenseCsv } from '@/src/lib/expense-csv';
 import { NextResponse } from 'next/server';
-import { currentUser, jsonError, trustedOrigin } from '@/src/lib/auth';
+import { matchesRestaurantContext, currentUser, jsonError, trustedOrigin } from '@/src/lib/auth';
 import { InputError, readBody } from '@/src/lib/validation';
 import { deleteExpensePeriod, createExpense, expenseDashboard, expenseFilters, expenseExportData, expensesForExport, ExpenseError, uuidValue, validateExpense } from '@/src/lib/expenses';
 export async function GET(request: Request) {
   const user = await currentUser();
   if (!user) return jsonError('Entre na sua conta para continuar.', 401);
   if (!user.empresaId) return jsonError('Selecione um restaurante para continuar.', 403);
+  if (!matchesRestaurantContext(request, user.empresaId)) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
   try {
     const params = new URL(request.url).searchParams;
     const filters = expenseFilters(params);

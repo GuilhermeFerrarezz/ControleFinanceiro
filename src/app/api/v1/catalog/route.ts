@@ -1,14 +1,15 @@
 import { ITEM_UNITS } from '@/src/lib/expense-shared';
 import { NextResponse } from 'next/server';
-import { currentUser, jsonError, trustedOrigin } from '@/src/lib/auth';
+import { matchesRestaurantContext, currentUser, jsonError, trustedOrigin } from '@/src/lib/auth';
 import { InputError, readBody, textValue } from '@/src/lib/validation';
 import { inTransaction, isUniqueViolation } from '@/src/lib/postgres';
 import { findMembership } from '@/src/models/Membership';
 import { changeCatalogEntry, insertCatalogEntry, listProducts, listCategories, listMerchants } from '@/src/models/Catalog';
-export async function GET() {
+export async function GET(request: Request) {
   const user = await currentUser();
   if (!user) return jsonError('Entre na sua conta para continuar.', 401);
   if (!user.empresaId) return jsonError('Selecione um restaurante.', 403);
+  if (!matchesRestaurantContext(request, user.empresaId)) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
   return NextResponse.json({ empresaId: user.empresaId, categories: await listCategories(user.empresaId), merchants: await listMerchants(user.empresaId), products: await listProducts(user.empresaId) }, { headers: { 'Cache-Control': 'no-store' } });
 }
 async function mutate(request: Request, remove: boolean) {

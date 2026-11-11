@@ -73,7 +73,7 @@ export function expenseFilters(params = new URLSearchParams()): ExpenseFilters {
   const page = Number(params.get('page') || 1);
   if (category && !validCategoryKey(category)) throw new InputError('Categoria de filtro inválida.');
   if (status && !['paid', 'pending'].includes(status)) throw new InputError('Situação de filtro inválida.');
-  if (q.length > 120 || !Number.isSafeInteger(page) || page < 1 || page > 100000) throw new InputError('Filtros inválidos.');
+  if (q.includes('\0') || q.length > 120 || !Number.isSafeInteger(page) || page < 1 || page > 100000) throw new InputError('Filtros inválidos.');
   return { start, end, category, merchant, status, q, page };
 }
 const inputSnapshot = (expense: IExpense) => Object.fromEntries(['description','amountCents','date','category','merchant','status','paymentMethod','notes','items','version','deletedAt'].map(field => [field, expense[field as keyof IExpense]]));

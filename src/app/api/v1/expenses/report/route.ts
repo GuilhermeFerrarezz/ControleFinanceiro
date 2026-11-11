@@ -1,4 +1,4 @@
-import { currentUser,jsonError } from '@/src/lib/auth';
+import { matchesRestaurantContext, currentUser,jsonError } from '@/src/lib/auth';
 import { expenseDashboard,expenseFilters,ExpenseError } from '@/src/lib/expenses';
 import { InputError } from '@/src/lib/validation';
 import { dashboardPdf } from '@/src/lib/dashboard-pdf';
@@ -6,6 +6,7 @@ export const runtime='nodejs';
 export async function GET(request:Request) {
   const user=await currentUser();if(!user)return jsonError('Entre na sua conta para continuar.',401);
   if(!user.empresaId)return jsonError('Selecione um restaurante.',403);
+  if(!matchesRestaurantContext(request,user.empresaId))return jsonError('O restaurante ativo mudou. Atualize a página.',409);
   try {
     const filters=expenseFilters(new URL(request.url).searchParams);
     const data=await expenseDashboard({...user,empresaId:user.empresaId},filters);

@@ -26,6 +26,7 @@ export function parseRevenueCsv(value: unknown): DailyRevenue[] {
     const dateIndex = columns.indexOf('data');
     const amountIndex = columns.findIndex(name => name === 'faturamento' || name === 'faturamento (r$)');
     if (dateIndex < 0 || amountIndex < 0) continue;
+    if (columns.filter(name => name === 'data').length !== 1 || columns.filter(name => name === 'faturamento' || name === 'faturamento (r$)').length !== 1) throw new InputError('O CSV possui colunas repetidas. Use uma coluna Data e uma Faturamento.');
     if (records.length < 2 || records.length > MAX_IMPORT_ROWS + 1) {
       throw new InputError(`O CSV deve conter entre 1 e ${MAX_IMPORT_ROWS} dias de faturamento.`);
     }

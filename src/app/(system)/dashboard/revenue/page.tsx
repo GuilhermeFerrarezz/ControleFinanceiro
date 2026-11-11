@@ -74,7 +74,7 @@ export default async function RevenuePage({ searchParams }: {
       </PeriodFilters>
       <div className={styles.periodLine}>
         <span>{rows.length} dias registrados · Total informado: {money(totalCents)}</span>
-        <a className={styles.textButton} href={`/api/v1/revenue?${dates}`}>Exportar faturamento CSV</a>
+        <a className={styles.textButton} href={`/api/v1/revenue?${dates}&expectedEmpresaId=${user.empresaId}`}>Exportar faturamento CSV</a>
       </div>
       <p className={styles.financeCoverage}>{rows.length} de {daysBetween(period.start, period.end)} dias com faturamento informado. Dias sem registro aparecem como lacunas no gráfico.</p>
       <MoneyTrendChart titleId="revenue-trend-title" title="O ritmo do faturamento" metric="Faturamento"
@@ -82,7 +82,7 @@ export default async function RevenuePage({ searchParams }: {
         series={series} interval={trend.seriesInterval} start={period.start} end={period.end}
         totalCents={totalCents} peak={peak} recordedDays={rows.length} hasRecords={rows.length > 0} showZeros
         className={`${styles.chartCard} ${styles.revenueTrend}`} />
-      <RevenueEditor key={user.empresaId} empresaId={user.empresaId} today={todayInSaoPaulo()} rows={visibleRows} canEdit={user.role === 'owner'} />
+      <RevenueEditor key={user.empresaId} empresaId={user.empresaId} today={todayInSaoPaulo()} rows={visibleRows} existingRows={rows} canEdit={user.role === 'owner'} />
       {pages > 1 && <nav className={styles.pagination} aria-label="Páginas do faturamento">
         <span>Página {page} de {pages}</span>
         <div>

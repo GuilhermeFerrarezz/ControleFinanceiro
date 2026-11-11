@@ -276,6 +276,38 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     const [member] = await query<{ role: string }>(storage, "SELECT role FROM restaurant_members WHERE user_id=(SELECT id FROM usuarios WHERE email='phone@example.com')");
     assert.equal(member.role, 'employee');
   });
+  await t.test('mudança concorrente de papel impede criar e revogar convites com autorização antiga', async () => {
+    const identity = (await (await fetch(`${origin}/api/v1/private`, { headers: { Cookie: secondCookie } })).json()).user;
+    const invitation = await post('/invitations', { email: 'role-review@example.com' }, secondCookie);
+    assert.equal(invitation.status, 201);
+    const [target] = await query<{ id: string }>(storage, "SELECT id FROM restaurant_invitations WHERE empresa_id=$1 AND email='role-review@example.com'", [identity.empresaId]);
+    const operations = [
+      () => post('/invitations', { email: 'blocked-role@example.com' }, secondCookie),
+      () => fetch(`${origin}/api/v1/invitations/${target.id}`, { method: 'DELETE', headers: { Cookie: secondCookie, Origin: origin } }),
+    ];
+    for (const operation of operations) {
+      const client = await storage.connect(); let pending: Promise<Response> | undefined;
+      try {
+        await client.query('BEGIN');
+        await client.query("UPDATE restaurant_members SET role='employee' WHERE user_id=$1 AND empresa_id=$2", [identity.id, identity.empresaId]);
+        pending = operation();
+        let waiting = false;
+        for (let attempt = 0; attempt < 100; attempt++) {
+          const locks = await query(storage, "SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%FROM restaurant_members WHERE user_id=$1%'");
+          if (locks.length) { waiting = true; break; }
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        assert.ok(waiting, 'A autorização deve aguardar a alteração do vínculo.');
+        await client.query('COMMIT');
+        assert.equal((await pending).status, 403);
+      } finally {
+        await client.query('ROLLBACK'); client.release(); await pending;
+        await query(storage, "UPDATE restaurant_members SET role='owner' WHERE user_id=$1 AND empresa_id=$2", [identity.id, identity.empresaId]);
+      }
+    }
+    assert.equal((await query(storage, "SELECT id FROM restaurant_invitations WHERE email='blocked-role@example.com'")).length, 0);
+    assert.equal((await query(storage, 'SELECT id FROM restaurant_invitations WHERE id=$1 AND revoked_at IS NULL', [target.id])).length, 1);
+  });
   await t.test('edição e exclusão exigem admin do restaurante e senha na exclusão', async () => {
     const account = { email: 'delete-owner@example.com', senha: 'senha-admin-123' };
     assert.equal((await post('/auth/register', { ...account, nomeUsuario: 'Admin', nomeEmpresa: 'Excluir' })).status, 201);
