@@ -62,6 +62,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     summary: 'A exclusão em lote considera todas as categorias e todos os membros entre as duas datas.',
     steps: ['Em Lançamentos, selecione cuidadosamente De e Até.',
       'Clique em Excluir lançamentos do período e confira restaurante e datas na confirmação.',
+      'Digite sua senha de administrador para autorizar a exclusão. Sem a senha correta, nenhum lançamento será excluído.',
       'A ação inclui todos os gastos entre essas datas, mesmo os escondidos por filtros ou por outras páginas. O faturamento é gerenciado separadamente.',
       'Se precisar guardar os dados, exporte o CSV ou ZIP antes de confirmar.'],
     note: 'Não há botão de desfazer na tela. Um CSV exportado com os identificadores pode restaurar gastos excluídos por quem tem permissão.', href: '/dashboard/expenses', action: 'Abrir lançamentos' },

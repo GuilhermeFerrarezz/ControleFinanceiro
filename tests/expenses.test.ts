@@ -534,6 +534,8 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal((await api('/expenses', '', 'DELETE', deletion)).status, 401);
     assert.equal((await api('/expenses', employee, 'DELETE', deletion)).status, 403);
     assert.equal((await api('/expenses', other, 'DELETE', deletion)).status, 409);
+    assert.equal((await api('/expenses', owner, 'DELETE', deletion)).status, 400);
+    assert.equal((await api('/expenses', owner, 'DELETE', { ...deletion, senha: 'incorreta' })).status, 403);
     assert.equal((await api('/expenses', owner, 'DELETE', deletion, 'https://hostil.invalid')).status, 403);
     for (const invalid of [
       { confirm: false }, { confirm: 'true' }, { start: '' }, { end: null },
@@ -544,11 +546,12 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     const adminPage = await (await fetch(`${origin}/dashboard/expenses`, { headers: { Cookie: owner } })).text();
     const employeePage = await (await fetch(`${origin}/dashboard/expenses`, { headers: { Cookie: employee } })).text();
     assert.match(adminPage, /Excluir lançamentos do período/);
+    assert.match(adminPage, /delete-period-password/);
     assert.doesNotMatch(employeePage, /Excluir lançamentos do período/);
     // Concurrent retries must not delete/audit the same record twice.
     const responses = await Promise.all([
-      api('/expenses', owner, 'DELETE', { ...deletion, category: 'alimentos', page: 1 }),
-      api('/expenses', owner, 'DELETE', deletion),
+      api('/expenses', owner, 'DELETE', { ...deletion, senha: 'abc123', category: 'alimentos', page: 1 }),
+      api('/expenses', owner, 'DELETE', { ...deletion, senha: 'abc123' }),
     ]);
     for (const response of responses) assert.equal(response.status, 200, await response.clone().text());
     const results = await Promise.all(responses.map(response => response.json()));
@@ -564,8 +567,39 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     }
     assert.equal((await query(fixture.pool, "SELECT id FROM expense_audit WHERE expense_id=$1 AND action='deleted'", [oldId])).length, 1);
     assert.equal((await query(fixture.pool, 'SELECT id FROM expenses WHERE id=ANY($1::uuid[]) AND deleted_at IS NULL', [[outsideId, otherId]])).length, 2);
-    assert.equal((await api('/expenses', owner, 'DELETE', { ...deletion, start: '2038-03-01', end: '2038-03-01' })).status, 200);
+    assert.equal((await api('/expenses', owner, 'DELETE', { ...deletion, senha: 'abc123', start: '2038-03-01', end: '2038-03-01' })).status, 200);
     assert.equal((await query(fixture.pool, 'SELECT id FROM expenses WHERE id=$1 AND deleted_at IS NULL', [outsideId])).length, 0);
+  });
+  await t.test('identificadores de outro restaurante não liberam painel, exportações ou troca de sessão', async () => {
+    const otherUser = (await (await api('/private', other)).json()).user;
+    const marker = 'SEGREDO-OUTRO-RESTAURANTE-2051';
+    const created = await create(other, { date: '2051-04-01', description: marker });
+    assert.equal(created.status, 201);
+    const id = (await created.json()).id;
+    const range = 'start=2051-04-01&end=2051-04-01';
+    assert.equal((await list(other, range)).count, 1);
+    for (const cookie of [owner, employee]) {
+      assert.equal((await api('/company/switch', cookie, 'POST', { empresaId: otherUser.empresaId })).status, 403);
+      for (const path of ['/expenses?' + range, '/expenses?' + range + '&format=csv', '/expenses/report?' + range, '/catalog']) {
+        assert.equal((await api(path + (path.includes('?') ? '&' : '?') + 'expectedEmpresaId=' + otherUser.empresaId, cookie)).status, 409);
+      }
+      const json = await api('/expenses?' + range + '&empresaId=' + otherUser.empresaId, cookie);
+      assert.equal(json.status, 200);
+      const data = await json.json();
+      assert.equal(data.count, 0); assert.deepEqual(data.products, []);
+      const csv = await api('/expenses?' + range + '&format=csv&empresaId=' + otherUser.empresaId, cookie);
+      assert.equal(csv.status, 200); assert.ok(!(await csv.text()).includes(marker));
+      assert.equal((await api('/expenses/sheet?' + range, cookie, 'POST', { empresaId: otherUser.empresaId, columns: ['alimentos'] })).status, 409);
+      assert.equal((await api(`/expenses/${id}`, cookie, 'PATCH', { ...body, version: 1 })).status, 404);
+      assert.equal((await api(`/expenses/${id}`, cookie, 'DELETE', { version: 1 })).status, 404);
+    }
+    assert.equal((await list(other, range)).count, 1);
+    // Failed reauthentication cannot delete any remaining rows, even after a correct password.
+    const deletion = { empresaId: ownerUser.empresaId, start: '2051-04-01', end: '2051-04-01', confirm: true };
+    assert.equal((await create(owner, { date: deletion.start })).status, 201);
+    for (let attempt = 0; attempt < 2; attempt++) await api('/expenses', owner, 'DELETE', { ...deletion, senha: 'incorreta' });
+    assert.equal((await api('/expenses', owner, 'DELETE', { ...deletion, senha: 'abc123' })).status, 429);
+    assert.equal((await list(owner, range)).count, 1);
   });
   await t.test('auditoria financeira reconcilia centavos entre banco, filtros, gráficos e Excel', async () => {
     await register('audit@expenses.invalid');

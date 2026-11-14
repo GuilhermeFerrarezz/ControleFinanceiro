@@ -1,8 +1,11 @@
 import { expenseCsv } from '@/src/lib/expense-csv';
-import { SecurityLimitError, withExportBudget } from '@/src/lib/security-limits';
+import { SecurityLimitError, withExportBudget, withPasswordBudget } from '@/src/lib/security-limits';
+import bcrypt from 'bcryptjs';
+import { findUsuarioByEmail } from '@/src/models/Usuario';
+import { consumeLimit } from '@/src/lib/rate-limit';
 import { NextResponse } from 'next/server';
 import { matchesRestaurantContext, currentUser, jsonError, trustedOrigin } from '@/src/lib/auth';
-import { InputError, readBody } from '@/src/lib/validation';
+import { InputError, passwordValue, readBody } from '@/src/lib/validation';
 import { deleteExpensePeriod, createExpense, expenseDashboard, expenseFilters, expenseExportData, expensesForExport, ExpenseError, uuidValue, validateExpense } from '@/src/lib/expenses';
 export async function GET(request: Request) {
   const user = await currentUser();
@@ -51,9 +54,16 @@ export async function DELETE(request: Request) {
   if (!user) return jsonError('Entre na sua conta para continuar.', 401);
   if (!user.empresaId || user.role !== 'owner') return jsonError('Somente o admin pode excluir os lançamentos de um período.', 403);
   try {
-    const result = await deleteExpensePeriod({ ...user, empresaId: user.empresaId }, await readBody(request, 32768));
+    const body = await readBody(request, 32768);
+    if (body.empresaId !== user.empresaId) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
+    const senha = passwordValue(body.senha);
+    if (!await consumeLimit(`delete-expenses:${user.id}`, 5, 15 * 60_000)) return jsonError('Muitas tentativas. Aguarde 15 minutos.', 429);
+    const account = await findUsuarioByEmail(user.email);
+    if (!account || account.id !== user.id || !await withPasswordBudget(() => bcrypt.compare(senha, account.senha))) return jsonError('Senha do admin incorreta.', 403);
+    const result = await deleteExpensePeriod({ ...user, empresaId: user.empresaId }, body);
     return NextResponse.json(result);
   } catch (error) {
+    if (error instanceof SecurityLimitError) return jsonError(error.message, 429);
     return jsonError(error instanceof InputError || error instanceof ExpenseError ? error.message : 'Não foi possível excluir os lançamentos.', error instanceof ExpenseError ? error.status : error instanceof InputError ? 400 : 500);
   }
 }
