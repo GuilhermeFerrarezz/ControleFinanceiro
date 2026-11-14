@@ -50,6 +50,21 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
   const firstRequest = randomUUID(); let firstId = ''; let employeeId = '';
   const create = (cookie: string, data: Record<string, unknown> = {}) => api('/expenses', cookie, 'POST', { ...body, requestId: randomUUID(), ...data });
   const list = async (cookie = owner, query = period) => { const response = await api(`/expenses?${query}`, cookie); assert.equal(response.status, 200, await response.clone().text()); return response.json(); };
+  await t.test('ajuda exige sessão e orienta donos e funcionários com atalhos para as telas', async () => {
+    const anonymous = await fetch(`${origin}/dashboard/help`, { redirect: 'manual' });
+    assert.equal(anonymous.status, 307);
+    assert.ok(anonymous.headers.get('location')?.endsWith('/login'));
+    for (const [cookie, role] of [[owner, 'Dono'], [employee, 'Funcionário']]) {
+      const response = await fetch(`${origin}/dashboard/help`, { headers: { Cookie: cookie } });
+      assert.equal(response.status, 200);
+      const html = await response.text();
+      for (const text of ['Como podemos ajudar?', 'Sua rotina em quatro passos', 'Qual é a sua dúvida?',
+        'Importar e exportar', 'Como consultar quantidades e preços dos insumos?', 'Ação do dono']) assert.ok(html.includes(text), text);
+      assert.match(html, new RegExp(`Seu acesso: <!-- -->${role}`));
+      assert.match(html, /<a(?=[^>]*href="\/dashboard\/help")(?=[^>]*aria-current="page")[^>]*>/);
+      for (const href of ['/dashboard/expenses', '/dashboard/catalog', '/dashboard/revenue', '/dashboard/profit', '/dashboard/sheet', '/dashboard/team']) assert.ok(html.includes(`href="${href}"`));
+    }
+  });
   await t.test('exige autenticação, origem válida e dados consistentes', async () => {
     assert.equal((await api('/expenses')).status, 401);
     assert.equal((await api('/expenses', owner, 'POST', body, 'https://hostil.invalid')).status, 403);
