@@ -4,7 +4,13 @@ import ExcelJS from 'exceljs';
 import { CSV_HEADERS } from './expense-csv';
 import { categoryInfo,displayDate,EXPENSE_CATEGORIES,PAYMENT_METHODS,type CategoryOption,type ExpenseFilters,type DailyRevenue } from './expense-shared';
 import type { IExpense } from '../models/Expense';
+import { InputError } from './validation';
 export async function expenseWorkbook(rows:IExpense[],filters:ExpenseFilters,restaurant:string,categories:readonly CategoryOption[]=EXPENSE_CATEGORIES, financial?:{expenses:DailyRevenue[];revenue:DailyRevenue[]}) {
+  const itemCount = rows.reduce((count, row) => count + (row.items?.length ?? 0), 0);
+  const financialDays = new Set([...(financial?.expenses ?? []), ...(financial?.revenue ?? [])].map(row => row.date)).size;
+  if (rows.length * 11 + itemCount * 18 + financialDays * 8 > 250000 || Buffer.byteLength(JSON.stringify(rows), 'utf8') > 16 * 1024 * 1024) {
+    throw new InputError('O Excel está muito grande. Reduza o período ou use CSV em partes (ZIP).');
+  }
   const book=new ExcelJS.Workbook();book.creator='Saldo da Casa';book.created=new Date();
   const sheet=book.addWorksheet('Lançamentos',{views:[{state:'frozen',ySplit:1}]});
   const widths=[17,40,19,25,35,17,25,30,60,40,80];

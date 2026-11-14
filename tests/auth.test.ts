@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import { createServer } from 'node:net';
 import { request as httpRequest } from 'node:http';
 import { migrateDatabase } from '../src/lib/migrations';
+import { createHash } from 'node:crypto';
 
 import { isolatedDatabase, query } from './postgres-fixture';
 
@@ -348,6 +349,26 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
       assert.equal((await response.json()).user.empresaId, null);
     }
     assert.equal((await post('/company', { nomeEmpresa: 'Recomeço' }, cookie)).status, 201);
+  });
+  await t.test('esgotar os antigos contadores globais não bloqueia outras contas e cabeçalhos de segurança são aplicados', async () => {
+    for (const key of ['login:global', 'register:global']) await query(storage,
+      `INSERT INTO auth_rate_limits(key,count,window_start) VALUES ($1,99999,$2) ON CONFLICT(key) DO UPDATE SET count=99999,window_start=$2`,
+      [createHash('sha256').update(key).digest('hex'), Date.now()]);
+    const credentials = { email: 'not-globally-blocked@example.com', senha: 'test-password-123' };
+    assert.equal((await post('/auth/register', { ...credentials, nomeUsuario: 'Pessoa legítima', nomeEmpresa: 'Casa independente' })).status, 201);
+    const login = await post('/auth/login', credentials);
+    assert.equal(login.status, 200);
+    const cookie = (login.headers.get('set-cookie') || '').split(';')[0];
+    const identity = (await (await fetch(`${origin}/api/v1/private`, { headers: { Cookie: cookie } })).json()).user;
+    const exportKey = createHash('sha256').update(`exports:${identity.id}`).digest('hex');
+    await query(storage, 'INSERT INTO auth_rate_limits(key,count,window_start) VALUES ($1,61,$2)', [exportKey, Date.now()]);
+    assert.equal((await fetch(`${origin}/api/v1/expenses?format=csv`, { headers: { Cookie: cookie } })).status, 429);
+    assert.equal((await fetch(`${origin}/api/v1/expenses`, { headers: { Cookie: cookie } })).status, 200);
+    await query(storage, 'DELETE FROM auth_rate_limits WHERE key=$1', [exportKey]);
+    const response = await fetch(`${origin}/login`);
+    assert.ok(response.headers.get('content-security-policy')?.includes("object-src 'none'"));
+    assert.equal(response.headers.get('x-frame-options'), 'DENY');
+    assert.equal(response.headers.get('strict-transport-security'), 'max-age=31536000');
   });
   await t.test('expiração e limitação de tentativas são aplicadas', async () => {
     await query(storage, `UPDATE refresh_tokens SET expires_at = '2000-01-01 00:00:00.000 +00:00'`);

@@ -4,10 +4,15 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { categoryInfo,displayDate,daysBetween,money,trendPeriodLabel,type ExpenseDashboardData } from './expense-shared';
 import { appendDashboardDetails } from './dashboard-pdf-details';
+import { InputError } from './validation';
 
 let fonts:Promise<Buffer[]>|undefined;
 const loadFonts=()=>fonts??=Promise.all(['NotoSans-Regular.ttf','NotoSans-Bold.ttf'].map(name=>readFile(join(process.cwd(),'public','fonts',name))));
 export async function dashboardPdf(data:ExpenseDashboardData,restaurant:string,author:string) {
+  const products = data.products?.length ?? 0;
+  if (products > 250 || products * (data.ingredientDaily?.length ?? 0) > 5_000_000) {
+    throw new InputError('O PDF está muito grande. Reduza o período ou filtre os produtos antes de exportar.');
+  }
   const [regular,bold]=await loadFonts();
   const doc=new PDFDocument({size:'A4',layout:'landscape',margin:0,bufferPages:true,info:{Title:'Resumo financeiro do restaurante',Author:'Saldo da Casa',Subject:`${displayDate(data.filters.start)} a ${displayDate(data.filters.end)}`}});
   doc.registerFont('Report',regular);doc.registerFont('ReportBold',bold);doc.font('Report');

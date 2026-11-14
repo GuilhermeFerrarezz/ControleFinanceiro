@@ -2,6 +2,7 @@ import { currentUser, jsonError, trustedOrigin } from '@/src/lib/auth';
 import { expenseFilters, expenseSheet, expenseSheetOrder } from '@/src/lib/expenses';
 import { expenseSheetWorkbook } from '@/src/lib/expense-sheet-workbook';
 import { InputError, readBody } from '@/src/lib/validation';
+import { SecurityLimitError, withExportBudget } from '@/src/lib/security-limits';
 
 export const runtime = 'nodejs';
 
@@ -16,16 +17,21 @@ export async function POST(request: Request) {
       !body.columns.every(id => typeof id === 'string' && id.length <= 50)) {
       throw new InputError('A ordem das categorias é inválida.');
     }
+    const empresaId = user.empresaId;
+    const columns = body.columns as string[];
+    return await withExportBudget(user.id, async () => {
     const params = new URL(request.url).searchParams;
-    const data = await expenseSheet({ ...user, empresaId: user.empresaId }, expenseFilters(params),
-      expenseSheetOrder(params.get('sort')), { exportColumnIds: body.columns });
+    const data = await expenseSheet({ ...user, empresaId }, expenseFilters(params),
+      expenseSheetOrder(params.get('sort')), { exportColumnIds: columns });
     const bytes = await expenseSheetWorkbook(data, user.empresaNome || 'Restaurante');
     return new Response(bytes, { headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="planilha-${data.filters.start}-${data.filters.end}.xlsx"`,
       'Cache-Control': 'no-store',
     } });
+    });
   } catch (error) {
+    if (error instanceof SecurityLimitError) return jsonError(error.message, 429);
     return jsonError(error instanceof InputError ? error.message : 'Não foi possível exportar a planilha.', error instanceof InputError ? 400 : 500);
   }
 }

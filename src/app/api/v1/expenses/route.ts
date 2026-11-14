@@ -1,4 +1,5 @@
 import { expenseCsv } from '@/src/lib/expense-csv';
+import { SecurityLimitError, withExportBudget } from '@/src/lib/security-limits';
 import { NextResponse } from 'next/server';
 import { matchesRestaurantContext, currentUser, jsonError, trustedOrigin } from '@/src/lib/auth';
 import { InputError, readBody } from '@/src/lib/validation';
@@ -11,22 +12,26 @@ export async function GET(request: Request) {
   try {
     const params = new URL(request.url).searchParams;
     const filters = expenseFilters(params);
+    const empresaId = user.empresaId;
+    const render = async () => {
     if (params.get('format') === 'csv-zip') {
       const { expenseCsvArchive } = await import('@/src/lib/expense-csv-archive');
-      const bytes = await expenseCsvArchive({ ...user, empresaId: user.empresaId }, filters);
+      const bytes = await expenseCsvArchive({ ...user, empresaId }, filters);
       return new Response(bytes, { headers: { 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="gastos-${filters.start}-${filters.end}.zip"`, 'Cache-Control': 'no-store' } });
     }
-    if (params.get('format') === 'csv') return new Response(expenseCsv(await expensesForExport({ ...user, empresaId: user.empresaId }, filters)), { headers: {
+    if (params.get('format') === 'csv') return new Response(expenseCsv(await expensesForExport({ ...user, empresaId }, filters)), { headers: {
       'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="gastos-${filters.start}-${filters.end}.csv"`, 'Cache-Control': 'no-store',
     } });
     if(params.get('format')==='xlsx') {
       const {expenseWorkbook}=await import('@/src/lib/expense-workbook');
-      const data = await expenseExportData({ ...user, empresaId: user.empresaId }, filters);
+      const data = await expenseExportData({ ...user, empresaId }, filters);
       const bytes=await expenseWorkbook(data.rows,filters,user.empresaNome||'Restaurante',data.categories,data.financial);
       return new Response(bytes,{headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':`attachment; filename="gastos-${filters.start}-${filters.end}.xlsx"`,'Cache-Control':'no-store'}});
     }
-    return NextResponse.json(await expenseDashboard({ ...user, empresaId: user.empresaId }, filters), { headers: { 'Cache-Control': 'no-store' } });
-  } catch (error) { return jsonError(error instanceof InputError || error instanceof ExpenseError ? error.message : 'Não foi possível carregar os gastos.', error instanceof ExpenseError ? error.status : error instanceof InputError ? 400 : 500); }
+    return NextResponse.json(await expenseDashboard({ ...user, empresaId }, filters), { headers: { 'Cache-Control': 'no-store' } });
+    };
+    return ['csv', 'xlsx', 'csv-zip'].includes(params.get('format') || '') ? await withExportBudget(user.id, render) : await render();
+  } catch (error) { if (error instanceof SecurityLimitError) return jsonError(error.message, 429);return jsonError(error instanceof InputError || error instanceof ExpenseError ? error.message : 'Não foi possível carregar os gastos.', error instanceof ExpenseError ? error.status : error instanceof InputError ? 400 : 500); }
 }
 export async function POST(request: Request) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);

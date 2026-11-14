@@ -109,3 +109,10 @@ Em **Visão geral > Compras por produto**, a tabela **Quantidades e preços dos 
 No cadastro do produto, escolha **pacote** ou **caixa** e, opcionalmente, informe seu conteúdo. Exemplo: pacote de arroz com **5 kg**, ou caixa com **12 un**. A seleção preenche essa sugestão na compra; o conteúdo pode ser ajustado para aquela compra específica. Duas embalagens de 5 kg equivalem a 10 kg para a análise. Alterar a sugestão no cadastro não muda compras antigas. Sem conteúdo informado, o sistema compara apenas o preço por pacote ou caixa, sem estimar peso ou volume.
 
 O CSV e o ZIP preservam o conteúdo das embalagens em Produtos (JSON). No Excel, **Produtos** mantém os valores originais e acrescenta quantidade convertida e preço por medida; **Insumos** resume os totais e o preço ponderado. As conversões usam quantidades decimais exatas e o preço é arredondado apenas no resultado em centavos. A análise representa compras e não movimentações de estoque ou consumo da cozinha.
+
+
+### Segurança de implantação
+
+A [auditoria AppSec de 14/11/2026](docs/security-review-2026-11-14.md) documenta as correções e os limites da verificação. Configure HTTPS e `APP_ORIGIN` na implantação. Se houver proxy confiável, `TRUSTED_CLIENT_IP_HEADER=x-real-ip` habilita limites adicionais por origem; o proxy precisa sobrescrever esse cabeçalho e impedir acesso direto ao servidor. Sem proxy confiável, deixe a variável ausente: valores de IP fornecidos pelo cliente não devem ser confiados.
+
+Login e cadastro têm limites por conta e concorrência bcrypt limitada. Exportações têm até duas operações simultâneas por processo e 60 solicitações por usuário/minuto. PDFs muito extensos e planilhas acima do orçamento de células/dados retornam uma orientação para reduzir o período ou usar CSV em partes. Limites por rede, timeouts, quotas de banco e proteção DDoS devem existir também no ingresso.
