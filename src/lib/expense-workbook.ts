@@ -38,22 +38,25 @@ export async function expenseWorkbook(rows:IExpense[],filters:ExpenseFilters,res
   if (financial) {
     const revenue = new Map(financial.revenue.map(row => [row.date, row.totalCents]));
     const costs = new Map(financial.expenses.map(row => [row.date, row.totalCents]));
+    const revenueDetails = new Map(financial.revenue.map(row => [row.date, row]));
     const days = [...new Set([...revenue.keys(), ...costs.keys()])].sort();
     const financialSheet = book.addWorksheet('Faturamento', { views: [{ state: 'frozen', ySplit: 1 }] });
     financialSheet.columns = [
       { header: 'Data', width: 20 }, { header: 'Faturamento (R$)', width: 23 },
       { header: 'Todos os gastos (R$)', width: 25 }, { header: 'Resultado (R$)', width: 23 },
+      { header: 'Refeições/marmitex vendidos', width: 30 }, { header: 'Número de pedidos', width: 23 },
+      { header: 'Marmitex delivery', width: 23 }, { header: 'Refeições no restaurante', width: 28 },
     ];
     financialSheet.addRows(days.map(date => {
       const sales = revenue.get(date);
       const expenses = costs.get(date) ?? 0;
       return [new Date(`${date}T00:00:00Z`), sales === undefined ? null : excelMoney(sales),
-        excelMoney(expenses), sales === undefined ? null : excelMoney(subtractCents(sales, expenses))];
+        excelMoney(expenses), sales === undefined ? null : excelMoney(subtractCents(sales, expenses)), revenueDetails.get(date)?.mealsSold ?? null, revenueDetails.get(date)?.orderCount ?? null, revenueDetails.get(date)?.deliveryMeals ?? null, revenueDetails.get(date)?.dineInMeals ?? null];
     }));
     financialSheet.getColumn(1).numFmt = 'dd/mm/yyyy';
     for (const column of [2, 3, 4]) financialSheet.getColumn(column).numFmt = '"R$" #,##0.00';
     financialSheet.getRow(1).font = { bold: true, color: { argb: 'FF254E3B' } };
-    financialSheet.autoFilter = { from: 'A1', to: `D${days.length + 1}` };
+    financialSheet.autoFilter = { from: 'A1', to: `H${days.length + 1}` };
     const revenueTotal = sumCents(financial.revenue.map(row => row.totalCents));
     const costsTotal = sumCents(financial.expenses.map(row => row.totalCents));
     for (const [label, amount] of [

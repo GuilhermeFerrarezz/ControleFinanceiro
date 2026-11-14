@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { currentUser } from '@/src/lib/auth';
 import { expenseFilters } from '@/src/lib/expenses';
 import { buildExpenseSeries, daysBetween, money, todayInSaoPaulo, type DailyRevenue } from '@/src/lib/expense-shared';
+import { REVENUE_METRICS, revenueCountSeries } from '@/src/lib/revenue-series';
 import { listRevenue } from '@/src/lib/revenue';
 import { userRestaurants } from '@/src/lib/restaurants';
 import { InputError } from '@/src/lib/validation';
@@ -49,6 +50,7 @@ export default async function RevenuePage({ searchParams }: {
   }));
   const peak = rows.reduce<DailyRevenue | null>((best, row) =>
     !best || row.totalCents > best.totalCents ? row : best, null);
+  const quantities = REVENUE_METRICS.map(metric => ({ ...metric, ...revenueCountSeries(rows, metric.key, period.start, period.end) }));
   const pageSize = 31;
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
   const page = Math.min(period.page, pages);
@@ -61,7 +63,7 @@ export default async function RevenuePage({ searchParams }: {
     <main className={styles.main}>
       <FinanceNav active="revenue" />
       <div className={styles.heading}>
-        <div><h1>Faturamento</h1><p>Registre a soma dos pedidos de cada dia.</p></div>
+        <div><h1>Faturamento</h1><p>Registre o faturamento, as refeições vendidas e os pedidos de cada dia.</p></div>
         <RestaurantSwitcher restaurants={await userRestaurants(user.id)} selected={user.empresaId} />
       </div>
       {error && <p className={styles.error} role="alert">{error}</p>}
@@ -77,11 +79,23 @@ export default async function RevenuePage({ searchParams }: {
         <a className={styles.textButton} href={`/api/v1/revenue?${dates}&expectedEmpresaId=${user.empresaId}`}>Exportar faturamento CSV</a>
       </div>
       <p className={styles.financeCoverage}>{rows.length} de {daysBetween(period.start, period.end)} dias com faturamento informado. Dias sem registro aparecem como lacunas no gráfico.</p>
+      <div className={styles.periodLine}>
+        {quantities.map(metric => <span key={metric.key}>{metric.label}: {metric.recordedDays ? metric.total.toLocaleString('pt-BR') : 'Não informado'} · {metric.recordedDays} dias informados</span>)}
+      </div>
+      {rows.some(row => row.mealsSold != null) && <p className={styles.financeCoverage}>Os totais antigos sem divisão foram preservados na tabela. Preencha delivery e restaurante ao editar esses dias para incluí-los nos novos gráficos.</p>}
       <MoneyTrendChart titleId="revenue-trend-title" title="O ritmo do faturamento" metric="Faturamento"
         emptyTitle="Seu gráfico começa no primeiro registro." peakLabel="Dia de maior faturamento" daysLabel="Dias com faturamento"
         series={series} interval={trend.seriesInterval} start={period.start} end={period.end}
         totalCents={totalCents} peak={peak} recordedDays={rows.length} hasRecords={rows.length > 0} showZeros
         className={`${styles.chartCard} ${styles.revenueTrend}`} />
+      <div className={styles.quantityCharts}>
+        {quantities.map(metric => <MoneyTrendChart key={metric.key} titleId={`revenue-${metric.key}-title`}
+          title={metric.title} metric={metric.label} valueFormat="count"
+          emptyTitle="Informe as quantidades para começar." peakLabel="Dia com maior quantidade" daysLabel="Dias com quantidade informada"
+          series={metric.series} interval={metric.interval} start={period.start} end={period.end}
+          totalCents={metric.total} peak={metric.peak} recordedDays={metric.recordedDays} hasRecords={metric.recordedDays > 0} showZeros
+          className={`${styles.chartCard} ${styles.quantityTrend}`} />)}
+      </div>
       <RevenueEditor key={user.empresaId} empresaId={user.empresaId} today={todayInSaoPaulo()} rows={visibleRows} existingRows={rows} canEdit={user.role === 'owner'} />
       {pages > 1 && <nav className={styles.pagination} aria-label="Páginas do faturamento">
         <span>Página {page} de {pages}</span>

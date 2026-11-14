@@ -170,6 +170,44 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal(after.finance.series[1].revenueCents, 0);
     assert.equal(after.summary.totalCents, 17590);
   });
+  await t.test('faturamento salva, edita, importa e exporta refeições e pedidos', async () => {
+    const empresaId = ownerUser.empresaId;
+    const input = { mode: 'save', empresaId, date: '2026-10-04', totalCents: 10000, mealsSold: 12, orderCount: 8, deliveryMeals: 7, dineInMeals: 5 };
+    assert.equal((await api('/revenue', owner, 'POST', input)).status, 200);
+    assert.equal((await api('/revenue', employee, 'POST', input)).status, 403);
+    for (const counts of [{ mealsSold: -1 }, { orderCount: 1.5 }, { mealsSold: 2147483648 }, { deliveryMeals: -1 }, { dineInMeals: 1.5 }]) {
+      assert.equal((await api('/revenue', owner, 'POST', { ...input, ...counts })).status, 400);
+    }
+    const exported = await (await api(`/revenue?${period}`, owner)).text();
+    const rows = (await import('../src/lib/revenue-csv')).parseRevenueCsv(exported);
+    assert.deepEqual(rows.find(row => row.date === input.date), { date: input.date, totalCents: 10000, mealsSold: 12, orderCount: 8, deliveryMeals: 7, dineInMeals: 5 });
+    assert.equal((await api('/revenue', owner, 'DELETE', { ...input, deliveryMeals: 6, confirm: true })).status, 409);
+    assert.equal((await api('/revenue', owner, 'DELETE', { ...input, dineInMeals: 4, confirm: true })).status, 409);
+    const page = await fetch(`${origin}/dashboard/revenue?${period}`, { headers: { Cookie: owner } });
+    const html = await page.text();
+    for (const title of ['Evolução dos pedidos', 'Evolução dos marmitex delivery', 'Evolução das refeições no restaurante', 'Total antigo sem divisão']) assert.ok(html.includes(title));
+    assert.match(html, /Marmitex delivery de [^"]+Total de 7\./);
+    assert.match(html, /Refeições no restaurante de [^"]+Total de 5\./);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await (await api(`/expenses?${period}&format=xlsx`, owner)).arrayBuffer());
+    const sheet = workbook.getWorksheet('Faturamento')!;
+    const row = sheet.getRows(2, sheet.rowCount - 1)!.find(row => row.getCell(1).value instanceof Date && (row.getCell(1).value as Date).toISOString().startsWith(input.date))!;
+    assert.equal(row.getCell(5).value, 12);
+    assert.equal(row.getCell(6).value, 8);
+    assert.equal(row.getCell(7).value, 7);
+    assert.equal(row.getCell(8).value, 5);
+    assert.equal((await api('/revenue', owner, 'POST', { ...input, mealsSold: 0, orderCount: null, deliveryMeals: 0, dineInMeals: null })).status, 200);
+    assert.equal((await api('/revenue', owner, 'DELETE', { ...input, confirm: true })).status, 409);
+    assert.equal((await api('/revenue', owner, 'DELETE', { ...input, mealsSold: 0, orderCount: null, deliveryMeals: 0, dineInMeals: null, confirm: true })).status, 200);
+    const csv = 'Data;Faturamento;Refeições/marmitex vendidos;Número de pedidos;Marmitex delivery;Refeições no restaurante\n04/10/2026;100,00;20;10;8;12';
+    assert.equal((await api('/revenue', owner, 'POST', { mode: 'import', empresaId, csv })).status, 200);
+    const imported = (await import('../src/lib/revenue-csv')).parseRevenueCsv(await (await api(`/revenue?${period}`, owner)).text());
+    assert.equal(imported.find(row => row.date === input.date)?.mealsSold, 20);
+    assert.equal(imported.find(row => row.date === input.date)?.orderCount, 10);
+    assert.equal(imported.find(row => row.date === input.date)?.deliveryMeals, 8);
+    assert.equal(imported.find(row => row.date === input.date)?.dineInMeals, 12);
+    assert.equal((await api('/revenue', owner, 'DELETE', { ...input, mealsSold: 20, orderCount: 10, deliveryMeals: 8, dineInMeals: 12, confirm: true })).status, 200);
+  });
   await t.test('restaurantes permanecem isolados em consultas, alterações e exportações', async () => {
     assert.equal((await list(other)).count, 0);
     assert.equal((await list(other, `${period}&empresaId=${ownerUser.empresaId}`)).count, 0);

@@ -5,6 +5,7 @@ import { MAX_AMOUNT_CENTS } from '@/src/lib/expense-shared';
 import { deleteRevenue, listRevenue, saveRevenue } from '@/src/lib/revenue';
 import { parseRevenueCsv, revenueCsv } from '@/src/lib/revenue-csv';
 import { InputError, readBody } from '@/src/lib/validation';
+import { revenueCount } from '@/src/lib/revenue-counts';
 
 function revenueAmount(value: unknown) {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value > MAX_AMOUNT_CENTS) {
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
     const params = new URL(request.url).searchParams;
     const template = params.get('format') === 'template';
     const period = expenseFilters(params);
-    const rows = template ? [{ date: period.start, totalCents: 12590 }] : await listRevenue(user.empresaId, period);
+    const rows = template ? [{ date: period.start, totalCents: 12590, deliveryMeals: 6, dineInMeals: 4, orderCount: 5 }] : await listRevenue(user.empresaId, period);
     return new Response(revenueCsv(rows), { headers: {
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': `attachment; filename="${template ? 'modelo-faturamento' : 'faturamento'}-${period.start}.csv"`,
@@ -45,7 +46,11 @@ export async function POST(request: Request) {
     if (body.mode === 'save') {
       const date = dateValue(body.date);
       const totalCents = revenueAmount(body.totalCents);
-      const saved = await saveRevenue(actor, [{ date, totalCents }], true);
+      const mealsSold = revenueCount(body.mealsSold, 'Refeições/marmitex vendidos');
+      const orderCount = revenueCount(body.orderCount, 'Número de pedidos');
+      const deliveryMeals = revenueCount(body.deliveryMeals, 'Marmitex delivery');
+      const dineInMeals = revenueCount(body.dineInMeals, 'Refeições no restaurante');
+      const saved = await saveRevenue(actor, [{ date, totalCents, mealsSold, orderCount, deliveryMeals, dineInMeals }], true);
       return saved ? NextResponse.json(saved) : jsonError('Somente o dono pode registrar faturamento.', 403);
     }
     const rows = parseRevenueCsv(body.csv);
@@ -68,6 +73,10 @@ export async function DELETE(request: Request) {
     if (body.confirm !== true) throw new InputError('Confirme a exclusão do faturamento.');
     const deleted = await deleteRevenue({ id: user.id, empresaId: user.empresaId }, {
       date: dateValue(body.date), totalCents: revenueAmount(body.totalCents),
+      mealsSold: revenueCount(body.mealsSold, 'Refeições/marmitex vendidos'),
+      orderCount: revenueCount(body.orderCount, 'Número de pedidos'),
+      deliveryMeals: revenueCount(body.deliveryMeals, 'Marmitex delivery'),
+      dineInMeals: revenueCount(body.dineInMeals, 'Refeições no restaurante'),
     });
     if (deleted === null) return jsonError('Somente o dono pode excluir faturamento.', 403);
     if (!deleted) return jsonError('O faturamento foi alterado ou já foi excluído. Atualize a página.', 409);

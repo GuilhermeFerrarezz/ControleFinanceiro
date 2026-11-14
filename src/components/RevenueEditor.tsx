@@ -7,6 +7,7 @@ import { api, errorMessage } from '@/src/lib/api';
 import { decodeCsv } from '@/src/lib/csv-encoding';
 import { displayDate, money, parseMoneyInput, type DailyRevenue } from '@/src/lib/expense-shared';
 import styles from './finance.module.css';
+import { MAX_REVENUE_COUNT } from '@/src/lib/revenue-counts';
 
 export default function RevenueEditor({ empresaId, today, rows, existingRows = rows, canEdit }: {
   empresaId: string; today: string; rows: DailyRevenue[]; existingRows?: DailyRevenue[]; canEdit: boolean;
@@ -17,6 +18,9 @@ export default function RevenueEditor({ empresaId, today, rows, existingRows = r
     const existing = existingRows.find(row => row.date === today);
     return existing ? decimalCents(existing.totalCents) : '';
   });
+  const [deliveryMeals, setDeliveryMeals] = useState(() => String(existingRows.find(row => row.date === today)?.deliveryMeals ?? ''));
+  const [dineInMeals, setDineInMeals] = useState(() => String(existingRows.find(row => row.date === today)?.dineInMeals ?? ''));
+  const [orderCount, setOrderCount] = useState(() => String(existingRows.find(row => row.date === today)?.orderCount ?? ''));
   const amountInput = useRef<HTMLInputElement>(null);
   const [csv, setCsv] = useState('');
   const [preview, setPreview] = useState<{ count: number; rows: DailyRevenue[] } | null>(null);
@@ -37,7 +41,7 @@ export default function RevenueEditor({ empresaId, today, rows, existingRows = r
     setBusy(true); setDeleteError(''); setError(''); setNotice('');
     try {
       await api.delete('/revenue', { data: { empresaId, ...deleting, confirm: true } });
-      if (date === deleting.date) setAmount('');
+      if (date === deleting.date) { setAmount(''); setDeliveryMeals(''); setDineInMeals(''); setOrderCount(''); }
       setDeleting(null);
       setNotice(`Faturamento de ${displayDate(deleting.date)} excluído.`);
       router.refresh();
@@ -51,6 +55,9 @@ export default function RevenueEditor({ empresaId, today, rows, existingRows = r
     setDate(value);
     const existing = existingRows.find(row => row.date === value);
     setAmount(existing ? decimalCents(existing.totalCents) : '');
+    setDeliveryMeals(String(existing?.deliveryMeals ?? ''));
+    setDineInMeals(String(existing?.dineInMeals ?? ''));
+    setOrderCount(String(existing?.orderCount ?? ''));
   }
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -59,7 +66,11 @@ export default function RevenueEditor({ empresaId, today, rows, existingRows = r
     if (totalCents === null) { setError('Informe um valor válido, como 1.250,90 ou 0,00.'); return; }
     setBusy(true); setError(''); setNotice('');
     try {
-      await api.post('/revenue', { mode: 'save', empresaId, date, totalCents });
+      await api.post('/revenue', { mode: 'save', empresaId, date, totalCents,
+        mealsSold: existingRows.find(row => row.date === date)?.mealsSold ?? null,
+        deliveryMeals: deliveryMeals === '' ? null : Number(deliveryMeals),
+        dineInMeals: dineInMeals === '' ? null : Number(dineInMeals),
+        orderCount: orderCount === '' ? null : Number(orderCount) });
       setNotice(`Faturamento de ${displayDate(date)} salvo.`);
       router.refresh();
     } catch (cause) { setError(errorMessage(cause)); }
@@ -93,21 +104,24 @@ export default function RevenueEditor({ empresaId, today, rows, existingRows = r
   return <>
     {canEdit && <section className={styles.filtersCard} aria-label="Registrar faturamento diário">
       <h2>Registrar o total do dia</h2>
-      <p>Some os pedidos do dia e informe o valor total. Salvar novamente na mesma data atualiza o valor daquele dia.</p>
+      <p>Informe o faturamento, os marmitex de delivery, as refeições consumidas no restaurante e o número de pedidos. Um pedido pode conter várias refeições. Salvar novamente na mesma data atualiza os dados daquele dia.</p>
       <form className={styles.filters} onSubmit={submit}>
         <label className={styles.filterField}>Data<input type="date" min="2000-01-01" max="2100-12-31" value={date} onChange={event => chooseDate(event.target.value)} required /></label>
         <label className={styles.filterField}>Faturamento (R$)<input ref={amountInput} inputMode="decimal" value={amount} onChange={event => setAmount(event.target.value)} placeholder="Ex.: 1.250,90" required /></label>
+        <label className={styles.filterField}>Marmitex delivery<input type="number" inputMode="numeric" min="0" max={MAX_REVENUE_COUNT} step="1" value={deliveryMeals} onChange={event => setDeliveryMeals(event.target.value)} placeholder="Opcional. Ex.: 80" /></label>
+        <label className={styles.filterField}>Refeições no restaurante<input type="number" inputMode="numeric" min="0" max={MAX_REVENUE_COUNT} step="1" value={dineInMeals} onChange={event => setDineInMeals(event.target.value)} placeholder="Opcional. Ex.: 40" /></label>
+        <label className={styles.filterField}>Número de pedidos<input type="number" inputMode="numeric" min="0" max={MAX_REVENUE_COUNT} step="1" value={orderCount} onChange={event => setOrderCount(event.target.value)} placeholder="Opcional. Ex.: 45" /></label>
         <button type="submit" className="button" disabled={busy}>Salvar faturamento</button>
       </form>
       <details className={styles.revenueImport}>
         <summary>Importar faturamento CSV</summary>
-        <p>Use uma linha por dia, com as colunas Data e Faturamento. Dias já cadastrados serão preservados.</p>
+        <p>Use uma linha por dia, com as colunas Data e Faturamento. As colunas Marmitex delivery, Refeições no restaurante e Número de pedidos são opcionais. Dias já cadastrados serão preservados.</p>
         <a className={styles.textButton} href={`/api/v1/revenue?format=template&expectedEmpresaId=${empresaId}`}>Baixar modelo CSV</a>
         <label className={styles.filterField}>Arquivo CSV<input type="file" accept=".csv,text/csv" disabled={busy}
           onChange={event => { void reviewFile(event.target.files?.[0]); event.target.value = ''; }} /></label>
         {preview && <div className={styles.importReview}>
           <strong>{preview.count} dias no arquivo</strong>
-          <ul>{preview.rows.map(row => <li key={row.date}>{displayDate(row.date)} · {money(row.totalCents)}</li>)}</ul>
+          <ul>{preview.rows.map(row => <li key={row.date}>{displayDate(row.date)} · {money(row.totalCents)} · Delivery: {row.deliveryMeals ?? 'Não informado'} · Restaurante: {row.dineInMeals ?? 'Não informado'}{row.mealsSold != null && <> · Total antigo sem divisão: {row.mealsSold}</>} · Pedidos: {row.orderCount ?? 'Não informado'}</li>)}</ul>
           <button className="button" type="button" disabled={busy} onClick={() => void importFile()}>Confirmar importação</button>
         </div>}
       </details>
@@ -117,9 +131,10 @@ export default function RevenueEditor({ empresaId, today, rows, existingRows = r
     <div className={styles.sheetScroll}>
       <table className={styles.sheetTable}>
         <caption className={styles.sheetCaption}>Faturamento registrado</caption>
-        <thead><tr><th scope="col">Data</th><th scope="col">Faturamento</th>{canEdit && <th scope="col">Ações</th>}</tr></thead>
+        <thead><tr><th scope="col">Data</th><th scope="col">Faturamento</th><th scope="col">Marmitex delivery</th><th scope="col">Refeições no restaurante</th>{existingRows.some(row => row.mealsSold != null) && <th scope="col">Total antigo sem divisão</th>}<th scope="col">Pedidos</th>{canEdit && <th scope="col">Ações</th>}</tr></thead>
         <tbody>{[...rows].reverse().map(row => <tr key={row.date}>
-          <th scope="row">{displayDate(row.date)}</th><td>{money(row.totalCents)}</td>
+          <th scope="row">{displayDate(row.date)}{row.isDemo && <small className={styles.demoBadge}>Contém exemplos</small>}</th><td>{money(row.totalCents)}</td>
+          <td>{row.deliveryMeals?.toLocaleString('pt-BR') ?? 'Não informado'}</td><td>{row.dineInMeals?.toLocaleString('pt-BR') ?? 'Não informado'}</td>{existingRows.some(row => row.mealsSold != null) && <td>{row.mealsSold?.toLocaleString('pt-BR') ?? '—'}</td>}<td>{row.orderCount?.toLocaleString('pt-BR') ?? 'Não informado'}</td>
           {canEdit && <td><div className={styles.rowActions}>
             <button className={styles.textButton} type="button" disabled={busy} onClick={() => { chooseDate(row.date); amountInput.current?.focus(); }}>Editar</button>
             <button className={styles.textButton} type="button" disabled={busy} aria-label={`Excluir faturamento de ${displayDate(row.date)}`}

@@ -26,7 +26,7 @@ export type PaymentMethod = typeof PAYMENT_METHODS[number]['id'];
 export type ExpenseStatus = 'paid' | 'pending';
 export const MAX_AMOUNT_CENTS = 9_999_999_999;
 export const money = formatMoney;
-export type DailyRevenue = { date: string; totalCents: number };
+export type DailyRevenue = { date: string; totalCents: number; mealsSold?: number | null; deliveryMeals?: number | null; dineInMeals?: number | null; orderCount?: number | null; isDemo?: boolean };
 export type FinancePoint = {
   date: string; revenueCents: number | null; expenseCents: number; profitCents: number | null;
   recordedDays: number; periodDays: number;

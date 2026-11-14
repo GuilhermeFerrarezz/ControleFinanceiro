@@ -154,6 +154,12 @@ CREATE TABLE IF NOT EXISTS daily_revenue (
     PRIMARY KEY (empresa_id, date)
 );
 
+ALTER TABLE daily_revenue ADD COLUMN IF NOT EXISTS delivery_meals INTEGER CHECK (delivery_meals >= 0);
+ALTER TABLE daily_revenue ADD COLUMN IF NOT EXISTS demo_key TEXT;
+ALTER TABLE daily_revenue ADD COLUMN IF NOT EXISTS dine_in_meals INTEGER CHECK (dine_in_meals >= 0);
+ALTER TABLE daily_revenue ADD COLUMN IF NOT EXISTS meals_sold INTEGER CHECK (meals_sold >= 0);
+ALTER TABLE daily_revenue ADD COLUMN IF NOT EXISTS order_count INTEGER CHECK (order_count >= 0);
+
 ALTER TABLE expenses ADD COLUMN IF NOT EXISTS items JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(items) = 'array');
 
 -- Product catalogs are shared by each restaurant's team.

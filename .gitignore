@@ -50,3 +50,4 @@ node_modules
 
 # Generated reports and document previews
 /output/
+/reports/

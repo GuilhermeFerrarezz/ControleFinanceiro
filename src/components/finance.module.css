@@ -289,6 +289,18 @@
 
 .packagingFields { display: grid; gap: 12px; min-width: 0; }.packagingFields p { margin: 0; }
 .ingredientAnalysis { border-top: 1px solid var(--line); }.ingredientAnalysis h3 { margin: 0; font-size: 20px; }
+.ingredientTableScroll { max-height: clamp(280px, 60vh, 560px); overflow: auto; scrollbar-gutter: stable; scrollbar-color: #82966f #eef1e8; }
+.ingredientTableScroll:focus-visible { outline: 2px solid #42694d; outline-offset: -2px; }
+.ingredientTableScroll::-webkit-scrollbar { width: 12px; height: 12px; }
+.ingredientTableScroll::-webkit-scrollbar-track { background: #eef1e8; }
+.ingredientTableScroll::-webkit-scrollbar-thumb { background: #82966f; border: 3px solid #eef1e8; border-radius: 10px; }
+@media (min-width: 601px) { .ingredientTableScroll .expenseTable th { position: sticky; top: 0; z-index: 1; } }
 .ingredientPriceCard { padding: 24px; }.ingredientPriceCard > label { max-width: 460px; margin-bottom: 20px; }
 .priceDate { display: block; color: #64735a; font-size: 12px; margin-top: 5px; }.priceUp { color: #a34832; }.priceDown { color: #315f37; }
 @media (max-width: 600px) { .ingredientPriceCard { padding: 18px 14px; } }
+
+.quantityCharts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 22px; margin-bottom: 22px; }
+.chartCard.quantityTrend { display: block; min-width: 0; }
+.quantityTrend .lineChart { height: auto; min-height: 0; width: 100%; }
+.quantityTrend .cardHeading { flex-wrap: wrap; gap: 12px; }
+@media (max-width: 1050px) { .quantityCharts { grid-template-columns: minmax(0,1fr); } }
