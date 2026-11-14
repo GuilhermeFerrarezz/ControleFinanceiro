@@ -1,11 +1,13 @@
 import { createHash } from 'node:crypto';
 import { insertCatalogEntry, listCategories, lockCatalog } from '../models/Catalog';
-import { insertExpense, insertExpenseAudit } from '../models/Expense';
+import { findExpense, insertExpense, insertExpenseAudit, updateExpense } from '../models/Expense';
 import { findMembership } from '../models/Membership';
 import { normalizeCatalogName } from './catalog-shared';
 import { dateValue, validateExpense } from './expenses';
 import { addDays, daysBetween, PAYMENT_METHODS, todayInSaoPaulo, type ExpenseItem } from './expense-shared';
 import { inTransaction } from './postgres';
+import { demoUnitPrice } from './demo-prices';
+import { sumCents } from './financial-math';
 
 type Product = { name: string; unit: ExpenseItem['unit']; quantity: number; price: number; content?: ExpenseItem['packageContent'] };
 type Purchase = { key: string; category: string; description: string; merchant: string; products: Product[] };
@@ -113,7 +115,7 @@ export async function seedRestaurantDemo(actor: { id: string; empresaId: string 
           const variation = 1 + ((index + position) % 3) * 0.15;
           const quantity = product.unit === 'un' || product.unit === 'pacote' ? Math.ceil(product.quantity * variation) : Math.round(product.quantity * variation * 1000) / 1000;
           return { productId: registered.id, name: registered.name, unit: product.unit, quantity,
-            amountCents: Math.round(quantity * product.price), ...(product.content ? { packageContent: product.content } : {}) };
+            amountCents: Math.round(quantity * demoUnitPrice(product.price, product.name, date)), ...(product.content ? { packageContent: product.content } : {}) };
         });
         plans.push({ ...purchase, items, amount: items.reduce((sum, item) => sum + item.amountCents, 0) });
       }
@@ -149,5 +151,42 @@ export async function seedRestaurantDemo(actor: { id: string; empresaId: string 
       }
     }
     return { start, end, days: daysBetween(start, end), closedMondays, expensesAdded, expensesSkipped, revenueWritten, revenuePreserved, categoryCounts };
+  });
+}
+
+export async function varyRestaurantDemoPrices(actor: { id: string; empresaId: string }, start: string, end: string) {
+  dateValue(start); dateValue(end);
+  if (start > end) throw new Error('O início deve ser anterior ao fim.');
+  return inTransaction(async client => {
+    if ((await findMembership(actor.id, actor.empresaId, client, true))?.role !== 'owner') throw new Error('Selecione uma conta administradora.');
+    await lockCatalog(actor.empresaId, client);
+    const candidates = (await client.query<{ id: string }>(`SELECT id FROM expenses WHERE empresa_id=$1
+      AND date BETWEEN $2::date AND $3::date AND deleted_at IS NULL AND demo_key LIKE 'restaurant-complete-v2:%'
+      AND jsonb_array_length(items)>0 ORDER BY id FOR UPDATE`, [actor.empresaId, start, end])).rows;
+    const templates = purchases.flatMap(purchase => purchase.products);
+    let updated = 0, unchanged = 0, itemsUpdated = 0;
+    for (const candidate of candidates) {
+      const before = await findExpense(candidate.id, actor.empresaId, client);
+      if (!before) continue;
+      const oldItems = before.items ?? [];
+      let changed = 0;
+      const items = oldItems.map(item => {
+        const template = templates.find(product => normalizeCatalogName(product.name) === normalizeCatalogName(item.name)
+          && product.unit === item.unit && (product.content?.quantity ?? null) === (item.packageContent?.quantity ?? null)
+          && (product.content?.unit ?? null) === (item.packageContent?.unit ?? null));
+        if (!template) return item;
+        const amountCents = Math.round(item.quantity * demoUnitPrice(template.price, template.name, before.date));
+        if (amountCents === item.amountCents) return item;
+        changed++;
+        return { ...item, amountCents };
+      });
+      if (!changed) { unchanged++; continue; }
+      const amountCents = sumCents([before.amountCents, -sumCents(oldItems.map(item => item.amountCents)), sumCents(items.map(item => item.amountCents))]);
+      const input = validateExpense({ ...before, amountCents, items });
+      const after = await updateExpense(before.id, actor.empresaId, actor.id, input, client);
+      await insertExpenseAudit(after, actor.id, 'updated', { ...before }, { ...after, source: 'demo-price-variation-v1' }, client);
+      updated++; itemsUpdated += changed;
+    }
+    return { start, end, purchasesFound: candidates.length, purchasesUpdated: updated, purchasesUnchanged: unchanged, itemsUpdated };
   });
 }

@@ -9,7 +9,7 @@ export async function GET(request:Request) {
   if(!matchesRestaurantContext(request,user.empresaId))return jsonError('O restaurante ativo mudou. Atualize a página.',409);
   try {
     const filters=expenseFilters(new URL(request.url).searchParams);
-    const data=await expenseDashboard({...user,empresaId:user.empresaId},filters);
+    const data=await expenseDashboard({...user,empresaId:user.empresaId},{...filters,page:1});
     const bytes=await dashboardPdf(data,user.empresaNome||'Restaurante',user.nome);
     return new Response(bytes,{headers:{'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="resumo-${filters.start}-${filters.end}.pdf"`,'Cache-Control':'no-store'}});
   }catch(error){return jsonError(error instanceof InputError||error instanceof ExpenseError?error.message:'Não foi possível gerar o PDF. Tente novamente.',error instanceof InputError?400:error instanceof ExpenseError?error.status:500);}

@@ -139,7 +139,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     steps: ['Excel formatado, em Lançamentos ou Visão geral: gastos com abas de produtos, insumos, resumo e faturamento. Serve para conferir e analisar em uma planilha.',
       'Exportar gastos CSV: arquivo para edição e reimportação dos gastos. Guarde os identificadores e o detalhamento de produtos quando quiser restaurar os mesmos registros.',
       'CSV em partes (ZIP): indicado para muitos registros. Extraia o ZIP e importe um CSV de cada vez; cada parte tem até 2.000 registros e 2 MB.',
-      'Gerar PDF: relatório para leitura ou compartilhamento com os números do período e dos filtros aplicados.',
+      'Gerar PDF: relatório completo da Visão geral para leitura ou compartilhamento. Inclui resumo, categorias, evolução, compras por produto, ranking, quantidades, preços, variações e gráficos de insumos, além dos últimos lançamentos.',
       'Exportar planilha Excel, na aba Planilha: visão diária por categoria. Exportar faturamento CSV, na aba Faturamento: vendas e quantidades por dia.'],
     note: 'PDF e Excel são exportações para consulta. A importação disponível no sistema é por CSV. Se o arquivo for grande demais, reduza o período ou use o ZIP para os gastos.', href: '/dashboard/expenses', action: 'Ver opções de exportação' },
   { id: 'duplicates', group: 'files', title: 'A reimportação duplica ou restaura os lançamentos?',

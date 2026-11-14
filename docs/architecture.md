@@ -76,6 +76,8 @@ A coluna `expenses.demo_key` identifica exclusivamente os exemplos; um índice �
 
 Para a demonstração detalhada da Cozinha Boa, `scripts/seed-restaurant-demo.ts EMAIL ID_RESTAURANTE INICIO FIM` gera compras diárias com produtos nas categorias Mercado, Hortifruti e Açougue; despesas de Moto 1, Moto 2 e Nando nos dias de funcionamento; reforço de Extra Pessoas nos finais de semana; compras de Queijo, Alho/gás e Material e contas mensais em Fixos. Reutiliza os IDs das categorias existentes. Segundas-feiras têm faturamento e quantidades zero, podendo conter compras de abastecimento e contas. Dias futuros recebem observação de simulação e situação a pagar. O script corrige os faturamentos marcados como demonstração, preserva os demais em dias abertos e faz backup do faturamento anterior em `reports/`. Gastos excluídos não são restaurados; chaves determinísticas evitam duplicatas. `scripts/verify-financial-roundtrip.ts PASTA_AUDITORIA` reimporta os arquivos em um schema temporário, compara todos os campos financeiros e remove o schema ao final.
 
+Os preços dos produtos fictícios variam por data, com altas e quedas, sazonalidade mensal e um ciclo de onze dias que também produz oscilações nas compras semanais. `scripts/vary-demo-prices.ts EMAIL ID_RESTAURANTE INICIO FIM` atualiza compras ativas marcadas com `restaurant-complete-v2`, recalcula os totais preservando eventuais valores sem detalhamento e registra auditoria de cada alteração. Quantidades, categorias, pagamentos, faturamento e gastos manuais são preservados. Um backup das compras anteriores fica em `reports/`. Repetir a operação não acumula aumentos: os preços são calculados a partir da referência original de cada produto e data.
+
 A listagem de gastos e os arquivos consultados a partir da interface enviam `expectedEmpresaId`; se a sessão tiver sido trocada para outro restaurante em outra aba, o servidor responde 409. Formulários e ações destrutivas também vinculam o contexto. A fonte de autorização continua sendo a sessão e o vínculo no banco: o identificador enviado pela interface não concede acesso.
 
 Criação e revogação de convites revalidam o papel de dono na transação e bloqueiam o vínculo com `FOR SHARE`. A revogação usa a mesma conexão da autorização. A importação de produtos carrega o catálogo uma vez por arquivo, mantendo índices de nomes e IDs em memória somente durante a transação.
@@ -84,6 +86,8 @@ A série financeira é agrupada no servidor: diária até 90 dias, mensal até c
 
 
 ## Arquivos de lançamentos e PDF
+
+O PDF da Visão geral inclui cartões e comparação com o período anterior, categorias e detalhamento financeiro, compras detalhadas e valores sem detalhamento, evolução e participação por produto, ranking completo, quantidades e preços dos insumos com variação percentual, gráficos de preço de cada insumo e os cinco últimos lançamentos com itens e observações. Produtos e gráficos usam as agregações de todo o período filtrado; a paginação da lista não limita o relatório. As tabelas repetem cabeçalhos e preservam textos extensos ao paginar. O endpoint fixa a primeira página para selecionar os mesmos últimos lançamentos da Visão geral.
 
 A exportação CSV usa UTF-8 com BOM, ponto e vírgula e datas com prefixo textual para evitar conversão automática para datas com largura insuficiente na planilha. Textos que poderiam ser interpretados como fórmulas são neutralizados. A alternativa XLSX usa células tipadas e larguras explícitas.
 

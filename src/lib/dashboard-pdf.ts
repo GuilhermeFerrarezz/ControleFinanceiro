@@ -3,6 +3,7 @@ import PDFDocument from 'pdfkit';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { categoryInfo,displayDate,daysBetween,money,trendPeriodLabel,type ExpenseDashboardData } from './expense-shared';
+import { appendDashboardDetails } from './dashboard-pdf-details';
 
 let fonts:Promise<Buffer[]>|undefined;
 const loadFonts=()=>fonts??=Promise.all(['NotoSans-Regular.ttf','NotoSans-Bold.ttf'].map(name=>readFile(join(process.cwd(),'public','fonts',name))));
@@ -36,9 +37,12 @@ export async function dashboardPdf(data:ExpenseDashboardData,restaurant:string,a
     text(label,x+12,184,158,9,selected?'#d3dfc0':muted);
     const formatted=money(value);text(formatted,x+12,205,158,fit(formatted,158,19),selected?'#ffffff':ink,true,27);
   });
+  const change = data.summary.changePercent;
+  text(change === null ? 'Comparação: sem base no período anterior equivalente.' : `Variação dos gastos: ${formatPercent(change)}% em relação ao período anterior equivalente.`,36,247,770,8,muted);
   text('O ritmo dos gastos',36,263,460,13,ink,true);
   const interval=data.seriesInterval==='day'?'Diário':data.seriesInterval==='month'?'Mensal':'Anual';
   text(`${interval} - totais do período selecionado`,36,285,460,8,muted);
+  text(data.products?.length ? 'Compras por produto e análise de insumos nas próximas páginas.' : 'Compras por produto: sem produtos detalhados neste período.',36,300,460,7,muted);
   const series=data.series,left=82,right=488,top=316,bottom=470,max=Math.max(...series.map(row=>row.totalCents),100);
   const x=(index:number)=>series.length===1?(left+right)/2:left+index/(series.length-1)*(right-left);
   const y=(value:number)=>bottom-value/max*(bottom-top);
@@ -85,11 +89,18 @@ export async function dashboardPdf(data:ExpenseDashboardData,restaurant:string,a
     for (let offset=0; offset<data.categories.length; offset+=17) {
       doc.addPage(); doc.rect(0,0,842,595).fill(paper);
       text('Gastos por categoria',36,35,770,20,ink,true,35);
+      text(`${restaurant} | ${displayDate(data.filters.start)} a ${displayDate(data.filters.end)}`,36,70,770,9,green);
+      text('Categoria',55,93,410,9,muted,true);
+      text('Lançamentos',480,93,85,9,muted,true);
+      text('Valor gasto',590,93,140,9,muted,true);
+      text('Participação',735,93,80,9,muted,true);
       data.categories.slice(offset,offset+17).forEach((row,index)=>{
-        const category=categoryInfo(row.category,data.categoryOptions),yy=90+index*25;
+        const category=categoryInfo(row.category,data.categoryOptions),yy=116+index*25;
         doc.circle(42,yy+6,3).fill(category.color);
-        text(category.label,55,yy,520,10,ink);
-        text(money(row.totalCents),590,yy,200,10,ink,true);
+        text(category.label,55,yy,410,10,ink);
+        text(String(row.count),480,yy,85,10,ink);
+        text(money(row.totalCents),590,yy,140,9,ink,true);
+        text(formatPercent(ratioPercent(row.totalCents,data.summary.totalCents) ?? '0')+'%',735,yy,80,9,muted);
       });
     }
   }
@@ -137,6 +148,7 @@ export async function dashboardPdf(data:ExpenseDashboardData,restaurant:string,a
       else doc.font('ReportBold').fontSize(10).fillColor(green).text(money(data.summary.totalCents),650,yy,{width:144,height:18,align:'right'});
     }
   }
+  appendDashboardDetails(doc, data, restaurant);
   const generated=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'short'}).format(new Date());
   const pages=doc.bufferedPageRange();
   for(let page=pages.start;page<pages.start+pages.count;page++) {
