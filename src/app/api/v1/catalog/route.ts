@@ -1,3 +1,5 @@
+import { configureInventory, recordInventoryMovement } from '@/src/lib/inventory';
+import { todayInSaoPaulo } from '@/src/lib/expense-shared';
 import { validatePackageContent } from '@/src/lib/expense-items';
 import { ITEM_UNITS } from '@/src/lib/expense-shared';
 import { NextResponse } from 'next/server';
@@ -65,7 +67,14 @@ export async function POST(request: Request) {
     const details = productDetails(body);
     return await inTransaction(async client => {
       if (!await findMembership(user.id, empresaId, client, true)) return jsonError('Você não tem mais acesso a este restaurante.', 403);
-      return NextResponse.json(await insertCatalogEntry(empresaId, kind, name, client, details.defaultUnit, details.packageContent));
+      const product = await insertCatalogEntry(empresaId, kind, name, client, details.defaultUnit, details.packageContent);
+      if (kind === 'product' && body.trackStock === true) {
+        await configureInventory(empresaId,product.id,body,client);
+        if (body.initialQuantity !== undefined && String(body.initialQuantity).trim() && Number(String(body.initialQuantity).replace(',','.')) !== 0) {
+          await recordInventoryMovement({ id:user.id,empresaId },product.id,{ action:'opening', quantity:body.initialQuantity, date:todayInSaoPaulo(), reason:'Saldo inicial no cadastro do produto', requestId:body.requestId },client);
+        }
+      }
+      return NextResponse.json(product);
     });
   } catch (error) { return jsonError(error instanceof InputError ? error.message : 'Não foi possível salvar o cadastro.', error instanceof InputError ? 400 : 500); }
 }

@@ -1,3 +1,4 @@
+import { assertStockBalances } from './inventory';
 import { resolveExpenseProducts } from './expense-product-catalog';
 import { isDeepStrictEqual } from 'node:util';
 import { validateExpenseItems } from './expense-items';
@@ -104,6 +105,7 @@ export async function changeExpense(actor: ExpenseActor,id: string,version: numb
     if (expense.version !== version) throw new ExpenseError('Este lançamento foi alterado por outra pessoa. Atualize a lista e tente novamente.',409);
     if (input) input = await resolveExpenseProducts(actor.empresaId, input, client, expense);
     const updated = await updateExpense(id,actor.empresaId,actor.id,input,client);
+    await assertStockBalances(actor.empresaId, client);
     await insertExpenseAudit(updated,actor.id,input ? 'updated' : 'deleted',inputSnapshot(expense),inputSnapshot(updated),client);
   });
 }
@@ -116,7 +118,10 @@ export async function deleteExpensePeriod(actor: ExpenseActor, body: Record<stri
   return inTransaction(async client => {
     const membership = await findMembership(actor.id, actor.empresaId, client, true);
     if (membership?.role !== 'owner') throw new ExpenseError('Somente o admin pode excluir os lançamentos de um período.', 403);
-    return { deleted: await deleteExpensesInPeriod(actor.empresaId, actor.id, start, end, client) };
+    await lockCatalog(actor.empresaId, client);
+    const deleted = await deleteExpensesInPeriod(actor.empresaId, actor.id, start, end, client);
+    await assertStockBalances(actor.empresaId, client);
+    return { deleted };
   });
 }
 function toRecord(row: IExpense,actor: ExpenseActor): ExpenseRecord {

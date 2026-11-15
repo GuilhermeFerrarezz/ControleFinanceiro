@@ -1,5 +1,7 @@
 'use client';
-import { useState, type FormEvent } from 'react';
+import StockSetupFields, { stockSetupData } from '@/src/components/StockSetupFields';
+import { newExpenseRequestId } from '@/src/lib/expense-shared';
+import { useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, errorMessage } from '@/src/lib/api';
 import { type CategoryOption } from '@/src/lib/expense-shared';
@@ -8,6 +10,7 @@ import styles from '../dashboard.module.css';
 import ProductPackagingFields, { packagingFormData } from '@/src/components/ProductPackagingFields';
 import formStyles from '@/src/components/auth.module.css';
 function CatalogSection({ empresaId, kind, items }: { empresaId: string; kind: CatalogKind; items: (MerchantOption & Partial<ProductOption>)[] }) {
+  const stockRequest = useRef('');
   const [creationKey, setCreationKey] = useState(0);
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
@@ -37,10 +40,11 @@ function CatalogSection({ empresaId, kind, items }: { empresaId: string; kind: C
     const fields = new FormData(form);
     const name = fields.get('name');
     const packaging = packagingFormData(fields);
+    if (!stockRequest.current) stockRequest.current = newExpenseRequestId();
     setBusy(true); setError(''); setNotice('');
     try {
-      const response = await api.post<MerchantOption>('/catalog', { empresaId, kind, name, ...packaging });
-      form.reset(); setCreationKey(current => current + 1); setNotice(`“${response.data.name}” está disponível para os lançamentos.`); router.refresh();
+      const response = await api.post<MerchantOption>('/catalog', { empresaId, kind, name, ...packaging, ...(product ? { ...stockSetupData(fields),requestId:stockRequest.current } : {}) });
+      stockRequest.current = ''; form.reset(); setCreationKey(current => current + 1); setNotice(`“${response.data.name}” está disponível para os lançamentos.`); router.refresh();
     } catch (err) { setError(errorMessage(err)); }
     finally { setBusy(false); }
   }
@@ -48,7 +52,7 @@ function CatalogSection({ empresaId, kind, items }: { empresaId: string; kind: C
     <p className={`${styles.subtitle} ${styles.catalogIntro}`}>{category ? 'Cadastre, renomeie ou exclua categorias para organizar seus gastos.' : product ? 'Itens básicos já estão disponíveis. Cadastre ingredientes, produtos de limpeza e embalagens para toda a equipe.' : 'Cadastre mercados, fornecedores e favorecidos para encontrá-los ao digitar um lançamento.'}</p>
     <form key={creationKey} className={`${formStyles.form} ${styles.catalogCreate}`} onSubmit={submit} aria-busy={busy}>
       <label className={formStyles.field} htmlFor={`catalog-${kind}`}>{category ? 'Nome da categoria' : product ? 'Nome do produto' : 'Nome do local'}<input id={`catalog-${kind}`} className={formStyles.input} name="name" minLength={2} maxLength={120} required disabled={busy} placeholder={category ? 'Ex.: Marketing' : product ? 'Ex.: Filé de tilápia' : 'Ex.: Atacadão'} /></label>
-      {product && <ProductPackagingFields disabled={busy} />}
+      {product && <><ProductPackagingFields disabled={busy} /><StockSetupFields disabled={busy} /></>}
       <button className={formStyles.button} disabled={busy}>{busy ? 'Salvando...' : category ? 'Cadastrar categoria' : product ? 'Cadastrar produto' : 'Cadastrar local'}</button>
     </form>
     {error && <p className={styles.error} role="alert">{error}</p>}

@@ -1,3 +1,4 @@
+import { assertStockBalances } from './inventory';
 import { expenseProductCatalog, resolveExpenseProducts } from './expense-product-catalog';
 import { decimalCents, sumCents } from './financial-math';
 import { parse } from 'csv-parse/sync';
@@ -171,6 +172,7 @@ export async function importExpenseCsv(actor:ExpenseActor,csv:unknown,createCate
     for (const row of rows) if (!row.duplicate) row.input = await resolveExpenseProducts(actor.empresaId, row.input, client, undefined, true, productCatalog);
     let imported=await insertImportedExpenses(actor.empresaId,actor.id,rows.filter(row=>!row.duplicate&&!row.restoreId),client);
     for(const row of rows)if(row.restoreId&&await restoreImportedExpense(row.restoreId,actor.empresaId,actor.id,row.input,client))imported++;
+    await assertStockBalances(actor.empresaId,client);
     const dates=rows.map(row=>row.input.date).sort();
     return {imported,duplicates:rows.length-imported,period:{start:dates[0],end:dates[dates.length-1]}};
   });

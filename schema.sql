@@ -217,4 +217,50 @@ END $$;
 
 ALTER TABLE restaurant_catalog ADD COLUMN IF NOT EXISTS package_content JSONB CHECK (package_content IS NULL OR jsonb_typeof(package_content)='object');
 
+-- Inventory balances derive from received purchase items plus an immutable manual ledger.
+-- Composite keys prevent references to another restaurant's products.
+CREATE UNIQUE INDEX IF NOT EXISTS catalog_company_id ON restaurant_catalog(empresa_id,id);
+CREATE TABLE IF NOT EXISTS inventory_products (
+    empresa_id UUID NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL,
+    unit TEXT NOT NULL CHECK (unit IN ('kg','L','un','pacote','caixa')),
+    minimum NUMERIC(24,9) NOT NULL DEFAULT 0 CHECK (minimum BETWEEN 0 AND 1000000),
+    location VARCHAR(120) NOT NULL DEFAULT '',
+    suppliers JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(suppliers)='array'),
+    PRIMARY KEY (empresa_id,product_id),
+    FOREIGN KEY (empresa_id,product_id) REFERENCES restaurant_catalog(empresa_id,id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS inventory_movements (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    empresa_id UUID NOT NULL,
+    product_id UUID NOT NULL,
+    actor_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE RESTRICT,
+    request_id UUID NOT NULL,
+    quantity NUMERIC(24,9) NOT NULL CHECK (quantity <> 0),
+    date DATE NOT NULL CHECK (date BETWEEN DATE '2000-01-01' AND DATE '2100-12-31'),
+    reason VARCHAR(300) NOT NULL CHECK (length(btrim(reason)) BETWEEN 2 AND 300),
+    source TEXT NOT NULL CHECK (source IN ('opening','entry','consumption','waste','count','correction')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    input JSONB NOT NULL DEFAULT '{}'::jsonb,
+    UNIQUE (empresa_id,request_id),
+    FOREIGN KEY (empresa_id,product_id) REFERENCES inventory_products(empresa_id,product_id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS inventory_history ON inventory_movements(empresa_id,date DESC,created_at DESC,id);
+CREATE INDEX IF NOT EXISTS inventory_product_history ON inventory_movements(empresa_id,product_id);
+CREATE INDEX IF NOT EXISTS inventory_actor ON inventory_movements(actor_id);
+
+CREATE OR REPLACE VIEW inventory_purchase_lines AS
+SELECT e.empresa_id,e.id AS expense_id,e.created_by,e.created_at,e.date,e.merchant,
+       item->>'productId' AS product_id,position,
+       item->>'stock' = 'true' AS stocked,
+       (item->>'amountCents')::numeric AS amount_cents,
+       CASE WHEN measure.unit='g' THEN 'kg' WHEN measure.unit='ml' THEN 'L' ELSE measure.unit END AS unit,
+       (item->>'quantity')::numeric *
+         CASE WHEN item->>'unit' IN ('pacote','caixa') AND item->'packageContent' IS NOT NULL AND item->'packageContent' <> 'null'::jsonb
+              THEN (item->'packageContent'->>'quantity')::numeric ELSE 1 END /
+         CASE WHEN measure.unit IN ('g','ml') THEN 1000 ELSE 1 END AS quantity
+FROM expenses e CROSS JOIN LATERAL jsonb_array_elements(e.items) WITH ORDINALITY AS entries(item,position)
+CROSS JOIN LATERAL (SELECT CASE WHEN item->>'unit' IN ('pacote','caixa') THEN coalesce(item->'packageContent'->>'unit',item->>'unit') ELSE item->>'unit' END AS unit) measure
+WHERE e.deleted_at IS NULL;
+
 COMMIT;

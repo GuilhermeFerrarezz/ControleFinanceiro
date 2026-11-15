@@ -20,9 +20,10 @@ export function validateExpenseItems(value: unknown, totalCents: number): Expens
       !ITEM_UNITS.includes(row.unit as ExpenseItem['unit']) || !Number.isSafeInteger(row.amountCents) ||
       Number(row.amountCents) <= 0 || Number(row.amountCents) > MAX_AMOUNT_CENTS) throw fail();
     if (row.productId !== undefined && (typeof row.productId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(row.productId))) throw fail();
+    if (row.stock !== undefined && typeof row.stock !== 'boolean') throw new InputError('Informe se o produto entra no estoque.');
     const packageContent = validatePackageContent(row.packageContent);
     if (packageContent && row.unit !== 'pacote' && row.unit !== 'caixa') throw new InputError('Informe conteúdo por embalagem apenas para pacotes ou caixas.');
-    return { ...(packageContent ? { packageContent } : {}), ...(row.productId ? { productId: String(row.productId).toLowerCase() } : {}), name: row.name.trim().replace(/\s+/g, ' '), quantity: row.quantity, unit: row.unit as ExpenseItem['unit'], amountCents: Number(row.amountCents) };
+    return { ...(row.stock === true ? { stock: true } : {}), ...(packageContent ? { packageContent } : {}), ...(row.productId ? { productId: String(row.productId).toLowerCase() } : {}), name: row.name.trim().replace(/\s+/g, ' '), quantity: row.quantity, unit: row.unit as ExpenseItem['unit'], amountCents: Number(row.amountCents) };
   });
   if (sumCents(items.map(item => item.amountCents)) > totalCents) throw new InputError('A soma dos produtos não pode ultrapassar o valor total da compra.');
   return items;

@@ -1,3 +1,4 @@
+import { validateStockItems } from './inventory';
 import { insertCatalogEntry, listProducts, lockCatalog } from '../models/Catalog';
 import { normalizeCatalogName, type ProductOption } from './catalog-shared';
 import type { ExpenseInput } from './expense-shared';
@@ -31,5 +32,7 @@ export async function resolveExpenseProducts(empresaId: string, input: ExpenseIn
     if (!product || (product.archived && !retained && !importing)) throw new InputError(`Selecione ou cadastre o produto “${item.name}” antes de salvar.`);
     items.push({ ...item, productId: product.id, name: product.name });
   }
-  return { ...input, items };
+  const resolved = { ...input, items };
+  await validateStockItems(empresaId, resolved, client);
+  return resolved;
 }

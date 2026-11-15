@@ -56,8 +56,8 @@ export async function changeCatalogEntry(empresaId: string, kind: CatalogKind, i
 }
 
 export async function listProducts(empresaId: string, client: Queryable = db): Promise<ProductOption[]> {
-  return (await client.query<ProductOption>(`SELECT id,name,default_unit AS "defaultUnit",package_content AS "packageContent",(deleted_at IS NOT NULL) AS archived
-    FROM restaurant_catalog WHERE empresa_id=$1 AND kind='product' ORDER BY name,id`, [empresaId])).rows;
+  return (await client.query<ProductOption>(`SELECT p.id,p.name,p.default_unit AS "defaultUnit",p.package_content AS "packageContent",(p.deleted_at IS NOT NULL) AS archived,s.unit AS "stockUnit"
+    FROM restaurant_catalog p LEFT JOIN inventory_products s ON s.empresa_id=p.empresa_id AND s.product_id=p.id WHERE p.empresa_id=$1 AND p.kind='product' ORDER BY p.name,p.id`, [empresaId])).rows;
 }
 export async function seedProducts(empresaId: string, client: Queryable) {
   await client.query(`INSERT INTO restaurant_catalog (empresa_id,kind,name,normalized_name,default_unit)
