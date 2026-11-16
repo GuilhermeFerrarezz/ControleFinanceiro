@@ -59,7 +59,7 @@
 .editButton { background: #dcefd6; color: #315c35; }
 .editButton:hover:not(:disabled) { background: #c8e4bf; }
 
-.catalogGrid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 20px; align-items: stretch; }
+.catalogGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; align-items: stretch; }
 .catalogCard { display: flex; flex-direction: column; padding: 22px; min-width: 0; }
 .catalogCard > h2 { font-size: 20px; line-height: 1.35; margin: 0; min-height: 54px; }
 .catalogIntro { min-height: 72px; margin: 10px 0 18px; line-height: 1.6; font-size: 13px; }

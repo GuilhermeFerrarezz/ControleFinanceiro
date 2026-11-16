@@ -19,6 +19,9 @@ export async function listCategories(empresaId: string, client: Queryable = db):
 export async function listMerchants(empresaId: string, client: Queryable = db) {
   return (await client.query<MerchantOption>("SELECT id,name FROM restaurant_catalog WHERE empresa_id=$1 AND kind='merchant' AND deleted_at IS NULL ORDER BY name,id", [empresaId])).rows;
 }
+export async function listStorageLocations(empresaId: string, client: Queryable = db) {
+  return (await client.query<MerchantOption>("SELECT id,name FROM restaurant_catalog WHERE empresa_id=$1 AND kind='storage' AND deleted_at IS NULL ORDER BY name,id", [empresaId])).rows;
+}
 export async function insertCatalogEntry(empresaId: string, kind: CatalogKind, name: string, client: Queryable, defaultUnit: ProductOption['defaultUnit'] = 'un', packageContent: PackageContent | null = null) {
   await lockCatalog(empresaId, client);
   const normalized = normalizeCatalogName(name);
@@ -36,7 +39,7 @@ export async function insertCatalogEntry(empresaId: string, kind: CatalogKind, n
 export async function changeCatalogEntry(empresaId: string, kind: CatalogKind, id: string, previousName: string, name: string | null, client: Queryable, productDetails?: { defaultUnit: ProductOption['defaultUnit']; packageContent: PackageContent | null; previous?: { defaultUnit: string; packageContent: PackageContent | null } }) {
   await lockCatalog(empresaId, client);
   const categories = kind === 'category' ? await listCategories(empresaId, client) : [];
-  const items = kind === 'category' ? categories.filter(item => !item.archived).map(item => ({ id: item.id, name: item.label })) : kind === 'product' ? (await listProducts(empresaId, client)).filter(item => !item.archived) : await listMerchants(empresaId, client);
+  const items = kind === 'category' ? categories.filter(item => !item.archived).map(item => ({ id: item.id, name: item.label })) : kind === 'product' ? (await listProducts(empresaId, client)).filter(item => !item.archived) : kind === 'storage' ? await listStorageLocations(empresaId, client) : await listMerchants(empresaId, client);
   const existing = items.find(item => item.id === id);
   if (!existing) throw new InputError('Cadastro não encontrado. Atualize a página.');
   if (existing.name !== previousName) throw new InputError('Este cadastro foi alterado. Atualize a página antes de continuar.');

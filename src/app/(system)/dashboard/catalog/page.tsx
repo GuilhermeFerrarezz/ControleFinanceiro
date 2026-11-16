@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { currentUser } from '@/src/lib/auth';
-import { listProducts, listCategories, listMerchants } from '@/src/models/Catalog';
+import { listProducts, listCategories, listMerchants, listStorageLocations } from '@/src/models/Catalog';
 import Header from '@/src/components/cabecalho/page';
 import FinanceNav from '@/src/components/FinanceNav';
 import CatalogPanel from './CatalogPanel';
@@ -12,6 +12,6 @@ export default async function CatalogPage() {
   if (!user.empresaId) redirect('/home');
   return <><Header nome={user.empresaNome || 'Restaurante'} user={user} /><main className={styles.main}>
     <FinanceNav active="catalog" /><div className={styles.heading}><div><span className="eyebrow">Tudo no seu lugar</span><h1 className="serif">Categorias, locais e produtos</h1><p>Cadastros compartilhados pela equipe de {user.empresaNome}.</p></div></div>
-    <CatalogPanel key={user.empresaId} empresaId={user.empresaId} categories={await listCategories(user.empresaId)} merchants={await listMerchants(user.empresaId)} products={await listProducts(user.empresaId)} />
+    <CatalogPanel key={user.empresaId} empresaId={user.empresaId} storageLocations={await listStorageLocations(user.empresaId)} categories={await listCategories(user.empresaId)} merchants={await listMerchants(user.empresaId)} products={await listProducts(user.empresaId)} />
   </main></>;
 }

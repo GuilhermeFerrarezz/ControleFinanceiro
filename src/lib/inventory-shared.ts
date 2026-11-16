@@ -12,6 +12,15 @@ export function stockQuantity(value: unknown, zero = true): string {
   if (!/^\d{1,7}(?:\.\d{1,9})?$/.test(text) || Number(text) > 1_000_000 || Number(text) < (zero ? 0 : 0.000000001)) throw new InputError('Informe uma quantidade entre 0 e 1.000.000, com até 9 casas decimais.');
   return text;
 }
+// Database sums can exceed the per-movement limit and carry extra decimal zeros.
+export function stockBalance(value: unknown): string {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!/^\d+(?:\.\d+)?$/.test(text)) throw new InputError('Saldo de conferência inválido. Atualize a página e confira o saldo.');
+  const [whole, fraction = ''] = text.split('.');
+  const decimals = fraction.replace(/0+$/, '');
+  if (decimals.length > 9) throw new InputError('Saldo de conferência inválido. Atualize a página e confira o saldo.');
+  return whole.replace(/^0+(?=\d)/, '') + (decimals ? '.' + decimals : '');
+}
 export type InventoryProduct = {
   id: string; name: string; unit: StockUnit; minimum: string; location: string;
   suppliers: string[]; balance: string; averageCents: string | null; valueCents: string | null;

@@ -5,7 +5,7 @@ import { InputError } from './validation';
 import { lockCatalog, listProducts } from '../models/Catalog';
 import { findMembership } from '../models/Membership';
 import { inventoryProducts, inventoryHistory, ensureInventoryProduct } from '../models/Inventory';
-import { stockQuantity, stockUnit, STOCK_UNITS, type InventoryData } from './inventory-shared';
+import { stockBalance, stockQuantity, stockUnit, STOCK_UNITS, type InventoryData } from './inventory-shared';
 import type { ExpenseInput } from './expense-shared';
 
 const uuid = (value: unknown) => {
@@ -89,8 +89,8 @@ export async function recordInventoryMovement(actor: { id: string; empresaId: st
   let delta = quantity;
   if (source === 'consumption' || source === 'waste' || source === 'correction') delta = '-'+quantity;
   if (source === 'count') {
-    const expected = stockQuantity(body.expectedBalance);
-    if (Number(expected) !== Number(product.balance)) throw new InputError('O estoque mudou enquanto você fazia a contagem. Atualize a página e confira o saldo.');
+    const expected = stockBalance(body.expectedBalance);
+    if (expected !== stockBalance(product.balance)) throw new InputError('O estoque mudou enquanto você fazia a contagem. Atualize a página e confira o saldo.');
     delta = (await client.query<{ delta: string }>('SELECT ($1::numeric-$2::numeric)::text AS delta',[quantity,product.balance])).rows[0].delta;
     if (Number(delta) === 0) throw new InputError('A contagem já corresponde ao saldo atual. Nenhum ajuste necessário.');
   }

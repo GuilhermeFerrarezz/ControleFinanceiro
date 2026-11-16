@@ -164,7 +164,7 @@ ALTER TABLE expenses ADD COLUMN IF NOT EXISTS items JSONB NOT NULL DEFAULT '[]':
 
 -- Product catalogs are shared by each restaurant's team.
 ALTER TABLE restaurant_catalog DROP CONSTRAINT IF EXISTS restaurant_catalog_kind_check;
-ALTER TABLE restaurant_catalog ADD CONSTRAINT restaurant_catalog_kind_check CHECK (kind IN ('category','merchant','product'));
+ALTER TABLE restaurant_catalog ADD CONSTRAINT restaurant_catalog_kind_check CHECK (kind IN ('category','merchant','product','storage'));
 ALTER TABLE restaurant_catalog ADD COLUMN IF NOT EXISTS default_unit TEXT NOT NULL DEFAULT 'un'
     CHECK (default_unit IN ('un','kg','g','L','ml','pacote','caixa'));
 

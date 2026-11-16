@@ -1,11 +1,12 @@
 'use client';
+import StorageLocationInput from './StorageLocationInput';
 import Link from 'next/link';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, errorMessage } from '@/src/lib/api';
 import { newExpenseRequestId, todayInSaoPaulo } from '@/src/lib/expense-shared';
 import { stockUnit, STOCK_UNITS, type InventoryData, type InventoryProduct } from '@/src/lib/inventory-shared';
 import { displayPrice, displayQuantity } from '@/src/lib/ingredient-analysis';
-import type { ProductOption } from '@/src/lib/catalog-shared';
+import type { ProductOption, MerchantOption } from '@/src/lib/catalog-shared';
 import styles from './inventory.module.css';
 
 const sources: Record<string,string> = { purchase:'Compra recebida',opening:'Saldo inicial',entry:'Entrada avulsa',consumption:'Consumo',waste:'Perda',count:'Contagem física',correction:'Correção de saída' };
@@ -14,7 +15,9 @@ const qty = (value: string) => value.startsWith('-') ? '−'+displayQuantity(val
 const status = (product: InventoryProduct) => Number(product.balance) === 0 ? 'empty' : Number(product.balance) <= Number(product.minimum) ? 'low' : 'ok';
 const labels = { empty:'Sem estoque',low:'Repor estoque',ok:'Em dia' };
 
-function StockDialog({ product, catalog, onClose, onSubmit, busy }: { product?: InventoryProduct; catalog:ProductOption[]; onClose:()=>void; onSubmit:(body:Record<string,unknown>)=>Promise<void>; busy:boolean }) {
+function StockDialog({ product, catalog, onClose, onSubmit, busy: saving, empresaId, storageLocations }: { empresaId: string; storageLocations: MerchantOption[]; product?: InventoryProduct; catalog:ProductOption[]; onClose:()=>void; onSubmit:(body:Record<string,unknown>)=>Promise<void>; busy:boolean }) {
+  const [creatingLocation, setCreatingLocation] = useState(false);
+  const busy = saving || creatingLocation;
   const dialog = useRef<HTMLDialogElement>(null);
   const requestId = useRef('');
   const [mode,setMode] = useState(product ? 'consumption' : 'configure');
@@ -41,7 +44,7 @@ function StockDialog({ product, catalog, onClose, onSubmit, busy }: { product?: 
         <label>Unidade de controle<select name="unit" defaultValue={defaultUnit} disabled={!!product}>{STOCK_UNITS.map(unit => <option key={unit}>{unit}</option>)}</select>{product && <input type="hidden" name="unit" value={product.unit} />}</label>
         <p className={styles.hint}>Quilos e litros são convertidos automaticamente a partir de gramas e mililitros. Informe o conteúdo dos pacotes na compra para convertê-los. A unidade fica fixa após a ativação.</p>
         <label>Estoque mínimo<input name="minimum" inputMode="decimal" defaultValue={product?.minimum || '0'} maxLength={18} required /></label>
-        <label>Local de armazenamento<input name="location" defaultValue={product?.location} maxLength={120} placeholder="Ex.: Despensa, prateleira 2" /></label>
+        <StorageLocationInput empresaId={empresaId} locations={storageLocations} initialValue={product?.location} disabled={busy} onBusyChange={setCreatingLocation} />
         <label>Fornecedores principais<textarea name="suppliers" defaultValue={product?.suppliers.join(', ')} maxLength={1200} rows={2} placeholder="Separe os nomes por vírgula" /></label>
         {!product && <p className={styles.hint}>Após ativar, use Entrada para registrar o saldo que você já possui. Compras antigas não são recebidas automaticamente.</p>}
       </div> : <div key={mode} className={styles.form}>
@@ -57,7 +60,7 @@ function StockDialog({ product, catalog, onClose, onSubmit, busy }: { product?: 
   </dialog>;
 }
 
-export default function InventoryPanel({ empresaId,initialData,catalog }: { empresaId:string; initialData:InventoryData; catalog:ProductOption[] }) {
+export default function InventoryPanel({ empresaId,initialData,catalog,storageLocations }: { empresaId:string; initialData:InventoryData; catalog:ProductOption[]; storageLocations:MerchantOption[] }) {
   const [data,setData] = useState(initialData);
   const [search,setSearch] = useState('');
   const [filter,setFilter] = useState('all');
@@ -107,6 +110,6 @@ export default function InventoryPanel({ empresaId,initialData,catalog }: { empr
       <div className={styles.tableWrap} tabIndex={0} aria-label="Histórico de estoque"><table><thead><tr><th>Data</th><th>Produto</th><th>Movimento</th><th>Quantidade</th><th>Motivo / fornecedor</th><th>Responsável</th></tr></thead><tbody>{data.movements.map(movement => <tr key={movement.id}><td>{day(movement.date)}</td><td>{movement.productName}</td><td>{sources[movement.source]}</td><td className={Number(movement.quantity)<0 ? styles.negative : styles.positive}>{Number(movement.quantity)>0 ? '+' : ''}{qty(movement.quantity)} {movement.unit}</td><td>{movement.reason}</td><td>{movement.author}</td></tr>)}</tbody></table>{!data.movements.length && <p className={styles.empty}>Nenhuma movimentação neste filtro.</p>}</div>
       <div className={styles.pagination}><button disabled={loading || data.page<=1} onClick={() => void reload(historyProduct,data.page-1)}>Anterior</button><span>Página {data.page}</span><button disabled={loading || !data.hasNext} onClick={() => void reload(historyProduct,data.page+1)}>Próxima</button></div>
     </section>
-    {dialog && <StockDialog product={dialog.product} catalog={dialog.product ? catalog : available} onClose={() => setDialog(null)} onSubmit={save} busy={busy} />}
+    {dialog && <StockDialog empresaId={empresaId} storageLocations={storageLocations} product={dialog.product} catalog={dialog.product ? catalog : available} onClose={() => setDialog(null)} onSubmit={save} busy={busy} />}
   </>;
 }
