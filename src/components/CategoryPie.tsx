@@ -1,19 +1,10 @@
 'use client';
 import { formatPercent, ratioPercent, sumCents } from '@/src/lib/financial-math';
 import { useState } from 'react';
+import { donutSlicePath } from '@/src/lib/donut-path';
 import { categoryInfo, EXPENSE_CATEGORIES, money, type CategoryOption, type ExpenseDashboardData, type ExpenseCategory } from '@/src/lib/expense-shared';
 import styles from './finance.module.css';
 
-function slicePath(start: number, fraction: number) {
-  const point = (radius: number, value: number) => {
-    const angle=(value*360-90)*Math.PI/180;
-    return `${110+radius*Math.cos(angle)},${110+radius*Math.sin(angle)}`;
-  };
-  const mid=start+fraction/2, end=start+fraction;
-  // Two arcs also render a full circle when there is only one category.
-  return `M${point(100,start)} A100,100 0 0,1 ${point(100,mid)} A100,100 0 0,1 ${point(100,end)}
-    L${point(68,end)} A68,68 0 0,0 ${point(68,mid)} A68,68 0 0,0 ${point(68,start)} Z`;
-}
 export default function CategoryPie({ categories,total,count,options = EXPENSE_CATEGORIES, dimension = 'category', selectedKey, onSelect }: { categories:ExpenseDashboardData['categories']; total:number; count:number; options?: readonly CategoryOption[]; dimension?: 'category' | 'product'; selectedKey?: string | null; onSelect?: (id: string | null) => void }) {
   const [localSelected,setLocalSelected] = useState<ExpenseCategory | null>(null);
   const selectedId = selectedKey === undefined ? localSelected : selectedKey;
@@ -29,7 +20,7 @@ export default function CategoryPie({ categories,total,count,options = EXPENSE_C
         const category=categoryInfo(item.category, options);
         const start=sumCents(categories.slice(0,index).map(row=>row.totalCents))/total;
         const choose=()=>setSelectedId(item.category);
-        return <path key={item.category} d={slicePath(start,item.totalCents/total)} fill={category.color} className={styles.donutSlice}
+        return <path key={item.category} d={donutSlicePath(start,item.totalCents/total)} fill={category.color} className={styles.donutSlice}
           role="button" tabIndex={0} aria-label={`Selecionar ${noun} ${category.label}`} aria-pressed={selected?.category===item.category}
           opacity={selected && selected.category!==item.category ? .4 : 1} onClick={choose}
           onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();choose();}}}>

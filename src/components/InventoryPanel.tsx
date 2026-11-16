@@ -51,7 +51,7 @@ function StockDialog({ product, catalog, onClose, onSubmit, busy: saving, empres
         {mode === 'entry' && <p className={styles.hint}>Para uma compra com custo, registre um lançamento e marque a entrada no estoque. Esta entrada avulsa altera apenas a quantidade, sem criar uma despesa.</p>}
         {mode === 'count' && <p className={styles.hint}>Informe o total contado agora. Vamos registrar apenas a diferença em relação ao saldo atual. Movimentos não são apagados: use uma nova entrada ou contagem para corrigir.</p>}
         <div className={styles.row}><label>{mode === 'count' ? 'Quantidade contada' : 'Quantidade'} ({product?.unit})<input name="quantity" inputMode="decimal" required maxLength={18} placeholder={mode === 'count' ? 'Pode ser zero' : 'Ex.: 2,5'} /></label><label>Data<input name="date" type="date" min="2000-01-01" max="2100-12-31" defaultValue={todayInSaoPaulo()} required /></label></div>
-        <label>Motivo / observações<textarea name="reason" minLength={2} maxLength={300} rows={3} required placeholder={mode === 'waste' ? 'Ex.: Produto vencido ou avariado' : 'Ex.: Preparo do almoço, conferência ou saldo inicial'} /></label>
+        <label>Motivo / observações (opcional)<textarea name="reason" maxLength={300} rows={3} placeholder={mode === 'waste' ? 'Ex.: Produto vencido ou avariado' : 'Ex.: Preparo do almoço, conferência ou saldo inicial'} /></label>
       </div>}
       </fieldset>
       {message && <p className={styles.error} role="alert">{message}</p>}

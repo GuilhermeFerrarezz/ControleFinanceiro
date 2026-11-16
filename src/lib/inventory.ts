@@ -72,8 +72,7 @@ export async function recordInventoryMovement(actor: { id: string; empresaId: st
   const sources = ['opening','entry','consumption','waste','count','correction'];
   if (typeof body.action !== 'string' || !sources.includes(body.action)) throw new InputError('Escolha entrada, consumo, perda ou contagem.');
   const source = body.action;
-  const reason = limitedText(body.reason,'Motivo',300);
-  if (reason.length < 2) throw new InputError('Descreva o motivo da movimentação.');
+  const reason = limitedText(body.reason ?? '', 'Motivo', 300);
   const date = limitedText(body.date,'Data',10);
   if (!/^(20\d{2}|2100)-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date+'T12:00:00Z')) || new Date(date+'T12:00:00Z').toISOString().slice(0,10) !== date) throw new InputError('Informe uma data válida.');
   const quantity = stockQuantity(body.quantity, source === 'count');

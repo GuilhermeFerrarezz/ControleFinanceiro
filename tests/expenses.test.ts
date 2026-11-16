@@ -951,6 +951,50 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal((await api(`/expenses/${expenseId}`,owner,'DELETE',{version:2})).status,200);
     assert.equal(Number((await product()).balance),0);
   });
+  await t.test('estoque preserva planilha e Excel: compra conta uma vez e movimentos não alteram gastos', async () => {
+    const empresaId = ownerUser.empresaId;
+    const createdProduct = await api('/catalog', owner, 'POST', { empresaId, kind: 'product', name: 'Arroz para conferir planilha', defaultUnit: 'kg' });
+    assert.equal(createdProduct.status, 200);
+    const productId = (await createdProduct.json()).id;
+    async function snapshot() {
+      const response = await api(`/expenses/sheet?${period}`, owner, 'POST', { empresaId, columns: ['alimentos'] });
+      assert.equal(response.status, 200, await response.clone().text());
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(await response.arrayBuffer());
+      const sheet = workbook.getWorksheet('Planilha de gastos')!;
+      const page = await fetch(`${origin}/dashboard/sheet?${period}`, { headers: { Cookie: owner } });
+      assert.equal(page.status, 200);
+      const table = (await page.text()).match(/<table[\s\S]*?<\/table>/)?.[0];
+      assert.ok(table);
+      return { cells: sheet.getSheetValues(), table, total: sheet.getRow(sheet.rowCount).getCell(sheet.columnCount - 2).value };
+    }
+    const before = await snapshot();
+    const item = { productId, name: 'Arroz para conferir planilha', unit: 'kg', quantity: 10, amountCents: 1234, stock: false };
+    const input = { ...body, description: 'Compra para conferir estoque e planilha', amountCents: 1234, items: [item] };
+    const purchase = await create(owner, input);
+    assert.equal(purchase.status, 201);
+    const expenseId = (await purchase.json()).id;
+    const purchased = await snapshot();
+    assert.equal(Math.round(Number(purchased.total) * 100), Math.round(Number(before.total) * 100) + 1234);
+    // Receiving the same purchase changes only inventory, not the financial sheet.
+    assert.equal((await api(`/expenses/${expenseId}`, owner, 'PATCH', { ...input, items: [{ ...item, stock: true }], version: 1 })).status, 200);
+    assert.deepEqual(await snapshot(), purchased);
+    const balance = async () => {
+      const inventory = await (await api('/inventory', owner)).json();
+      return Number(inventory.products.find((product: { id: string }) => product.id === productId).balance);
+    };
+    assert.equal(await balance(), 10);
+    for (const [action, quantity, expected] of [['entry', '3', 13], ['consumption', '2', 11], ['waste', '1', 10], ['count', '7', 7]] as const) {
+      const response = await api('/inventory', owner, 'POST', { empresaId, productId, action, quantity, expectedBalance: String(await balance()), date: '2026-10-01', requestId: randomUUID() });
+      assert.equal(response.status, 200, await response.clone().text());
+      assert.equal(await balance(), expected);
+      assert.deepEqual(await snapshot(), purchased, `${action} não deve alterar planilha nem Excel`);
+    }
+    assert.equal((await api('/inventory', owner, 'POST', { empresaId, productId, action: 'entry', quantity: '3', date: '2026-10-01', requestId: randomUUID() })).status, 200);
+    assert.equal((await api(`/expenses/${expenseId}`, owner, 'DELETE', { version: 2 })).status, 200);
+    assert.equal(await balance(), 0);
+    assert.deepEqual(await snapshot(), before);
+  });
   await t.test('revogação concorrente impede criar, editar ou excluir gastos com acesso antigo',async()=>{
     const created=await create(employee,{description:'Teste de revogação concorrente'});
     assert.equal(created.status,201);const id=(await created.json()).id;

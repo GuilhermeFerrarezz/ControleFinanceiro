@@ -238,7 +238,7 @@ CREATE TABLE IF NOT EXISTS inventory_movements (
     request_id UUID NOT NULL,
     quantity NUMERIC(24,9) NOT NULL CHECK (quantity <> 0),
     date DATE NOT NULL CHECK (date BETWEEN DATE '2000-01-01' AND DATE '2100-12-31'),
-    reason VARCHAR(300) NOT NULL CHECK (length(btrim(reason)) BETWEEN 2 AND 300),
+    reason VARCHAR(300) NOT NULL DEFAULT '' CHECK (length(btrim(reason)) <= 300),
     source TEXT NOT NULL CHECK (source IN ('opening','entry','consumption','waste','count','correction')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     input JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -248,6 +248,11 @@ CREATE TABLE IF NOT EXISTS inventory_movements (
 CREATE INDEX IF NOT EXISTS inventory_history ON inventory_movements(empresa_id,date DESC,created_at DESC,id);
 CREATE INDEX IF NOT EXISTS inventory_product_history ON inventory_movements(empresa_id,product_id);
 CREATE INDEX IF NOT EXISTS inventory_actor ON inventory_movements(actor_id);
+
+-- Existing databases also allow movements without a reason.
+ALTER TABLE inventory_movements DROP CONSTRAINT IF EXISTS inventory_movements_reason_check;
+ALTER TABLE inventory_movements ADD CONSTRAINT inventory_movements_reason_check CHECK (length(btrim(reason)) <= 300);
+ALTER TABLE inventory_movements ALTER COLUMN reason SET DEFAULT '';
 
 CREATE OR REPLACE VIEW inventory_purchase_lines AS
 SELECT e.empresa_id,e.id AS expense_id,e.created_by,e.created_at,e.date,e.merchant,
