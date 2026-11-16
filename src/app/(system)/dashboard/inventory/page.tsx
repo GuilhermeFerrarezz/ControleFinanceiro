@@ -12,8 +12,11 @@ export default async function InventoryPage() {
   const user = await currentUser();
   if (!user) redirect('/login');
   if (!user.empresaId) redirect('/home');
+  const [storageLocations, initialData, catalog] = await Promise.all([
+    listStorageLocations(user.empresaId), inventoryData(user.empresaId), listProducts(user.empresaId),
+  ]);
   return <><Header nome={user.empresaNome || 'Restaurante'} user={user} /><main className={styles.main}>
     <FinanceNav active="inventory" />
-    <InventoryPanel key={user.empresaId} empresaId={user.empresaId} storageLocations={await listStorageLocations(user.empresaId)} initialData={await inventoryData(user.empresaId)} catalog={await listProducts(user.empresaId)} />
+    <InventoryPanel key={user.empresaId} empresaId={user.empresaId} storageLocations={storageLocations} initialData={initialData} catalog={catalog} />
   </main></>;
 }
