@@ -11,8 +11,12 @@ async function main() {
   if (!user) throw new Error('Conta administradora não encontrada.');
   const folder = resolve('reports', `restaurant-demo-${start}-${end}`);
   await mkdir(folder, { recursive: true });
-  const before = (await db.query('SELECT * FROM daily_revenue WHERE empresa_id=$1 AND date BETWEEN $2::date AND $3::date ORDER BY date', [empresaId, start, end])).rows;
-  await writeFile(resolve(folder, `faturamento-antes-${Date.now()}.json`), JSON.stringify(before, null, 2));
+  const before: Record<string, unknown> = {};
+  for (const table of ['expenses', 'daily_revenue', 'inventory_products', 'inventory_movements', 'restaurant_catalog']) {
+    // Table names are fixed above; only values come from CLI arguments.
+    before[table] = (await db.query(`SELECT * FROM ${table} WHERE empresa_id=$1`, [empresaId])).rows;
+  }
+  await writeFile(resolve(folder, `backup-antes-${Date.now()}.json`), JSON.stringify(before, null, 2));
   const result = await seedRestaurantDemo({ id: user.id, empresaId }, start, end);
   await writeFile(resolve(folder, 'carga.json'), JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result));

@@ -8,6 +8,8 @@ import { addDays, daysBetween, PAYMENT_METHODS, todayInSaoPaulo, type ExpenseIte
 import { inTransaction } from './postgres';
 import { demoUnitPrice } from './demo-prices';
 import { sumCents } from './financial-math';
+import { isDeepStrictEqual } from 'node:util';
+import { assertStockBalances, validateStockItems } from './inventory';
 
 type Product = { name: string; unit: ExpenseItem['unit']; quantity: number; price: number; content?: ExpenseItem['packageContent'] };
 type Purchase = { key: string; category: string; description: string; merchant: string; products: Product[] };
@@ -86,7 +88,7 @@ export async function seedRestaurantDemo(actor: { id: string; empresaId: string 
       merchantNames.set(name, (await insertCatalogEntry(actor.empresaId, 'merchant', name, client)).name);
     }
     const today = todayInSaoPaulo();
-    let expensesAdded = 0, expensesSkipped = 0, revenueWritten = 0, revenuePreserved = 0, closedMondays = 0;
+    let expensesAdded = 0, expensesSkipped = 0, expensesUpdated = 0, closedPurchasesRemoved = 0, revenueWritten = 0, revenuePreserved = 0, closedMondays = 0;
     const categoryCounts: Record<string, number> = {};
     for (let index = 0; index < daysBetween(start, end); index++) {
       const date = addDays(start, index);
@@ -104,9 +106,19 @@ export async function seedRestaurantDemo(actor: { id: string; empresaId: string 
           IS DISTINCT FROM (EXCLUDED.amount_cents,EXCLUDED.delivery_meals,EXCLUDED.dine_in_meals,EXCLUDED.order_count,NULL::integer,EXCLUDED.demo_key)`,
       [actor.empresaId, date, sales.totalCents, sales.deliveryMeals, sales.dineInMeals, sales.orderCount, key]);
       if (result.rowCount) revenueWritten++; else revenuePreserved++;
-      const notes = `DADOS FICTÍCIOS. ${date > today ? 'SIMULAÇÃO FUTURA. ' : ''}${closed ? 'Restaurante fechado na segunda-feira; compras para abastecimento, sem vendas. ' : ''}Histórico completo para demonstração.`;
+      const notes = `DADOS FICTÍCIOS. ${date > today ? 'SIMULAÇÃO FUTURA. Compras previstas, ainda não recebidas no estoque. ' : ''}${closed ? 'Restaurante fechado na segunda-feira, sem vendas ou compras. ' : ''}Histórico completo para demonstração.`;
       const plans: { key: string; category: string; description: string; merchant: string; items: ExpenseItem[]; amount: number; method?: 'pix' | 'boleto' }[] = [];
       for (const purchase of purchases) {
+        if (closed) {
+          const previous = (await client.query<{ id: string }>('SELECT id FROM expenses WHERE empresa_id=$1 AND demo_key=$2 AND deleted_at IS NULL FOR UPDATE', [actor.empresaId, `${key}:${purchase.key}`])).rows[0];
+          if (previous) {
+            const before = (await findExpense(previous.id, actor.empresaId, client))!;
+            const after = await updateExpense(before.id, actor.empresaId, actor.id, null, client);
+            await insertExpenseAudit(after, actor.id, 'deleted', { ...before }, { ...after, source: 'restaurant-closed-monday' }, client);
+            closedPurchasesRemoved++;
+          }
+          continue;
+        }
         if (purchase.key === 'queijo' && weekday !== 2 && weekday !== 5) continue;
         if (purchase.key === 'material' && weekday !== 3 && weekday !== 6) continue;
         if (purchase.key === 'alho-gas' && weekday !== 2) continue;
@@ -114,7 +126,7 @@ export async function seedRestaurantDemo(actor: { id: string; empresaId: string 
           const registered = productIds.get(normalizeCatalogName(product.name))!;
           const variation = 1 + ((index + position) % 3) * 0.15;
           const quantity = product.unit === 'un' || product.unit === 'pacote' ? Math.ceil(product.quantity * variation) : Math.round(product.quantity * variation * 1000) / 1000;
-          return { productId: registered.id, name: registered.name, unit: product.unit, quantity,
+          return { productId: registered.id, name: registered.name, unit: product.unit, quantity, stock: date <= today,
             amountCents: Math.round(quantity * demoUnitPrice(product.price, product.name, date)), ...(product.content ? { packageContent: product.content } : {}) };
         });
         plans.push({ ...purchase, items, amount: items.reduce((sum, item) => sum + item.amountCents, 0) });
@@ -138,11 +150,25 @@ export async function seedRestaurantDemo(actor: { id: string; empresaId: string 
       if (bills[day]) plans.push({ key: `fixos-${day}`, category: 'Fixos', description: bills[day].title, merchant: bills[day].merchant, items: [], amount: bills[day].amount, method: 'boleto' });
       for (const [position, plan] of plans.entries()) {
         const demoKey = `${key}:${plan.key}`;
-        if ((await client.query('SELECT id FROM expenses WHERE empresa_id=$1 AND demo_key=$2', [actor.empresaId, demoKey])).rowCount) { expensesSkipped++; continue; }
+        const previous = (await client.query<{ id: string; deleted_at: unknown }>('SELECT id,deleted_at FROM expenses WHERE empresa_id=$1 AND demo_key=$2 FOR UPDATE', [actor.empresaId, demoKey])).rows[0];
+        if (previous) {
+          if (previous.deleted_at) { expensesSkipped++; continue; }
+          const before = (await findExpense(previous.id, actor.empresaId, client))!;
+          // Keep saved prices, quantities and payment details; repair category and receiving flags.
+          const items = (before.items || []).map(item => ({ ...item, stock: date <= today }));
+          const input = validateExpense({ ...before, category: categoryIds.get(plan.category), items, notes });
+          if (before.category === input.category && before.notes === input.notes && isDeepStrictEqual(before.items || [], input.items || [])) { expensesSkipped++; continue; }
+          await validateStockItems(actor.empresaId, input, client);
+          const after = await updateExpense(before.id, actor.empresaId, actor.id, input, client);
+          await insertExpenseAudit(after, actor.id, 'updated', { ...before }, { ...after, source: 'restaurant-inventory-demo' }, client);
+          expensesUpdated++;
+          continue;
+        }
         const input = validateExpense({ description: `${plan.description} (exemplo)`, date, category: categoryIds.get(plan.category),
           merchant: merchantNames.get(plan.merchant), items: plan.items, amountCents: plan.amount,
           status: date > today || (index + position) % 37 === 0 ? 'pending' : 'paid',
           paymentMethod: plan.method ?? PAYMENT_METHODS[1 + (index + position) % (PAYMENT_METHODS.length - 1)].id, notes });
+        await validateStockItems(actor.empresaId, input, client);
         const saved = await insertExpense(actor.empresaId, actor.id, requestId(`${actor.empresaId}:${demoKey}`), input, client);
         if (!saved.created) { expensesSkipped++; continue; }
         await client.query('UPDATE expenses SET demo_key=$2 WHERE id=$1', [saved.expense.id, demoKey]);
@@ -150,7 +176,8 @@ export async function seedRestaurantDemo(actor: { id: string; empresaId: string 
         expensesAdded++; categoryCounts[plan.category] = (categoryCounts[plan.category] ?? 0) + 1;
       }
     }
-    return { start, end, days: daysBetween(start, end), closedMondays, expensesAdded, expensesSkipped, revenueWritten, revenuePreserved, categoryCounts };
+    await assertStockBalances(actor.empresaId, client);
+    return { start, end, days: daysBetween(start, end), closedMondays, expensesAdded, expensesUpdated, closedPurchasesRemoved, expensesSkipped, revenueWritten, revenuePreserved, categoryCounts };
   });
 }
 
