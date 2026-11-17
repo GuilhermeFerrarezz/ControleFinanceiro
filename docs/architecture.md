@@ -43,6 +43,8 @@ Para testar localmente, aplique `npm run db:migrate`, execute `npm run dev` sem 
 
 ## Camadas
 
+Recuperação e reenvio agora usam `after` do Next para executar o trabalho após a resposta genérica, com limites de processamento. Os novos links usam fragmento, removido pelo formulário antes da submissão em JSON. Falha de envio compensa apenas a emissão ainda atual, preservando o token anterior quando seguro; mutações administrativas revalidam a sessão sob bloqueio antes de gravar. Os detalhes e limites operacionais estão em [Revisão de autenticação e administração](security-auth-admin-review-2026-11-17.md).
+
 - `src/models`: interfaces TypeScript e funções de repositório com SQL parametrizado (`$1`, `$2`, ...).
 - `src/lib/db.ts`: pool de conexões `pg`; `src/lib/postgres.ts`: transações em uma única conexão, com rollback e liberação garantidos.
 - `src/lib/auth.ts`: sessão, cookies, identidade atual e proteção de origem.

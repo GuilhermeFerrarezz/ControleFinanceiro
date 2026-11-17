@@ -1,13 +1,14 @@
 import bcrypt from 'bcryptjs';
-import { authTokenExists, consumeAuthToken, issueAuthToken, validAuthToken, type AuthTokenType } from '../models/AuthToken';
+import { authTokenExists, consumeAuthToken, issueAuthToken, storedAuthToken, restoreAuthTokenAfterFailedDelivery, validAuthToken, type AuthTokenType } from '../models/AuthToken';
 import { findUsuarioByEmail } from '../models/Usuario';
 import { inTransaction } from './postgres';
-import { sendAuthEmail } from './auth-email';
+import { sendAuthEmail, validateAuthEmailConfiguration } from './auth-email';
 import { InputError } from './validation';
 import { withPasswordBudget } from './security-limits';
 import { withAuthEmailBudget } from './auth-email-limits';
 
 export async function requestAuthEmail(email: string, type: AuthTokenType, request: Request) {
+  validateAuthEmailConfiguration(request);
   if (!(await findUsuarioByEmail(email))?.ativo) return;
   return withAuthEmailBudget(async () => {
     const issued = await inTransaction(async client => {
@@ -19,9 +20,16 @@ export async function requestAuthEmail(email: string, type: AuthTokenType, reque
         const result = await client.query('SELECT id FROM usuarios WHERE id=$1 AND email_verified_at IS NULL', [user.id]);
         if (!result.rowCount) return null;
       }
-      return { token: await issueAuthToken(user.id, type, client), email: user.email };
+      const previous=await storedAuthToken(user.id,type,client);
+      return { token: await issueAuthToken(user.id, type, client), email: user.email, userId:user.id, previous };
     });
-    if (issued) await sendAuthEmail(issued.email, type, issued.token, request);
+    if (issued) {
+      try {await sendAuthEmail(issued.email,type,issued.token,request);}
+      catch(error) {
+        await inTransaction(client=>restoreAuthTokenAfterFailedDelivery(issued.userId,type,issued.token,issued.previous,client));
+        throw error;
+      }
+    }
   });
 }
 

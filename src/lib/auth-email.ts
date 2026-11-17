@@ -1,18 +1,27 @@
 import type { AuthTokenType } from '../models/AuthToken';
 
+export function validateAuthEmailConfiguration(request: Request) {
+  authEmailLink('email_verification','',request);
+  if (process.env.NODE_ENV==='development' && !process.env.RESEND_API_KEY) return;
+  if (!process.env.RESEND_API_KEY?.trim() || !process.env.RESEND_FROM_EMAIL?.trim()) throw new Error('Envio de e-mail não configurado.');
+}
+
 export function authEmailLink(type: AuthTokenType, token: string, request: Request) {
   // Production links must never derive their origin from a client-controlled Host.
   const configured = process.env.APP_ORIGIN?.trim();
   if (!configured && process.env.NODE_ENV !== 'development') throw new Error('Configure APP_ORIGIN para enviar e-mails.');
   const origin = new URL(configured || request.url);
-  if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password ||
+  if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password || (configured && (origin.pathname!=='/' || origin.search || origin.hash)) ||
     (process.env.NODE_ENV === 'production' && origin.protocol !== 'https:')) throw new Error('APP_ORIGIN inválida.');
   const link = new URL(type === 'email_verification' ? '/verify-email' : '/reset-password', origin);
-  link.searchParams.set('token', token);
+  // Fragments are not sent in HTTP requests, access logs or Referer headers.
+  // The form reads this once into memory and removes it from browser history.
+  link.hash = new URLSearchParams({token}).toString();
   return link.toString();
 }
 
 export async function sendAuthEmail(email: string, type: AuthTokenType, token: string, request: Request) {
+  validateAuthEmailConfiguration(request);
   const link = authEmailLink(type, token, request);
   const verification = type === 'email_verification';
   if (process.env.NODE_ENV === 'development' && !process.env.RESEND_API_KEY) {

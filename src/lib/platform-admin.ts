@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
-import { currentUser } from './auth';
+import { currentUser, hashToken, SESSION_COOKIE } from './auth';
+import { cookies } from 'next/headers';
 import { isPlatformOwner } from './platform-owner';
 import { inTransaction } from './postgres';
 import { consumeLimit } from './rate-limit';
@@ -20,6 +21,7 @@ export async function requirePlatformAdmin() {
 }
 export async function changePlatform(body: Record<string, unknown>) {
   const actor = await requirePlatformAdmin();
+  const sessionHash=hashToken((await cookies()).get(SESSION_COOKIE)?.value||'');
   if (!await consumeLimit(`platform-admin:password:${actor.id}`,30,15*60_000)) throw new PlatformError('Muitas tentativas. Aguarde antes de tentar novamente.',429);
   const senha = passwordValue(body.senha);
   const account = await findUsuarioByEmail(actor.email);
@@ -39,6 +41,8 @@ export async function changePlatform(body: Record<string, unknown>) {
     const settings = await platformSettings(client,true);
     const locked = (await client.query<{ ativo: boolean; senha: string; verified: boolean }>('SELECT ativo,senha,(email_verified_at IS NOT NULL) AS verified FROM usuarios WHERE id=$1 FOR UPDATE',[actor.id])).rows[0];
     if (!isPlatformOwner(actor.id) || !locked?.ativo || !locked.verified || locked.senha!==account.senha) throw new PlatformError('Sessão indisponível. Entre novamente.',403);
+    const session=await client.query('SELECT id FROM refresh_tokens WHERE token=$1 AND user_id=$2 AND expires_at>clock_timestamp() FOR SHARE',[sessionHash,actor.id]);
+    if (!session.rowCount) throw new PlatformError('Sessão inválida ou expirada. Entre novamente.',401);
     if (body.action==='settings') {
       const expected = body.expectedSettings as Record<string,unknown> | undefined;
       if (!expected || expected.maxRestaurants!==settings.maxRestaurants || expected.maxUsers!==settings.maxUsers) throw new PlatformError('Os limites mudaram. Atualize o painel.',409);

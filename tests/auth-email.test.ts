@@ -13,9 +13,9 @@ test('envio Resend e fallback local protegem o token e a origem do link', async 
   const request = new Request('http://localhost:3000/api/v1/auth/register');
   const token = 'a'.repeat(43);
   assert.equal(await sendAuthEmail('person@example.com', 'email_verification', token, request), 'development');
-  assert.match(String(logs[0]), /http:\/\/localhost:3000\/verify-email\?token=/);
+  assert.match(String(logs[0]), /http:\/\/localhost:3000\/verify-email#token=/);
   await sendAuthEmail('person@example.com', 'password_reset', token, request);
-  assert.match(String(logs[1]), /http:\/\/localhost:3000\/reset-password\?token=/);
+  assert.match(String(logs[1]), /http:\/\/localhost:3000\/reset-password#token=/);
   env.NODE_ENV = 'production';
   await assert.rejects(sendAuthEmail('person@example.com', 'password_reset', token, request));
   assert.equal(logs.length, 2);
@@ -28,10 +28,10 @@ test('envio Resend e fallback local protegem o token e a origem do link', async 
     return new Response('{}', { status: 200 });
   });
   await sendAuthEmail('person@example.com', 'password_reset', token, request);
-  assert.match(String(body.text), /https:\/\/contas.example.com\/reset-password\?token=/);
+  assert.match(String(body.text), /https:\/\/contas.example.com\/reset-password#token=/);
   assert.match(String(body.text), /30 minutos/);
   assert.match(String(body.html), /Redefinir minha senha/);
-  assert.match(String(body.html), /https:\/\/contas.example.com\/reset-password\?token=/);
+  assert.match(String(body.html), /https:\/\/contas.example.com\/reset-password#token=/);
   assert.equal(await sendAuthEmail('person@example.com', 'email_verification', token, request), 'sent');
   assert.match(String(body.html), /Confirmar meu e-mail/);
   assert.match(String(body.text), /24 horas/);
@@ -40,4 +40,11 @@ test('envio Resend e fallback local protegem o token e a origem do link', async 
   await assert.rejects(sendAuthEmail('person@example.com', 'password_reset', token, request), /Falha no envio/);
   env.APP_ORIGIN = 'http://contas.example.com';
   assert.throws(() => authEmailLink('email_verification', token, request), /inválida/);
+  for (const origin of ['https://app.example.com/path','https://app.example.com/?x=1','https://app.example.com/#fragment','https://name:secret@app.example.com/']) {
+    env.APP_ORIGIN=origin;assert.throws(()=>authEmailLink('email_verification',token,request),/inválida/);
+  }
+  env.APP_ORIGIN='https://app.example.com';
+  const safe=authEmailLink('password_reset',token,new Request('https://hostil.invalid/'));
+  assert.equal(new URL(safe).origin,'https://app.example.com');
+  assert.equal(new URL(safe).search,'');
 });

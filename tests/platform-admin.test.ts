@@ -189,4 +189,24 @@ test('admin exclusivo, cotas concorrentes e suspensão reversível', {timeout:18
     const responses=await Promise.all([remove(first),remove(second)]);assert.deepEqual(responses.map(row=>row.status).sort(),[200,409]);
     assert.equal((await query(storage,"SELECT m.id FROM restaurant_members m JOIN usuarios u ON u.id=m.user_id WHERE m.empresa_id=$1 AND m.role='owner' AND u.ativo AND u.deleted_at IS NULL",[restaurant])).length,1);
   });
+  await t.test('uma sessão revogada enquanto a alteração aguardava não pode administrar a plataforma',async()=>{
+    await clearAdminAttempts();
+    const state=await overview();const lock=await storage.connect();let pending:Promise<Response>|undefined;
+    try {
+      await lock.query('BEGIN');await lock.query('SELECT id FROM platform_settings WHERE id=1 FOR UPDATE');
+      pending=change({action:'settings',maxRestaurants:88,maxUsers:999,expectedSettings:state.settings});
+      let waiting=false;
+      for(let i=0;i<100;i++){
+        const rows=await query(storage,"SELECT pid FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE '%FROM platform_settings%FOR UPDATE%'");
+        if(rows.length){waiting=true;break;}await new Promise(resolve=>setTimeout(resolve,20));
+      }
+      assert.ok(waiting,'A alteração deve estar aguardando o bloqueio de configurações');
+      await query(storage,'DELETE FROM refresh_tokens WHERE token=$1',[createHash('sha256').update(adminCookie.slice(adminCookie.indexOf('=')+1)).digest('hex')]);
+      await lock.query('COMMIT');assert.equal((await pending).status,401);
+      const [unchanged]=await query(storage,'SELECT max_restaurants,max_users FROM platform_settings WHERE id=1');
+      assert.equal(unchanged.max_restaurants,state.settings.maxRestaurants);assert.equal(unchanged.max_users,state.settings.maxUsers);
+    }finally{await lock.query('ROLLBACK');lock.release();if(pending)await pending;}
+    adminCookie=cookie(await post('/auth/login',{email:'platform@example.com',senha:password}));
+    assert.equal((await send('/admin','GET',undefined,adminCookie)).status,200);
+  });
 });

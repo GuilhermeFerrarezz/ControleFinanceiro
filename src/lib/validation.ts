@@ -23,7 +23,7 @@ export async function readBody(request: Request, maxBytes = 8192): Promise<Recor
 export function emailValue(value: unknown) {
   if (typeof value !== 'string') throw new InputError('Informe um e-mail válido.');
   const email = value.trim().toLowerCase();
-  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new InputError('Informe um e-mail válido.');
+  if (email.length > 254 || /[\u0000-\u001f\u007f]/.test(email) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new InputError('Informe um e-mail válido.');
   return email;
 }
 export function textValue(value: unknown, label: string) {
