@@ -14,6 +14,8 @@
 .tableWrap { overflow:auto; } .tableWrap table { border-collapse:collapse; width:100%; font-size:14px; text-align:left; }.tableWrap th { color:#7d8771; font-size:12px; font-weight:500; }.tableWrap td,.tableWrap th { padding:16px 12px; border-bottom:1px solid var(--line); }.tableWrap td { overflow-wrap:anywhere; min-width:120px; max-width:360px; }.tableWrap small { display:block; color:#859077; margin-top:6px; font-size:12px; }
 .active,.inactive { display:inline-block; padding:5px 10px; border-radius:20px; font-size:12px; }.active { color:#426337; background:#e9f0df; }.inactive { color:#98503c; background:#f7eae1; }
 .suspend,.activate { padding:10px 14px; border-radius:6px; background:transparent; border:1px solid; font-size:13px; }.suspend { color:#a05b44; border-color:#e0c6b9; }.activate { color:var(--green); border-color:#a7bb96; }
+.deleteAccount { display:block; border:0; background:none; color:#a33d28; text-decoration:underline; text-underline-offset:3px; padding:12px 0; font-size:12px; }
+.deleteConfirm { display:block; width:100%; padding:12px; margin:8px 0 18px; background:white; color:var(--ink); border:1px solid #d8c3b9; border-radius:7px; }
 .pagination { display:flex; align-items:center; justify-content:space-between; margin-top:24px; gap:12px; font-size:13px; }
 .limits { display:grid; grid-template-columns:1fr 1fr; gap:22px; max-width:600px; margin-top:24px; }.limits button { grid-column:1/-1; justify-self:start; }
 .success,.error { border-radius:8px; padding:14px; font-size:14px; line-height:1.6; margin-bottom:20px; }.success { background:#e9f0df; color:#426337; }.error { background:#f7eae1; color:#98503c; }

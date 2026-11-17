@@ -5,9 +5,10 @@ import { platformOverview } from '@/src/models/Platform';
 import { InputError, readBody } from '@/src/lib/validation';
 import { consumeLimit } from '@/src/lib/rate-limit';
 import { SecurityLimitError } from '@/src/lib/security-limits';
+import { AccountDeletionError } from '@/src/models/Platform';
 
 function failure(error: unknown) {
-  return jsonError(error instanceof InputError ? error.message : 'Não foi possível concluir a operação.',error instanceof PlatformError ? error.status : error instanceof SecurityLimitError ? 429 : error instanceof InputError ? 400 : 500);
+  return jsonError(error instanceof InputError ? error.message : 'Não foi possível concluir a operação.',error instanceof PlatformError || error instanceof AccountDeletionError ? error.status : error instanceof SecurityLimitError ? 429 : error instanceof InputError ? 400 : 500);
 }
 export async function GET(request: Request) {
   try {
@@ -23,7 +24,7 @@ export async function PATCH(request: Request) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.',403);
   try {
     await requirePlatformAdmin();
-    await changePlatform(await readBody(request));
-    return NextResponse.json({message:'Alteração salva com sucesso.'},{headers:{'Cache-Control':'no-store'}});
+    const result = await changePlatform(await readBody(request));
+    return NextResponse.json({message:result?.deletionMode==='anonymized' ? 'Conta excluída. Os dados de identificação foram removidos e o histórico foi preservado.' : result?.deletionMode==='removed' ? 'Conta excluída definitivamente.' : 'Alteração salva com sucesso.',...result},{headers:{'Cache-Control':'no-store'}});
   } catch(error) { return failure(error); }
 }

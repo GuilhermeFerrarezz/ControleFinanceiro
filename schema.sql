@@ -47,6 +47,12 @@ CREATE TABLE IF NOT EXISTS platform_audit (
 );
 
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='usuarios'::regclass AND conname='usuarios_deleted_inactive') THEN
+        ALTER TABLE usuarios ADD CONSTRAINT usuarios_deleted_inactive CHECK (deleted_at IS NULL OR (ativo=FALSE AND email_verified_at IS NULL AND empresa_id IS NULL));
+    END IF;
+END $$;
 CREATE TABLE IF NOT EXISTS auth_tokens (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES usuarios(id) ON UPDATE CASCADE ON DELETE CASCADE,

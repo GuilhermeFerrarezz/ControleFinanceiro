@@ -5,7 +5,7 @@ import { inTransaction } from '../lib/postgres';
 export interface IUsuario { id: string; nome: string; email: string; senha: string; papel: string; empresaId: string | null; emailVerifiedAt: Date | null; ativo: boolean }
 const columns = 'id, nome, email, senha, papel, empresa_id AS "empresaId", email_verified_at AS "emailVerifiedAt", ativo';
 export async function findUsuarioByEmail(email: string, client: Queryable = db) {
-  return (await client.query<IUsuario>(`SELECT ${columns} FROM usuarios WHERE lower(btrim(email)) = $1`, [email])).rows[0] ?? null;
+  return (await client.query<IUsuario>(`SELECT ${columns} FROM usuarios WHERE lower(btrim(email)) = $1 AND deleted_at IS NULL`, [email])).rows[0] ?? null;
 }
 export async function createUsuario(input: { nome: string; email: string; senha: string; papel: string; empresaId?: string }, client: Queryable = db): Promise<IUsuario> {
   if (client === db) return inTransaction(transaction => createUsuario(input, transaction));

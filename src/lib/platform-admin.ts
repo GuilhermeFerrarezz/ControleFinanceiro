@@ -6,7 +6,8 @@ import { consumeLimit } from './rate-limit';
 import { InputError, passwordValue } from './validation';
 import { withPasswordBudget } from './security-limits';
 import { findUsuarioByEmail } from '../models/Usuario';
-import { platformAudit, platformSettings } from '../models/Platform';
+import { deletePlatformAccount, platformAudit, platformSettings } from '../models/Platform';
+import { randomBytes } from 'node:crypto';
 
 export class PlatformError extends InputError {
   constructor(message: string, public status: number) { super(message); }
@@ -23,14 +24,16 @@ export async function changePlatform(body: Record<string, unknown>) {
   const senha = passwordValue(body.senha);
   const account = await findUsuarioByEmail(actor.email);
   if (!account?.ativo || !await withPasswordBudget(() => bcrypt.compare(senha,account.senha))) throw new PlatformError('Senha incorreta.',403);
-  if (body.action!=='settings' && body.action!=='restaurant' && body.action!=='user') throw new InputError('Operação inválida.');
+  if (body.action!=='settings' && body.action!=='restaurant' && body.action!=='user' && body.action!=='delete-user') throw new InputError('Operação inválida.');
   if (body.action === 'settings') {
     for (const value of [body.maxRestaurants,body.maxUsers]) if (!Number.isSafeInteger(value) || Number(value)<0 || Number(value)>1000000) throw new InputError('Informe limites inteiros entre 0 e 1.000.000.');
   } else {
-    if (typeof body.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.id) || typeof body.ativo !== 'boolean' || typeof body.expectedActive !== 'boolean') throw new InputError('Informe um cadastro e uma situação válidos.');
-    if (body.action === 'user' && isPlatformOwner(body.id)) throw new PlatformError('A conta administradora não pode ser desativada pelo painel.',403);
+    if (typeof body.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.id) || (body.action!=='delete-user' && typeof body.ativo !== 'boolean') || typeof body.expectedActive !== 'boolean') throw new InputError('Informe um cadastro e uma situação válidos.');
+    if ((body.action === 'user' || body.action==='delete-user') && isPlatformOwner(body.id)) throw new PlatformError('A conta administradora não pode ser desativada ou excluída pelo painel.',403);
+    if (body.action==='delete-user' && body.confirmation!=='EXCLUIR') throw new InputError('Digite EXCLUIR para confirmar a exclusão definitiva.');
   }
-  await inTransaction(async client => {
+  const replacementPassword = body.action==='delete-user' ? await withPasswordBudget(() => bcrypt.hash(randomBytes(32).toString('base64url'),10)) : '';
+  return inTransaction(async client => {
     // Same order as creation: settings before identities. Revalidate authority
     // after acquiring locks, including the password snapshot and verification.
     const settings = await platformSettings(client,true);
@@ -43,8 +46,9 @@ export async function changePlatform(body: Record<string, unknown>) {
       await platformAudit(actor.id,'settings',null,settings,{maxRestaurants:body.maxRestaurants,maxUsers:body.maxUsers},client);
       return;
     }
+    if (body.action==='delete-user') return deletePlatformAccount(String(body.id),body.expectedActive as boolean,replacementPassword,actor.id,client);
     const table = body.action==='restaurant' ? 'empresas' : 'usuarios';
-    const previous = (await client.query<{ ativo: boolean }>(`SELECT ativo FROM ${table} WHERE id=$1 FOR UPDATE`,[body.id])).rows[0];
+    const previous = (await client.query<{ ativo: boolean }>(`SELECT ativo FROM ${table} WHERE id=$1${body.action==='user' ? ' AND deleted_at IS NULL' : ''} FOR UPDATE`,[body.id])).rows[0];
     if (!previous) throw new PlatformError('Cadastro não encontrado.',404);
     if (previous.ativo!==body.expectedActive) throw new PlatformError('A situação mudou. Atualize o painel.',409);
     await client.query(`UPDATE ${table} SET ativo=$1,updated_at=clock_timestamp() WHERE id=$2`,[body.ativo,body.id]);

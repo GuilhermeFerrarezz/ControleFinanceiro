@@ -22,6 +22,7 @@ O provisionamento deve ser feito por quem administra o servidor. Não compartilh
 
 - Valores iniciais: 10 restaurantes e 100 usuários.
 - A contagem inclui todos os cadastros, inclusive suspensos e a conta administradora. A mesma pessoa em vários restaurantes conta uma vez como usuário.
+- Contas excluídas liberam a vaga de usuário, mesmo quando uma identidade sem os dados originais precisa permanecer apenas para preservar referências históricas.
 - O cadastro normal também cria um restaurante; por isso, a conta usada na configuração inicial pode ocupar uma vaga de restaurante.
 - Os limites são independentes. Convidar uma pessoa existente não consome vaga de usuário; criar uma pessoa por convite consome vaga.
 - Reduzir o limite abaixo do total atual não apaga ou suspende registros. Novas criações ficam bloqueadas. Zero bloqueia novas criações dessa categoria.
@@ -37,6 +38,18 @@ O provisionamento deve ser feito por quem administra o servidor. Não compartilh
 Suspender não apaga dados. Operações que já terminaram antes do bloqueio permanecem válidas; mutações que revalidam o vínculo adquirem bloqueios compartilhados dos registros ativos, coordenando-se com as suspensões. A consulta de sessão valida o estado ativo no servidor em cada requisição.
 
 A conta administradora não pode ser desativada no painel. Ela pode acessar `/admin` mesmo que esteja vinculada apenas a restaurantes suspensos, evitando perda do controle da plataforma.
+
+## Exclusão de contas
+
+Na aba **Usuários**, use **Excluir conta**. A confirmação identifica o e-mail selecionado, explica a preservação do histórico e exige digitar `EXCLUIR` e informar novamente a senha do administrador. A exclusão é definitiva; para um bloqueio temporário, use a desativação.
+
+- A conta administradora configurada no servidor não pode ser excluída. Também não pode ser excluída uma pessoa que seja a única dona de algum restaurante (inclusive suspenso), ou cujos outros donos estejam todos suspensos. É preciso manter a conta suspensa ou transferir a responsabilidade para outro dono ativo antes; esse fluxo não faz transferência automática.
+- Sem referências históricas, o registro da pessoa é removido. Vínculos, sessões e tokens são removidos. Os restaurantes não são apagados.
+- Com autoria em gastos, auditoria, estoque ou convites, mantém-se o ID para preservar as referências. O nome passa a `Usuário excluído`, o e-mail é substituído por um endereço aleatório não entregável, a senha é substituída por um hash de segredo aleatório descartado, e os vínculos, verificação e sessões são removidos. O registro recebe `deleted_at`, fica inativo e não pode ser reativado pelo painel. Uma restrição no banco também impede reativar essa identidade excluída.
+- Convites destinados ao e-mail removido são revogados e têm o destinatário substituído. Convites pendentes criados pela pessoa também são revogados. Assim, uma nova conta com o e-mail antigo não herda os links ou os acessos anteriores.
+- A identidade excluída sai das listagens e da contagem de vagas. Uma nova inscrição com o mesmo e-mail cria um novo ID, sujeito às cotas, sem receber o histórico ou os vínculos da conta excluída.
+- Gastos, movimentos e auditorias financeiras não são alterados. Textos livres, anexos externos, backups e logs que já contenham dados pessoais não são reescritos por este fluxo; a remoção do nome/e-mail cadastral não deve ser interpretada como varredura de todas as cópias ou eliminação de todo dado pessoal.
+- A operação é transacional e registra `user_deleted` na auditoria administrativa sem copiar o nome ou e-mail original. O bloqueio de configurações serializa exclusões concorrentes de co-donos, evitando deixar um restaurante sem responsável.
 
 ## Segurança e operação
 
