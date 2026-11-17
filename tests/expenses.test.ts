@@ -1007,7 +1007,7 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
         pending=operation();
         let waiting=false;
         for(let attempt=0;attempt<100;attempt++) {
-          const rows=await query(fixture.pool,"SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%FROM restaurant_members WHERE user_id=$1%' ");
+          const rows=await query(fixture.pool,"SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%FROM restaurant_members m%WHERE m.user_id=$1%' ");
           if(rows.length){waiting=true;break;}
           await new Promise(resolve=>setTimeout(resolve,20));
         }

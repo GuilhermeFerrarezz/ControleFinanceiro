@@ -28,6 +28,24 @@ CREATE TABLE IF NOT EXISTS usuarios (
 CREATE UNIQUE INDEX IF NOT EXISTS usuarios_email_normalized ON usuarios (lower(btrim(email)));
 CREATE INDEX IF NOT EXISTS usuarios_empresa ON usuarios (empresa_id);
 
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ativo BOOLEAN NOT NULL DEFAULT TRUE;
+CREATE TABLE IF NOT EXISTS platform_settings (
+    id INTEGER PRIMARY KEY CHECK (id=1),
+    max_restaurants INTEGER NOT NULL CHECK (max_restaurants BETWEEN 0 AND 1000000),
+    max_users INTEGER NOT NULL CHECK (max_users BETWEEN 0 AND 1000000),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO platform_settings(id,max_restaurants,max_users) VALUES (1,10,100) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS platform_audit (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    actor_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE RESTRICT,
+    action TEXT NOT NULL,
+    target_id UUID,
+    before JSONB NOT NULL,
+    after JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
 CREATE TABLE IF NOT EXISTS auth_tokens (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

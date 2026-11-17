@@ -8,14 +8,14 @@ export async function createMembership(userId: string, empresaId: string, role: 
   await client.query('INSERT INTO restaurant_members (user_id,empresa_id,role) VALUES ($1,$2,$3) ON CONFLICT (user_id,empresa_id) DO NOTHING', [userId, empresaId, role]);
 }
 export async function findMembership(userId: string, empresaId: string, client: Queryable = db, lock = false) {
-  return (await client.query<IMembership>(`SELECT id,user_id AS "userId",empresa_id AS "empresaId",role FROM restaurant_members WHERE user_id=$1 AND empresa_id=$2 ${lock ? 'FOR SHARE' : ''}`, [userId, empresaId])).rows[0] ?? null;
+  return (await client.query<IMembership>(`SELECT m.id,m.user_id AS "userId",m.empresa_id AS "empresaId",m.role FROM restaurant_members m JOIN usuarios u ON u.id=m.user_id JOIN empresas e ON e.id=m.empresa_id WHERE m.user_id=$1 AND m.empresa_id=$2 AND u.ativo AND e.ativo ${lock ? 'FOR SHARE OF m,u,e' : ''}`, [userId, empresaId])).rows[0] ?? null;
 }
 export async function hasMemberships(userId: string) {
   return (await db.query<{ exists: boolean }>('SELECT EXISTS (SELECT 1 FROM restaurant_members WHERE user_id=$1)', [userId])).rows[0].exists;
 }
 export async function listUserRestaurants(userId: string) {
   return (await db.query<IRestaurantAccess>(`SELECT e.id,e.nome,m.role FROM restaurant_members m JOIN empresas e ON e.id=m.empresa_id
-    WHERE m.user_id=$1 AND e.ativo=TRUE ORDER BY m.created_at,m.id`, [userId])).rows;
+    JOIN usuarios u ON u.id=m.user_id WHERE m.user_id=$1 AND e.ativo=TRUE AND u.ativo ORDER BY m.created_at,m.id`, [userId])).rows;
 }
 export async function listTeam(empresaId: string) {
   return (await db.query<{ id: string; nome: string; email: string; role: RestaurantRole }>(`SELECT m.id,u.nome,u.email,m.role
@@ -23,8 +23,7 @@ export async function listTeam(empresaId: string) {
 }
 
 export async function removeEmployeeMembership(id: string, empresaId: string, ownerId: string, client: Queryable) {
-  const owner = await client.query("SELECT id FROM restaurant_members WHERE user_id=$1 AND empresa_id=$2 AND role='owner' FOR SHARE", [ownerId,empresaId]);
-  if (!owner.rowCount) return 'forbidden' as const;
+  if ((await findMembership(ownerId,empresaId,client,true))?.role !== 'owner') return 'forbidden' as const;
   const member = (await client.query<IMembership>('SELECT id,user_id AS "userId",empresa_id AS "empresaId",role FROM restaurant_members WHERE id=$1 AND empresa_id=$2 FOR UPDATE', [id,empresaId])).rows[0];
   if (!member) return 'missing' as const;
   if (member.role !== 'employee' || member.userId === ownerId) return 'owner' as const;

@@ -27,3 +27,5 @@
 .verificationNotice a { color:var(--green); font-weight:600; text-decoration:underline; text-underline-offset:3px; }
 .verificationNotice a:focus-visible { outline:2px solid var(--green); outline-offset:4px; border-radius:2px; }
 @media (max-width:700px) { .verificationNotice { justify-content:flex-start; padding-inline:16px; font-size:12px; } }
+
+.adminLink { display:block; padding-block:14px 4px; font-size:14px; color:var(--green); text-decoration:underline; text-underline-offset:3px; }

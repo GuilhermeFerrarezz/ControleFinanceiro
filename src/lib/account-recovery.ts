@@ -8,12 +8,13 @@ import { withPasswordBudget } from './security-limits';
 import { withAuthEmailBudget } from './auth-email-limits';
 
 export async function requestAuthEmail(email: string, type: AuthTokenType, request: Request) {
-  if (!await findUsuarioByEmail(email)) return;
+  if (!(await findUsuarioByEmail(email))?.ativo) return;
   return withAuthEmailBudget(async () => {
     const issued = await inTransaction(async client => {
       const user = await findUsuarioByEmail(email, client);
-      if (!user) return null;
-      await client.query('SELECT id FROM usuarios WHERE id=$1 FOR UPDATE', [user.id]);
+      if (!user?.ativo) return null;
+      const active = await client.query('SELECT id FROM usuarios WHERE id=$1 AND ativo FOR UPDATE', [user.id]);
+      if (!active.rowCount) return null;
       if (type === 'email_verification') {
         const result = await client.query('SELECT id FROM usuarios WHERE id=$1 AND email_verified_at IS NULL', [user.id]);
         if (!result.rowCount) return null;

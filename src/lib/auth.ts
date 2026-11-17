@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { createRefreshToken, deleteRefreshToken, removeExpiredSessions, sessionIdentity } from '../models/RefreshToken';
 import { userRestaurants } from './restaurants';
+import { isPlatformOwner } from './platform-owner';
 export { trustedOrigin } from './request-origin';
 
 export const SESSION_COOKIE = 'session';
@@ -23,7 +24,7 @@ export async function findSession(token?: string) {
   const user = await sessionIdentity(hashToken(token));
   if (!user) return null;
   const role = user.role ?? undefined;
-  return { id: user.id, nome: user.nome, email: user.email, emailVerified: user.emailVerified, role,
+  return { id: user.id, nome: user.nome, email: user.email, emailVerified: user.emailVerified, platformAdmin: isPlatformOwner(user.id) && user.emailVerified, role,
     papel: role === 'owner' ? 'admin' : 'colaborador', empresaId: user.empresaId, empresaNome: user.empresaNome ?? undefined };
 }
 export async function currentUser() { return findSession((await cookies()).get(SESSION_COOKIE)?.value); }

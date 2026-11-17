@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "db:migrate": "node --env-file-if-exists=.env --import tsx scripts/migrate-db.ts",
+    "admin:configure": "node --env-file-if-exists=.env --import tsx scripts/configure-platform-admin.ts",
     "test": "node --env-file-if-exists=.env --import tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },

@@ -1,8 +1,12 @@
 import { seedProducts } from './Catalog';
 import { db } from '../lib/db';
 import type { Queryable } from '../lib/postgres';
+import { requireCapacity } from './Platform';
+import { inTransaction } from '../lib/postgres';
 export interface IEmpresa { id: string; nome: string; cnpj: string | null; ativo: boolean }
 export async function createEmpresa(nome: string, client: Queryable = db): Promise<IEmpresa> {
+  if (client === db) return inTransaction(transaction => createEmpresa(nome, transaction));
+  await requireCapacity('restaurants', client);
   const { rows } = await client.query<IEmpresa>('INSERT INTO empresas (nome) VALUES ($1) RETURNING id, nome, cnpj, ativo', [nome]);
   await seedProducts(rows[0].id, client);
   return rows[0];

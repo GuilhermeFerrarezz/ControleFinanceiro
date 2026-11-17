@@ -8,6 +8,7 @@ import { cookies } from 'next/headers';
 import { emailValue, InputError, passwordValue, readBody } from '@/src/lib/validation';
 import { consumeLimit } from '@/src/lib/rate-limit';
 import { limitAuthSource, SecurityLimitError, withPasswordBudget } from '@/src/lib/security-limits';
+import { isPlatformOwner } from '@/src/lib/platform-owner';
 
 // A fixed hash keeps nonexistent accounts on the same bcrypt comparison path.
 const dummyHash = bcrypt.hashSync('not-a-real-user-password', 10);
@@ -22,9 +23,9 @@ export async function POST(request: Request) {
     if (!await consumeLimit(`login:${email}`, 5, 15 * 60_000)) return jsonError('Muitas tentativas. Aguarde 15 minutos.', 429);
     const usuario = await findUsuarioByEmail(email);
     const valid = await withPasswordBudget(() => bcrypt.compare(senha, usuario ? usuario.senha : dummyHash));
-    if (!usuario || !valid) return jsonError('Credenciais inválidas.', 401);
+    if (!usuario?.ativo || !valid) return jsonError('Credenciais inválidas.', 401);
     const restaurants = await userRestaurants(usuario.id);
-    if (!restaurants.length && await hasMemberships(usuario.id)) return jsonError('Conta indisponível. Contate o responsável pelo restaurante.', 403);
+    if (!restaurants.length && await hasMemberships(usuario.id) && !isPlatformOwner(usuario.id)) return jsonError('Conta indisponível. Contate o responsável pelo restaurante.', 403);
     const cookieStore = await cookies();
     const session = await createSession(usuario.id, body.remember === true, usuario.senha);
     if (!session) return jsonError('Credenciais inválidas.', 401);
