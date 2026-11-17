@@ -28,6 +28,18 @@ CREATE TABLE IF NOT EXISTS usuarios (
 CREATE UNIQUE INDEX IF NOT EXISTS usuarios_email_normalized ON usuarios (lower(btrim(email)));
 CREATE INDEX IF NOT EXISTS usuarios_empresa ON usuarios (empresa_id);
 
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
+CREATE TABLE IF NOT EXISTS auth_tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES usuarios(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE CHECK (token_hash ~ '^[0-9a-f]{64}$'),
+    type TEXT NOT NULL CHECK (type IN ('email_verification', 'password_reset')),
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, type)
+);
+CREATE INDEX IF NOT EXISTS auth_tokens_expiration ON auth_tokens (expires_at);
+
 CREATE TABLE IF NOT EXISTS refresh_tokens (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     token TEXT NOT NULL UNIQUE,

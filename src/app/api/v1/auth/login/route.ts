@@ -26,7 +26,8 @@ export async function POST(request: Request) {
     const restaurants = await userRestaurants(usuario.id);
     if (!restaurants.length && await hasMemberships(usuario.id)) return jsonError('Conta indisponível. Contate o responsável pelo restaurante.', 403);
     const cookieStore = await cookies();
-    const session = await createSession(usuario.id, body.remember === true);
+    const session = await createSession(usuario.id, body.remember === true, usuario.senha);
+    if (!session) return jsonError('Credenciais inválidas.', 401);
     await revokeSession(cookieStore.get(SESSION_COOKIE)?.value);
     const response = NextResponse.json({ message: 'Login realizado.' }, { headers: { 'Cache-Control': 'no-store' } });
     response.cookies.set(SESSION_COOKIE, session.token, { ...cookieOptions, ...(body.remember === true ? { maxAge: session.lifetime } : {}) });

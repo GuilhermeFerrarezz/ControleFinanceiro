@@ -1,0 +1,43 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { sendAuthEmail, authEmailLink } from '../src/lib/auth-email';
+
+test('envio Resend e fallback local protegem o token e a origem do link', async t => {
+  const keys = ['NODE_ENV', 'APP_ORIGIN', 'RESEND_API_KEY', 'RESEND_FROM_EMAIL'];
+  const original = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  t.after(() => { for (const key of keys) { if (original[key] === undefined) delete process.env[key]; else process.env[key] = original[key]; } });
+  const env: Record<string, string | undefined> = process.env;
+  env.NODE_ENV = 'development'; delete env.RESEND_API_KEY; delete env.APP_ORIGIN;
+  const logs: unknown[][] = [];
+  t.mock.method(console, 'log', (...args: unknown[]) => { logs.push(args); });
+  const request = new Request('http://localhost:3000/api/v1/auth/register');
+  const token = 'a'.repeat(43);
+  assert.equal(await sendAuthEmail('person@example.com', 'email_verification', token, request), 'development');
+  assert.match(String(logs[0]), /http:\/\/localhost:3000\/verify-email\?token=/);
+  await sendAuthEmail('person@example.com', 'password_reset', token, request);
+  assert.match(String(logs[1]), /http:\/\/localhost:3000\/reset-password\?token=/);
+  env.NODE_ENV = 'production';
+  await assert.rejects(sendAuthEmail('person@example.com', 'password_reset', token, request));
+  assert.equal(logs.length, 2);
+  env.APP_ORIGIN = 'https://contas.example.com'; env.RESEND_API_KEY = 'fake-test-key'; env.RESEND_FROM_EMAIL = 'Saldo <auth@example.com>';
+  let body: Record<string, unknown> = {};
+  t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
+    assert.equal(url, 'https://api.resend.com/emails');
+    assert.equal((init.headers as Record<string, string>).Authorization, 'Bearer fake-test-key');
+    body = JSON.parse(init.body as string);
+    return new Response('{}', { status: 200 });
+  });
+  await sendAuthEmail('person@example.com', 'password_reset', token, request);
+  assert.match(String(body.text), /https:\/\/contas.example.com\/reset-password\?token=/);
+  assert.match(String(body.text), /30 minutos/);
+  assert.match(String(body.html), /Redefinir minha senha/);
+  assert.match(String(body.html), /https:\/\/contas.example.com\/reset-password\?token=/);
+  assert.equal(await sendAuthEmail('person@example.com', 'email_verification', token, request), 'sent');
+  assert.match(String(body.html), /Confirmar meu e-mail/);
+  assert.match(String(body.text), /24 horas/);
+  assert.equal(logs.length, 2);
+  t.mock.method(globalThis, 'fetch', async () => new Response('private provider details', { status: 422 }));
+  await assert.rejects(sendAuthEmail('person@example.com', 'password_reset', token, request), /Falha no envio/);
+  env.APP_ORIGIN = 'http://contas.example.com';
+  assert.throws(() => authEmailLink('email_verification', token, request), /inválida/);
+});

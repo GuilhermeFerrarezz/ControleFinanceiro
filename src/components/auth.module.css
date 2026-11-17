@@ -22,3 +22,11 @@
   .storyBottom, .floatingNote { font-size: 14px; }
   .storyFoot { font-size: 11px; line-height: 1.6; }
 }
+
+.recoveryLinks { display:flex; flex-wrap:wrap; gap:12px; justify-content:space-between; margin-block:16px; font-size:13px; color:var(--green); text-decoration:underline; text-underline-offset:4px; }
+.confirmation { display:flex; flex-direction:column; gap:18px; }
+.confirmation h1, .confirmation .intro { margin:0; }
+.confirmationIcon { display:grid; place-items:center; width:68px; height:68px; border-radius:50%; background:#edf2df; color:var(--green); margin-bottom:8px; }
+.confirmationEmail { display:block; overflow-wrap:anywhere; color:var(--ink); margin-top:8px; }
+.confirmationHelp { color:#63754f; font-size:15px; line-height:1.8; }
+.confirmation .ownerNote { margin-bottom:0; }

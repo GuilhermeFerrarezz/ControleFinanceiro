@@ -1,7 +1,7 @@
 import { db } from '../lib/db';
 import type { Queryable } from '../lib/postgres';
-export interface IUsuario { id: string; nome: string; email: string; senha: string; papel: string; empresaId: string | null }
-const columns = 'id, nome, email, senha, papel, empresa_id AS "empresaId"';
+export interface IUsuario { id: string; nome: string; email: string; senha: string; papel: string; empresaId: string | null; emailVerifiedAt: Date | null }
+const columns = 'id, nome, email, senha, papel, empresa_id AS "empresaId", email_verified_at AS "emailVerifiedAt"';
 export async function findUsuarioByEmail(email: string, client: Queryable = db) {
   return (await client.query<IUsuario>(`SELECT ${columns} FROM usuarios WHERE lower(btrim(email)) = $1`, [email])).rows[0] ?? null;
 }

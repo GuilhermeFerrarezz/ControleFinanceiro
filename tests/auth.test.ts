@@ -5,7 +5,11 @@ import { once } from 'node:events';
 import { createServer } from 'node:net';
 import { request as httpRequest } from 'node:http';
 import { migrateDatabase } from '../src/lib/migrations';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
+import { issueAuthToken } from '../src/models/AuthToken';
+import { readdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import bcrypt from 'bcryptjs';
 
 import { isolatedDatabase, query } from './postgres-fixture';
 
@@ -41,7 +45,7 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
   await new Promise<void>(resolve => portServer.close(() => resolve()));
   const origin = `http://127.0.0.1:${port}`;
   const server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '-p', String(port), '-H', '127.0.0.1'], {
-    env: { ...process.env, NODE_ENV: 'production', DATABASE_URL: fixture.connectionString, APP_ORIGIN: '' }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
+    env: { ...process.env, NODE_ENV: 'production', DATABASE_URL: fixture.connectionString, APP_ORIGIN: '', RESEND_API_KEY: '', RESEND_FROM_EMAIL: '' }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
   });
   let output = '';
   server.stdout.on('data', chunk => { output = (output + chunk.toString()).slice(-8000); });
@@ -63,6 +67,141 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
   let firstCookie = '';
   let secondCookie = '';
   let userId = '';
+  await t.test('todos os endpoints de negócio recusam acesso anônimo e identidade forjada', async () => {
+    const root = 'src/app/api/v1';
+    const files = (await readdir(root, { recursive: true })).filter(file => file.endsWith('route.ts') && !file.startsWith('auth'));
+    let checked = 0;
+    for (const file of files) {
+      const source = await readFile(join(root, file), 'utf8');
+      const path = file.replaceAll('\\', '/').replace('/route.ts', '').replaceAll('[id]', '11111111-1111-4111-8111-111111111111');
+      for (const [, method] of source.matchAll(/export async function (GET|POST|PATCH|DELETE)\(/g)) {
+        for (const cookie of ['', 'session=forged; refreshToken=forged']) {
+          const response = await fetch(`${origin}/api/v1/${path}?empresaId=forged&userId=forged`, {
+            method, headers: { Origin: origin, Cookie: cookie, 'Content-Type': 'application/json', 'user-id': 'forged', Authorization: 'Bearer forged' },
+            ...(method === 'GET' ? {} : { body: '{}' }), redirect: 'manual',
+          });
+          assert.equal(response.status, 401, `${method} ${path} deve exigir sessão`);
+          assert.match(response.headers.get('cache-control') || '', /no-store/);
+          checked++;
+        }
+      }
+    }
+    assert.ok(checked >= 50, `Matriz incompleta: ${checked} verificações`);
+    for (const page of ['home', 'dashboard', 'dashboard/team', 'dashboard/restaurant', 'dashboard/catalog', 'dashboard/inventory', 'dashboard/expenses', 'dashboard/revenue', 'dashboard/sheet', 'dashboard/profit', 'dashboard/help']) {
+      const response = await fetch(`${origin}/${page}`, { redirect: 'manual' });
+      assert.equal(response.status, 307); assert.match(response.headers.get('location') || '', /\/login$/);
+    }
+  });
+  await t.test('páginas de recuperação são públicas e tokens são atômicos, temporários e de uso único', async recoveryTest => {
+    for (const page of ['verify-email', 'forgot-password', 'reset-password']) assert.equal((await fetch(`${origin}/${page}`)).status, 200);
+    const account = { email: 'recovery@example.com', senha: 'senha-anterior-123' };
+    const signup = await post('/auth/register', { ...account, nomeUsuario: 'Recuperação', nomeEmpresa: 'Teste recuperação' });
+    assert.equal(signup.status, 201);
+    const signupBody = await signup.json();
+    assert.equal(signupBody.emailSent, false); assert.equal(signupBody.emailDelivery, 'unavailable');
+    const [user] = await query<{ id: string; email_verified_at: null }>(storage, 'SELECT id,email_verified_at FROM usuarios WHERE email=$1', [account.email]);
+    assert.equal(user.email_verified_at, null);
+    const [initial] = await query<{ token_hash: string; lifetime: number }>(storage, `SELECT token_hash,extract(epoch FROM expires_at-created_at)::float AS lifetime FROM auth_tokens WHERE user_id=$1`, [user.id]);
+    assert.match(initial.token_hash, /^[0-9a-f]{64}$/); assert.ok(Math.abs(initial.lifetime - 86400) < 2);
+    const resendResults = await Promise.all(Array.from({ length: 8 }, () => post('/auth/resend-verification', { email: account.email })));
+    for (const response of resendResults) assert.equal(response.status, 200);
+    assert.equal((await query(storage, 'SELECT token_hash FROM auth_tokens WHERE user_id=$1', [user.id]))[0].token_hash, initial.token_hash, 'cooldown não invalida o link já emitido');
+    const cooldownKey = createHash('sha256').update(`email_verification:cooldown:${account.email}`).digest('hex');
+    assert.ok((await query<{ count: number }>(storage, 'SELECT count FROM auth_rate_limits WHERE key=$1', [cooldownKey]))[0].count > 1);
+    // Simulate elapsed cooldowns to exercise the longer per-email window.
+    const emailKey = createHash('sha256').update(`email_verification:email:${account.email}`).digest('hex');
+    await query(storage, 'INSERT INTO auth_rate_limits(key,count,window_start) VALUES ($1,3,$2) ON CONFLICT(key) DO UPDATE SET count=3,window_start=$2', [emailKey, Date.now()]);
+    await query(storage, 'DELETE FROM auth_rate_limits WHERE key=$1', [cooldownKey]);
+    assert.equal((await post('/auth/resend-verification', { email: account.email })).status, 200);
+    assert.equal((await query(storage, 'SELECT token_hash FROM auth_tokens WHERE user_id=$1', [user.id]))[0].token_hash, initial.token_hash);
+    const issue = async (type: 'email_verification' | 'password_reset') => {
+      const client = await storage.connect();
+      try {
+        await client.query('BEGIN');
+        const token = await issueAuthToken(user.id, type, client);
+        await client.query('COMMIT');
+        return token;
+      } finally { await client.query('ROLLBACK'); client.release(); }
+    };
+    let token = await issue('email_verification');
+    const unverifiedLogin = await post('/auth/login', account);
+    assert.equal(unverifiedLogin.status, 200);
+    const verificationCookie = (unverifiedLogin.headers.get('set-cookie') || '').split(';')[0];
+    const beforeVerification = await (await fetch(`${origin}/api/v1/private`, { headers: { Cookie: verificationCookie } })).json();
+    assert.equal(beforeVerification.user.emailVerified, false);
+    assert.match(await (await fetch(`${origin}/dashboard`, { headers: { Cookie: verificationCookie } })).text(), /Seu e-mail ainda não foi confirmado/);
+    const preview = await fetch(`${origin}/api/v1/auth/verify-email?token=${token}`, { redirect: 'manual' });
+    assert.equal(preview.status, 303);
+    assert.equal((await query(storage, 'SELECT id FROM auth_tokens WHERE user_id=$1', [user.id])).length, 1);
+    await query(storage, "UPDATE auth_tokens SET expires_at='2000-01-01' WHERE user_id=$1", [user.id]);
+    assert.equal((await post(`/auth/verify-email?token=${token}`, {})).status, 400);
+    token = await issue('email_verification');
+    assert.equal((await post('/auth/reset-password', { token, senha: 'senha-nova-123' })).status, 400);
+    const verification = await Promise.all([post(`/auth/verify-email?token=${token}`, {}), post('/auth/verify-email', { token })]);
+    assert.deepEqual(verification.map(r => r.status).sort(), [200,400]);
+    assert.ok((await query(storage, 'SELECT email_verified_at FROM usuarios WHERE id=$1', [user.id]))[0].email_verified_at);
+    const afterVerification = await (await fetch(`${origin}/api/v1/private`, { headers: { Cookie: verificationCookie } })).json();
+    assert.equal(afterVerification.user.emailVerified, true);
+    assert.doesNotMatch(await (await fetch(`${origin}/dashboard`, { headers: { Cookie: verificationCookie } })).text(), /Seu e-mail ainda não foi confirmado/);
+    assert.equal((await query(storage, 'SELECT id FROM auth_tokens WHERE user_id=$1', [user.id])).length, 0);
+    for (const [key, count] of [['auth-email:second', 2], ['auth-email:minute', 30]] as const) {
+      const hashedKey = createHash('sha256').update(key).digest('hex');
+      await query(storage, 'INSERT INTO auth_rate_limits(key,count,window_start) VALUES ($1,$2,$3) ON CONFLICT(key) DO UPDATE SET count=$2,window_start=$3', [hashedKey, count, Date.now()]);
+      assert.equal((await post('/auth/forgot-password', { email: account.email })).status, 200);
+      assert.equal((await query(storage, 'SELECT id FROM auth_tokens WHERE user_id=$1', [user.id])).length, 0, 'quota global impede emissão de tokens');
+      await query(storage, 'DELETE FROM auth_rate_limits WHERE key=$1', [hashedKey]);
+      await query(storage, 'DELETE FROM auth_rate_limits WHERE key=$1', [createHash('sha256').update(`password_reset:cooldown:${account.email}`).digest('hex')]);
+    }
+    const unknown = await post('/auth/forgot-password', { email: 'missing@example.com' });
+    const known = await post('/auth/forgot-password', { email: account.email });
+    assert.equal(unknown.status, 200); assert.equal(known.status, 200); assert.deepEqual(await known.json(), await unknown.json());
+    assert.equal((await post('/auth/forgot-password', { email: account.email }, '', 'https://hostil.invalid')).status, 403);
+    token = await issue('password_reset');
+    const [reset] = await query<{ token_hash: string; lifetime: number }>(storage, `SELECT token_hash,extract(epoch FROM expires_at-created_at)::float AS lifetime FROM auth_tokens WHERE user_id=$1`, [user.id]);
+    assert.notEqual(reset.token_hash, token); assert.ok(Math.abs(reset.lifetime - 1800) < 2);
+    await query(storage, "UPDATE auth_tokens SET expires_at='2000-01-01' WHERE user_id=$1", [user.id]);
+    assert.equal((await post('/auth/reset-password', { token, senha: 'senha-nova-123' })).status, 400);
+    const replaced = await issue('password_reset'); token = await issue('password_reset');
+    assert.equal((await post('/auth/reset-password', { token: replaced, senha: 'senha-nova-123' })).status, 400);
+    assert.equal((await post('/auth/reset-password', { token, senha: 'curta' })).status, 400);
+    const login = await post('/auth/login', account);
+    const cookie = (login.headers.get('set-cookie') || '').split(';')[0];
+    const [other] = await query<{ id: string; senha: string }>(storage, `INSERT INTO usuarios(nome,email,senha) SELECT 'Outra conta','recovery-other@example.com',senha FROM usuarios WHERE id=$1 RETURNING id,senha`, [user.id]);
+    const resets = await Promise.all([post('/auth/reset-password', { token, senha: 'senha-nova-123', userId: other.id, email: 'recovery-other@example.com' }), post('/auth/reset-password', { token, senha: 'senha-nova-123' })]);
+    assert.deepEqual(resets.map(r => r.status).sort(), [200,400]);
+    assert.equal((await query(storage, 'SELECT senha FROM usuarios WHERE id=$1', [other.id]))[0].senha, other.senha, 'o token só altera a conta à qual pertence');
+    await query(storage, 'DELETE FROM usuarios WHERE id=$1', [other.id]);
+    assert.equal((await fetch(`${origin}/api/v1/private`, { headers: { Cookie: cookie } })).status, 401);
+    assert.equal((await post('/auth/login', account)).status, 401);
+    assert.equal((await post('/auth/login', { ...account, senha: 'senha-nova-123' })).status, 200);
+    await recoveryTest.test('login iniciado com senha antiga não sobrevive a uma troca concorrente', async () => {
+      const lock = await storage.connect();
+      const nextHash = await bcrypt.hash('senha-concorrente-123', 10);
+      let pending: Promise<Response> | undefined;
+      try {
+        await lock.query('BEGIN');
+        await lock.query('UPDATE usuarios SET senha=$1 WHERE id=$2', [nextHash, user.id]);
+        await lock.query('DELETE FROM refresh_tokens WHERE user_id=$1', [user.id]);
+        pending = post('/auth/login', { ...account, senha: 'senha-nova-123' });
+        let waiting = false;
+        for (let attempt = 0; attempt < 100; attempt++) {
+          const rows = await query(storage, "SELECT pid FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE 'SELECT senha FROM usuarios WHERE id=%FOR UPDATE'");
+          if (rows.length) { waiting = true; break; }
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        assert.ok(waiting, 'Login deve aguardar o mesmo bloqueio usado pela recuperação');
+        await lock.query('COMMIT');
+        assert.equal((await pending).status, 401);
+        assert.equal((await query(storage, 'SELECT id FROM refresh_tokens WHERE user_id=$1', [user.id])).length, 0);
+      } finally { await lock.query('ROLLBACK'); lock.release(); if (pending) await pending; }
+    });
+    assert.equal((await query(storage, 'SELECT id FROM auth_tokens WHERE user_id=$1', [user.id])).length, 0);
+    assert.equal((await post('/auth/verify-email', { token: randomBytes(32).toString('base64url') })).status, 400);
+    // Leave the other authentication scenarios with their original empty database.
+    await query(storage, 'DELETE FROM restaurant_members WHERE user_id=$1', [user.id]);
+    await query(storage, 'DELETE FROM usuarios WHERE id=$1', [user.id]);
+    await query(storage, "DELETE FROM empresas WHERE nome='Teste recuperação'");
+  });
   await t.test('landing é pública e apresenta os acessos ao sistema', async () => {
     const response = await fetch(origin, { redirect: 'manual' });
     assert.equal(response.status, 200);

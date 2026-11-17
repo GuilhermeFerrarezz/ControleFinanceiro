@@ -9,6 +9,9 @@ import { consumeLimit } from '@/src/lib/rate-limit';
 import { createMembership } from '@/src/models/Membership';
 import { InvitationError, joinInvitation } from '@/src/lib/invitations';
 import { limitAuthSource, SecurityLimitError, withPasswordBudget } from '@/src/lib/security-limits';
+import { issueAuthToken } from '@/src/models/AuthToken';
+import { sendAuthEmail } from '@/src/lib/auth-email';
+import { allowAuthEmail, withAuthEmailBudget } from '@/src/lib/auth-email-limits';
 
 export async function POST(request: Request) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
@@ -24,17 +27,25 @@ export async function POST(request: Request) {
     const existing = await findUsuarioByEmail(email);
     if (existing) return jsonError('Este e-mail já está registrado.', 409);
     const senhaHash = await withPasswordBudget(() => bcrypt.hash(senha, 10));
-    await inTransaction(async transaction => {
+    const token = await inTransaction(async transaction => {
       if (invited) {
         const user = await createUsuario({ nome, email, senha: senhaHash, papel: 'colaborador' }, transaction);
         await joinInvitation(body.invitationToken, user.id, email, transaction);
-        return;
+        return issueAuthToken(user.id, 'email_verification', transaction);
       }
       const empresa = await createEmpresa(empresaNome!, transaction);
       const user = await createUsuario({ nome, email, senha: senhaHash, papel: 'admin', empresaId: empresa.id }, transaction);
       await createMembership(user.id, empresa.id, 'owner', transaction);
+      return issueAuthToken(user.id, 'email_verification', transaction);
     });
-    return NextResponse.json({ message: invited ? 'Conta criada e convite aceito!' : 'Conta e restaurante criados com sucesso!' }, { status: 201 });
+    let emailDelivery: 'sent' | 'development' | 'unavailable' = 'unavailable';
+    try {
+      if (await allowAuthEmail(email, 'email_verification')) emailDelivery = await withAuthEmailBudget(() => sendAuthEmail(email, 'email_verification', token, request));
+    }
+    catch {
+      console.error('[auth:email_verification] Conta criada, mas não foi possível enviar a confirmação.');
+    }
+    return NextResponse.json({ message: emailDelivery === 'sent' ? 'Conta criada! Confira seu e-mail para confirmar seu endereço.' : emailDelivery === 'development' ? 'Conta criada! O link de confirmação está no terminal de desenvolvimento.' : 'Conta criada. Não conseguimos enviar o e-mail agora. Solicite um novo link em instantes.', emailSent: emailDelivery === 'sent', emailDelivery }, { status: 201, headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     if (error instanceof SecurityLimitError) return jsonError(error.message, 429);
     if (error instanceof InputError) return jsonError(error.message, 400);

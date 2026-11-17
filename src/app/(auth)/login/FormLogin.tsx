@@ -22,6 +22,7 @@ export default function FormLogin({ next = '/dashboard' }: { next?: string }) {
   return <><span className="eyebrow">Bom ter você de volta</span><h1>Vamos cuidar<br />do seu negócio?</h1><p className={styles.intro}>{next.startsWith('/invite/') ? 'Entre com o e-mail do convite para fazer parte da equipe.' : 'Entre na sua conta e encontre seu restaurante e sua equipe no mesmo lugar.'}</p><form className={styles.form} onSubmit={submit} aria-busy={loading}>
     <label className={styles.field} htmlFor="email">Seu e-mail<input className={styles.input} id="email" name="email" type="email" autoComplete="username" placeholder="voce@restaurante.com.br" maxLength={254} required /></label>
     <div className={styles.field}><label htmlFor="senha">Sua senha</label><PasswordInput /></div>
+    <p className={styles.recoveryLinks}><Link href="/forgot-password">Esqueci minha senha</Link><Link href="/verify-email">Confirmar meu e-mail</Link></p>
     <label className={styles.checkbox}><input name="remember" type="checkbox" />Manter conectado por 7 dias</label>
     <button className={styles.button} type="submit" disabled={loading}>{loading ? 'Entrando...' : 'Entrar na minha conta'}<Icon name="arrow" size={18} /></button>
     {message && <p className={styles.error} role="alert">{message}</p>}
