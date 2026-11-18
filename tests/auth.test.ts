@@ -144,7 +144,7 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     assert.equal(afterVerification.user.emailVerified, true);
     assert.doesNotMatch(await (await fetch(`${origin}/dashboard`, { headers: { Cookie: verificationCookie } })).text(), /Seu e-mail ainda não foi confirmado/);
     assert.equal((await query(storage, 'SELECT id FROM auth_tokens WHERE user_id=$1', [user.id])).length, 0);
-    for (const [key, count] of [['auth-email:second', 2], ['auth-email:minute', 30]] as const) {
+    for (const [key, count] of [['auth-email:second', 2], ['auth-email:minute', 15], ['auth-email:day',100]] as const) {
       const hashedKey = createHash('sha256').update(key).digest('hex');
       await query(storage, 'INSERT INTO auth_rate_limits(key,count,window_start) VALUES ($1,$2,$3) ON CONFLICT(key) DO UPDATE SET count=$2,window_start=$3', [hashedKey, count, Date.now()]);
       assert.equal((await post('/auth/forgot-password', { email: account.email })).status, 200);

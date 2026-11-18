@@ -2,6 +2,8 @@ import { consumeLimit } from './rate-limit';
 import type { AuthTokenType } from '../models/AuthToken';
 
 export const AUTH_EMAIL_COOLDOWN_SECONDS = 60;
+export const AUTH_EMAIL_MAX_PER_MINUTE = 15;
+export const AUTH_EMAIL_MAX_PER_DAY = 100;
 export async function allowAuthEmail(email: string, type: AuthTokenType) {
   if (!await consumeLimit(`${type}:cooldown:${email}`, 1, AUTH_EMAIL_COOLDOWN_SECONDS * 1000)) return false;
   return consumeLimit(`${type}:email:${email}`, 3, 15 * 60_000);
@@ -26,7 +28,8 @@ export async function withAuthEmailBudget<T>(work: () => Promise<T>) {
   capacity.active++;
   try {
     if (!await consumeLimit('auth-email:second', 2, 1000) ||
-      !await consumeLimit('auth-email:minute', 30, 60_000)) throw new Error('Limite de envio atingido.');
+      !await consumeLimit('auth-email:minute', AUTH_EMAIL_MAX_PER_MINUTE, 60_000) ||
+      !await consumeLimit('auth-email:day', AUTH_EMAIL_MAX_PER_DAY, 24 * 60 * 60_000)) throw new Error('Limite de envio atingido.');
     return await work();
   } finally { capacity.active--; }
 }

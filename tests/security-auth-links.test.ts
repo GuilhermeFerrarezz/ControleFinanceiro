@@ -30,8 +30,8 @@ test('links transacionais completos, privacidade temporal e falhas do provedor',
   async function waitFor(check:()=>Promise<boolean>|boolean,label:string){for(let i=0;i<150;i++){if(await check())return;await new Promise(resolve=>setTimeout(resolve,20));}assert.fail(label);}
   await waitFor(async()=>{try{return(await fetch(`${origin}/login`)).ok;}catch{return false;}},'Servidor indisponível');
   const post=(path:string,body:unknown,cookie='')=>fetch(`${origin}/api/v1/auth/${path}`,{method:'POST',headers:{Origin:publicOrigin,'Content-Type':'application/json',Cookie:cookie},body:JSON.stringify(body),signal:AbortSignal.timeout(5000)});
-  const clearLimits=async(email:string,type:string)=>{
-    const keys=[`${type}:cooldown:${email}`,`${type}:email:${email}`,'auth-email:second','auth-email:minute','auth-email:requests'];
+  const clearLimits=async(email:string,type:string,preserve?:string)=>{
+    const keys=[`${type}:cooldown:${email}`,`${type}:email:${email}`,'auth-email:second','auth-email:minute','auth-email:day','auth-email:requests'].filter(key=>key!==preserve);
     await query(storage,'DELETE FROM auth_rate_limits WHERE key=ANY($1::text[])',[keys.map(key=>createHash('sha256').update(key).digest('hex'))]);
   };
   const url=(mail:Mail)=>new URL(mail.text.split('\n').find(line=>line.startsWith('https://'))!);
@@ -95,5 +95,29 @@ test('links transacionais completos, privacidade temporal e falhas do provedor',
     await query(storage,'UPDATE usuarios SET ativo=FALSE WHERE id=$1',[verifyId]);
     assert.equal((await post('reset-password',{token:token(messages[count+1]),senha:'blocked-password-123'})).status,400);
     assert.equal((await query(storage,'SELECT senha FROM usuarios WHERE id=$1',[verifyId]))[0].senha,hash);
+  });
+  await t.test('15 por minuto e 100 por 24 horas: aceita o último, bloqueia o seguinte e renova a janela',async()=>{
+    status=200;
+    for(const [key,limit,windowMs] of [['auth-email:minute',15,60_000],['auth-email:day',100,24*60*60_000]] as const){
+      const email='security-link@example.com';await clearLimits(email,'password_reset');
+      const hashed=digest(key);
+      await query(storage,'INSERT INTO auth_rate_limits(key,count,window_start) VALUES ($1,$2,$3)',[hashed,limit-1,Date.now()]);
+      const before=messages.length;
+      assert.equal((await post('forgot-password',{email})).status,200);
+      await waitFor(()=>messages.length===before+1,'Último envio permitido não chegou ao provedor');
+      assert.equal((await query<{count:number}>(storage,'SELECT count FROM auth_rate_limits WHERE key=$1',[hashed]))[0].count,limit);
+      const [previous]=await query<{token_hash:string}>(storage,"SELECT token_hash FROM auth_tokens WHERE user_id=$1 AND type='password_reset'",[id]);
+      await clearLimits(email,'password_reset',key);
+      const errors=output.split('Não foi possível processar o envio.').length;
+      assert.equal((await post('forgot-password',{email})).status,200);
+      await waitFor(()=>output.split('Não foi possível processar o envio.').length>errors,'Quota não bloqueou processamento');
+      assert.equal(messages.length,before+1,'Envio excedente não pode chamar o Resend');
+      assert.equal((await query(storage,"SELECT token_hash FROM auth_tokens WHERE user_id=$1 AND type='password_reset'",[id]))[0].token_hash,previous.token_hash);
+      await query(storage,'UPDATE auth_rate_limits SET window_start=$2 WHERE key=$1',[hashed,Date.now()-windowMs-1]);
+      await clearLimits(email,'password_reset',key);
+      assert.equal((await post('forgot-password',{email})).status,200);
+      await waitFor(()=>messages.length===before+2,'Janela vencida não liberou novo envio');
+      assert.equal((await query<{count:number}>(storage,'SELECT count FROM auth_rate_limits WHERE key=$1',[hashed]))[0].count,1);
+    }
   });
 });
