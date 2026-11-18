@@ -60,6 +60,19 @@ No `.env`, configure `DATABASE_URL` com a conexão do seu banco PostgreSQL, por 
 
 ### 3. Preparar o banco e iniciar a aplicação
 
+Para enviar e-mails no sandbox do Resend sem domínio próprio, configure no `.env`:
+
+```dotenv
+RESEND_API_KEY=sua_chave_privada
+RESEND_SANDBOX_TO=seu-email-da-conta-resend@example.com
+```
+
+Com `RESEND_SANDBOX_TO` definido, todas as confirmações e recuperações são enviadas somente a essa caixa, usando `Saldo da Casa <onboarding@resend.dev>`. O assunto recebe `[Sandbox]` e o corpo identifica a conta solicitante; o token continua pertencendo à conta original. Use contas de teste enquanto esse redirecionamento estiver ativo. A variável é privada do servidor e não pode ser definida pelo formulário.
+
+Os limites de 15 envios/minuto e 100 por janela fixa de 24 horas continuam ativos. Em desenvolvimento, o link usa o endereço local da aplicação; em produção, configure também `APP_ORIGIN` com sua URL pública HTTPS (pode ser a URL da Vercel). Reinicie o servidor após alterar o `.env`.
+
+Quando tiver um domínio verificado no Resend, remova `RESEND_SANDBOX_TO` e defina `RESEND_FROM_EMAIL` com um remetente desse domínio. Os envios voltarão a usar o e-mail de cada conta. Consulte a [restrição oficial do sandbox](https://resend.com/docs/knowledge-base/403-error-resend-dev-domain).
+
 ```sh
 npm run db:migrate
 npm run dev

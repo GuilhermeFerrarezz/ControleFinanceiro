@@ -8,12 +8,13 @@ import {randomUUID,createHash} from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import {isolatedDatabase,query} from './postgres-fixture';
 
-test('links transacionais completos, privacidade temporal e falhas do provedor', {timeout:120_000},async t=>{
+test('links transacionais completos em sandbox, privacidade temporal e falhas do provedor', {timeout:120_000},async t=>{
   const fixture=await isolatedDatabase();const storage=fixture.pool;
   const id=randomUUID();const verifyId=randomUUID();const password='known-password-123';
   const hash=await bcrypt.hash(password,10);
   await query(storage,"INSERT INTO usuarios(id,nome,email,senha,email_verified_at) VALUES ($1,'Admin de teste','security-link@example.com',$2,clock_timestamp()),($3,'Verificação de teste','verify-link@example.com',$2,NULL)",[id,hash,verifyId]);
-  type Mail={to:string[];text:string;html:string;subject:string};
+  type Mail={from:string;to:string[];text:string;html:string;subject:string;cc?:unknown;bcc?:unknown};
+  const sandboxTo='sandbox-owner@example.com';
   const messages:Mail[]=[];let status=200;let hold:Promise<void>|null=null;const releases:Array<()=>void>=[];
   const mailServer=createServer(async(req,res)=>{
     let body='';for await(const chunk of req)body+=chunk.toString();
@@ -24,7 +25,7 @@ test('links transacionais completos, privacidade temporal e falhas do provedor',
   mailServer.listen(0,'127.0.0.1');await once(mailServer,'listening');const mailAddress=mailServer.address();assert.ok(mailAddress&&typeof mailAddress==='object');
   const listener=createPortServer();listener.listen(0,'127.0.0.1');await once(listener,'listening');const address=listener.address();assert.ok(address&&typeof address==='object');const port=address.port;await new Promise<void>(resolve=>listener.close(()=>resolve()));
   const origin=`http://127.0.0.1:${port}`;const publicOrigin='https://public.example.com';
-  const server=spawn(process.execPath,['--import','./tests/fixtures/resend-transport.mjs','node_modules/next/dist/bin/next','start','-p',String(port),'-H','127.0.0.1'],{env:{...process.env,NODE_ENV:'production',DATABASE_URL:fixture.connectionString,PLATFORM_ADMIN_USER_ID:id,APP_ORIGIN:publicOrigin,RESEND_API_KEY:'fake-isolated-key',RESEND_FROM_EMAIL:'Test <test@example.com>',TEST_RESEND_ORIGIN:`http://127.0.0.1:${mailAddress.port}`},windowsHide:true,stdio:['ignore','pipe','pipe']});
+  const server=spawn(process.execPath,['--import','./tests/fixtures/resend-transport.mjs','node_modules/next/dist/bin/next','start','-p',String(port),'-H','127.0.0.1'],{env:{...process.env,NODE_ENV:'production',DATABASE_URL:fixture.connectionString,PLATFORM_ADMIN_USER_ID:id,APP_ORIGIN:publicOrigin,RESEND_API_KEY:'fake-isolated-key',RESEND_FROM_EMAIL:'',RESEND_SANDBOX_TO:sandboxTo,TEST_RESEND_ORIGIN:`http://127.0.0.1:${mailAddress.port}`},windowsHide:true,stdio:['ignore','pipe','pipe']});
   let output='';server.stdout.on('data',chunk=>{output=(output+chunk).slice(-10000);});server.stderr.on('data',chunk=>{output=(output+chunk).slice(-10000);});
   t.after(async()=>{try{releases.forEach(release=>release());if(server.exitCode===null){const exited=once(server,'exit');server.kill();await exited;}}finally{mailServer.closeAllConnections();await new Promise<void>(resolve=>mailServer.close(()=>resolve()));await fixture.cleanup();}});
   async function waitFor(check:()=>Promise<boolean>|boolean,label:string){for(let i=0;i<150;i++){if(await check())return;await new Promise(resolve=>setTimeout(resolve,20));}assert.fail(label);}
@@ -129,7 +130,7 @@ test('links transacionais completos, privacidade temporal e falhas do provedor',
     await waitFor(()=>messages.length===before+1,'Cadastro não enviou confirmação');
     const duplicate=await post('register',body);assert.equal(duplicate.status,201);assert.deepEqual(await duplicate.json(),generic);
     assert.equal(messages.length,before+1,'Cadastro repetido não dispara envio adicional');
-    const mail=messages[before];assert.deepEqual(mail.to,[email]);assert.equal(url(mail).pathname,'/verify-email');assert.equal(url(mail).search,'');
+    const mail=messages[before];assert.deepEqual(mail.to,[sandboxTo]);assert.ok(mail.text.includes(email));assert.equal(url(mail).pathname,'/verify-email');assert.equal(url(mail).search,'');
     const [row]=await query<{token_hash:string}>(storage,"SELECT t.token_hash FROM auth_tokens t JOIN usuarios u ON u.id=t.user_id WHERE u.email=$1 AND t.type='email_verification'",[email]);
     assert.equal(row.token_hash,digest(token(mail)));assert.notEqual(row.token_hash,token(mail));
     release();assert.equal((await post('verify-email',{token:token(mail)})).status,200);
@@ -148,5 +149,12 @@ test('links transacionais completos, privacidade temporal e falhas do provedor',
       assert.equal((await post(type==='password_reset'?'reset-password':'verify-email',{token:'invalid',senha:password})).status,429);
     }
     assert.equal(messages.length,before);
+  });
+  await t.test('todos os envios usam somente a caixa sandbox sem alterar a identidade do token',()=>{
+    assert.ok(messages.length>0);
+    for(const mail of messages) {
+      assert.deepEqual(mail.to,[sandboxTo]);assert.equal(mail.from,'Saldo da Casa <onboarding@resend.dev>');
+      assert.equal(mail.cc,undefined);assert.equal(mail.bcc,undefined);assert.match(mail.subject,/^\[Sandbox\]/);
+    }
   });
 });

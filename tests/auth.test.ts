@@ -45,7 +45,7 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
   await new Promise<void>(resolve => portServer.close(() => resolve()));
   const origin = `http://127.0.0.1:${port}`;
   const server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '-p', String(port), '-H', '127.0.0.1'], {
-    env: { ...process.env, NODE_ENV: 'production', DATABASE_URL: fixture.connectionString, APP_ORIGIN: '', RESEND_API_KEY: '', RESEND_FROM_EMAIL: '' }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
+    env: { ...process.env, NODE_ENV: 'production', DATABASE_URL: fixture.connectionString, APP_ORIGIN: '', RESEND_API_KEY: '', RESEND_FROM_EMAIL: '', RESEND_SANDBOX_TO: '' }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
   });
   let output = '';
   server.stdout.on('data', chunk => { output = (output + chunk.toString()).slice(-8000); });

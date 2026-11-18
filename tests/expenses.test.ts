@@ -19,7 +19,7 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
   const origin = `http://127.0.0.1:${address.port}`;
   await new Promise<void>(resolve => portServer.close(() => resolve()));
   const server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '-p', String(address.port), '-H', '127.0.0.1'], {
-    env: { ...process.env, NODE_ENV: 'production', DATABASE_URL: fixture.connectionString, APP_ORIGIN: origin }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, NODE_ENV: 'production', DATABASE_URL: fixture.connectionString, APP_ORIGIN: origin, RESEND_API_KEY: '', RESEND_FROM_EMAIL: '', RESEND_SANDBOX_TO: '' }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = ''; server.stdout.on('data', data => { output = (output + data.toString()).slice(-5000); }); server.stderr.on('data', data => { output = (output + data.toString()).slice(-5000); });
   stop = async () => { if (server.exitCode === null) { const closed = once(server, 'exit'); server.kill(); await closed; } };

@@ -15,7 +15,7 @@ test('admin exclusivo, cotas concorrentes e suspensão reversível', {timeout:18
   const listener=createServer();listener.listen(0,'127.0.0.1');await once(listener,'listening');
   const address=listener.address();assert.ok(address&&typeof address==='object');const port=address.port;
   await new Promise<void>(resolve=>listener.close(()=>resolve()));const origin=`http://127.0.0.1:${port}`;
-  const server=spawn(process.execPath,['node_modules/next/dist/bin/next','start','-p',String(port),'-H','127.0.0.1'],{env:{...process.env,NODE_ENV:'production',DATABASE_URL:fixture.connectionString,PLATFORM_ADMIN_USER_ID:adminId,APP_ORIGIN:'',RESEND_API_KEY:'',RESEND_FROM_EMAIL:''},windowsHide:true,stdio:['ignore','pipe','pipe']});
+  const server=spawn(process.execPath,['node_modules/next/dist/bin/next','start','-p',String(port),'-H','127.0.0.1'],{env:{...process.env,NODE_ENV:'production',DATABASE_URL:fixture.connectionString,PLATFORM_ADMIN_USER_ID:adminId,APP_ORIGIN:'',RESEND_API_KEY:'',RESEND_FROM_EMAIL:'',RESEND_SANDBOX_TO:''},windowsHide:true,stdio:['ignore','pipe','pipe']});
   let output='';server.stdout.on('data',chunk=>{output=(output+chunk).slice(-6000);});server.stderr.on('data',chunk=>{output=(output+chunk).slice(-6000);});
   t.after(async()=>{try{if(server.exitCode===null){const exited=once(server,'exit');server.kill();await exited;}}finally{await fixture.cleanup();}});
   let ready=false;for(let attempt=0;attempt<100;attempt++){try{if((await fetch(`${origin}/login`)).ok){ready=true;break;}}catch{}await new Promise(resolve=>setTimeout(resolve,100));}assert.ok(ready,output);
