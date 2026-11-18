@@ -10,11 +10,11 @@ import { ReauthenticationError } from '@/src/lib/reauthentication';
 import { InputError, passwordValue, readBody } from '@/src/lib/validation';
 import { deleteExpensePeriod, createExpense, expenseDashboard, expenseFilters, expenseExportData, expensesForExport, ExpenseError, uuidValue, validateExpense } from '@/src/lib/expenses';
 export async function GET(request: Request) {
-  const user = await currentUser();
-  if (!user) return jsonError('Entre na sua conta para continuar.', 401);
-  if (!user.empresaId) return jsonError('Selecione um restaurante para continuar.', 403);
-  if (!matchesRestaurantContext(request, user.empresaId)) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
   try {
+    const user = await currentUser();
+    if (!user) return jsonError('Entre na sua conta para continuar.', 401);
+    if (!user.empresaId) return jsonError('Selecione um restaurante para continuar.', 403);
+    if (!matchesRestaurantContext(request, user.empresaId)) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
     const params = new URL(request.url).searchParams;
     const filters = expenseFilters(params);
     const empresaId = user.empresaId;
@@ -40,10 +40,10 @@ export async function GET(request: Request) {
 }
 export async function POST(request: Request) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
-  const user = await currentUser();
-  if (!user) return jsonError('Entre na sua conta para continuar.', 401);
-  if (!user.empresaId) return jsonError('Selecione um restaurante para continuar.', 403);
   try {
+    const user = await currentUser();
+    if (!user) return jsonError('Entre na sua conta para continuar.', 401);
+    if (!user.empresaId) return jsonError('Selecione um restaurante para continuar.', 403);
     const body = await readBody(request, 32768);
     if (body.expectedEmpresaId !== undefined && body.expectedEmpresaId !== user.empresaId) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
     const result = await createExpense({ ...user, empresaId: user.empresaId }, validateExpense(body), uuidValue(body.requestId));
@@ -52,10 +52,10 @@ export async function POST(request: Request) {
 }
 export async function DELETE(request: Request) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
-  const user = await currentUser();
-  if (!user) return jsonError('Entre na sua conta para continuar.', 401);
-  if (!user.empresaId || user.role !== 'owner') return jsonError('Somente o admin pode excluir os lançamentos de um período.', 403);
   try {
+    const user = await currentUser();
+    if (!user) return jsonError('Entre na sua conta para continuar.', 401);
+    if (!user.empresaId || user.role !== 'owner') return jsonError('Somente o admin pode excluir os lançamentos de um período.', 403);
     const body = await readBody(request, 32768);
     if (body.empresaId !== user.empresaId) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
     const senha = passwordValue(body.senha);

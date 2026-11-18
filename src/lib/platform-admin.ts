@@ -66,11 +66,17 @@ export async function changePlatform(body: Record<string, unknown>) {
       await platformAudit(actor.id,'restaurant_deleted',String(body.id),previous,{deleted:true,kind:'restaurant'},client);
       return {restaurantDeleted:true};
     }
-    const table = body.action==='restaurant' ? 'empresas' : 'usuarios';
-    const previous = (await client.query<{ ativo: boolean }>(`SELECT ativo FROM ${table} WHERE id=$1${body.action==='user' ? ' AND deleted_at IS NULL' : ''} FOR UPDATE`,[body.id])).rows[0];
+    const restaurant = body.action === 'restaurant';
+    const selectStatus = restaurant
+      ? 'SELECT ativo FROM empresas WHERE id=$1 FOR UPDATE'
+      : 'SELECT ativo FROM usuarios WHERE id=$1 AND deleted_at IS NULL FOR UPDATE';
+    const previous = (await client.query<{ ativo: boolean }>(selectStatus, [body.id])).rows[0];
     if (!previous) throw new PlatformError('Cadastro não encontrado.',404);
     if (previous.ativo!==body.expectedActive) throw new PlatformError('A situação mudou. Atualize o painel.',409);
-    await client.query(`UPDATE ${table} SET ativo=$1,updated_at=clock_timestamp() WHERE id=$2`,[body.ativo,body.id]);
+    const updateStatus = restaurant
+      ? 'UPDATE empresas SET ativo=$1,updated_at=clock_timestamp() WHERE id=$2'
+      : 'UPDATE usuarios SET ativo=$1,updated_at=clock_timestamp() WHERE id=$2';
+    await client.query(updateStatus, [body.ativo, body.id]);
     if (body.ativo===false) {
       await client.query(body.action==='restaurant' ? 'DELETE FROM refresh_tokens WHERE empresa_id=$1' : 'DELETE FROM refresh_tokens WHERE user_id=$1',[body.id]);
       if (body.action==='user') await client.query('DELETE FROM auth_tokens WHERE user_id=$1',[body.id]);

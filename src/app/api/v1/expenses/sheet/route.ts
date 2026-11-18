@@ -8,9 +8,9 @@ export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
-  const user = await currentUser();
-  if (!user?.empresaId) return jsonError('Entre na conta e selecione um restaurante.', user ? 403 : 401);
   try {
+    const user = await currentUser();
+    if (!user?.empresaId) return jsonError('Entre na conta e selecione um restaurante.', user ? 403 : 401);
     const body = await readBody(request, 1024 * 1024);
     if (body.empresaId !== user.empresaId) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
     if (!Array.isArray(body.columns) || body.columns.length > 16384 ||

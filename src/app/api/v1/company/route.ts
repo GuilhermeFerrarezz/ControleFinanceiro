@@ -13,10 +13,10 @@ import { SecurityLimitError, withPasswordBudget } from '@/src/lib/security-limit
 import { ReauthenticationError, requireCurrentCredentials, type Reauthentication } from '@/src/lib/reauthentication';
 export async function POST(request: Request) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
-  const user = await currentUser();
-  if (!user) return jsonError('Sessão inválida ou expirada.', 401);
-  if (user.empresaId) return jsonError('Sua conta já possui um restaurante.', 409);
   try {
+    const user = await currentUser();
+    if (!user) return jsonError('Sessão inválida ou expirada.', 401);
+    if (user.empresaId) return jsonError('Sua conta já possui um restaurante.', 409);
     const nome = textValue((await readBody(request)).nomeEmpresa, 'O nome do restaurante');
     const token = (await cookies()).get(SESSION_COOKIE)?.value;
     await inTransaction(async transaction => {
@@ -34,11 +34,11 @@ export async function POST(request: Request) {
 
 async function changeCompany(request: Request, deleting: boolean) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
-  const user = await currentUser();
-  if (!user) return jsonError('Sessão inválida ou expirada.', 401);
-  if (!user.empresaId || user.role !== 'owner') return jsonError('Somente o admin pode alterar ou excluir o restaurante.', 403);
-  const empresaId = user.empresaId;
   try {
+    const user = await currentUser();
+    if (!user) return jsonError('Sessão inválida ou expirada.', 401);
+    if (!user.empresaId || user.role !== 'owner') return jsonError('Somente o admin pode alterar ou excluir o restaurante.', 403);
+    const empresaId = user.empresaId;
     const body = await readBody(request);
     // Bind the form to its restaurant so switching tabs cannot affect another one.
     if (body.empresaId !== empresaId) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);

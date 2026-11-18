@@ -16,6 +16,15 @@ test('não confia em IP encaminhado sem configuração e rejeita listas ou valor
   }
 });
 
+test('na Vercel usa o IP fornecido pela plataforma para login, cadastro e recuperação', t => {
+  const before = process.env.VERCEL;
+  t.after(() => { if (before === undefined) delete process.env.VERCEL; else process.env.VERCEL = before; });
+  process.env.VERCEL = '1';
+  const headers = { 'x-vercel-forwarded-for': '192.0.2.7', 'x-forwarded-for': '192.0.2.20' };
+  assert.equal(trustedClientAddress(new Request('https://app.example.com', { headers })), '192.0.2.7');
+  assert.throws(() => trustedClientAddress(new Request('https://app.example.com')));
+});
+
 test('bcrypt tem concorrência limitada e libera a capacidade inclusive após falhas', async () => {
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });

@@ -16,10 +16,10 @@ function revenueAmount(value: unknown) {
 }
 
 export async function GET(request: Request) {
-  const user = await currentUser();
-  if (!user?.empresaId) return jsonError('Entre na conta e selecione um restaurante.', user ? 403 : 401);
-  if (!matchesRestaurantContext(request, user.empresaId)) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
   try {
+    const user = await currentUser();
+    if (!user?.empresaId) return jsonError('Entre na conta e selecione um restaurante.', user ? 403 : 401);
+    if (!matchesRestaurantContext(request, user.empresaId)) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
     const params = new URL(request.url).searchParams;
     const template = params.get('format') === 'template';
     const period = expenseFilters(params);
@@ -40,10 +40,10 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
-  const user = await currentUser();
-  if (!user) return jsonError('Entre na sua conta para continuar.', 401);
-  if (!user.empresaId || user.role !== 'owner') return jsonError('Somente o dono pode registrar faturamento.', 403);
   try {
+    const user = await currentUser();
+    if (!user) return jsonError('Entre na sua conta para continuar.', 401);
+    if (!user.empresaId || user.role !== 'owner') return jsonError('Somente o dono pode registrar faturamento.', 403);
     const body = await readBody(request, 4 * 1024 * 1024);
     if (body.empresaId !== user.empresaId) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
     if (body.mode !== 'save' && body.mode !== 'preview' && body.mode !== 'import') throw new InputError('Operação inválida.');
@@ -69,10 +69,10 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
-  const user = await currentUser();
-  if (!user) return jsonError('Entre na sua conta para continuar.', 401);
-  if (!user.empresaId || user.role !== 'owner') return jsonError('Somente o dono pode excluir faturamento.', 403);
   try {
+    const user = await currentUser();
+    if (!user) return jsonError('Entre na sua conta para continuar.', 401);
+    if (!user.empresaId || user.role !== 'owner') return jsonError('Somente o dono pode excluir faturamento.', 403);
     const body = await readBody(request);
     if (body.empresaId !== user.empresaId) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
     if (body.confirm !== true) throw new InputError('Confirme a exclusão do faturamento.');

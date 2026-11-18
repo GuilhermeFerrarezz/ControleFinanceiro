@@ -7,9 +7,9 @@ import { setSessionEmpresa } from '@/src/models/RefreshToken';
 import { uuidValue } from '@/src/lib/expenses';
 export async function POST(request: Request) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
-  const user = await currentUser();
-  if (!user) return jsonError('Entre na sua conta para continuar.', 401);
   try {
+    const user = await currentUser();
+    if (!user) return jsonError('Entre na sua conta para continuar.', 401);
     const empresaId = uuidValue((await readBody(request)).empresaId);
     if (!(await userRestaurants(user.id)).some(restaurant => restaurant.id === empresaId)) return jsonError('Você não possui acesso a este restaurante.', 403);
     const token = (await cookies()).get(SESSION_COOKIE)?.value || '';

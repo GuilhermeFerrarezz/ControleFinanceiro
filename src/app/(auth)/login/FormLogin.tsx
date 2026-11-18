@@ -5,6 +5,7 @@ import { useState, type FormEvent } from 'react';
 import { api, clearLegacyAuth, errorMessage } from '@/src/lib/api';
 import Icon from '@/src/components/Icon';
 import PasswordInput from '@/src/components/PasswordInput';
+import AuthWebsiteField from '@/src/components/AuthWebsiteField';
 import styles from '@/src/components/auth.module.css';
 import axios from 'axios';
 export default function FormLogin({ next = '/dashboard' }: { next?: string }) {
@@ -16,7 +17,7 @@ export default function FormLogin({ next = '/dashboard' }: { next?: string }) {
     const data = new FormData(event.currentTarget);
     setLoading(true); setMessage('');
     try {
-      await api.post('/auth/login', { email: data.get('email'), senha: data.get('senha'), remember: data.get('remember') === 'on' });
+      await api.post('/auth/login', { email: data.get('email'), senha: data.get('senha'), remember: data.get('remember') === 'on', website: data.get('website') });
       clearLegacyAuth(); router.replace(next); router.refresh();
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.data?.code === 'EMAIL_VERIFICATION_REQUIRED') {
@@ -27,6 +28,7 @@ export default function FormLogin({ next = '/dashboard' }: { next?: string }) {
   }
   return <><span className="eyebrow">Bom ter você de volta</span><h1>Vamos cuidar<br />do seu negócio?</h1><p className={styles.intro}>{next.startsWith('/invite/') ? 'Entre com o e-mail do convite para fazer parte da equipe.' : 'Entre na sua conta e encontre seu restaurante e sua equipe no mesmo lugar.'}</p><form className={styles.form} onSubmit={submit} aria-busy={loading}>
     <label className={styles.field} htmlFor="email">Seu e-mail<input className={styles.input} id="email" name="email" type="email" autoComplete="username" placeholder="voce@restaurante.com.br" maxLength={254} required /></label>
+    <AuthWebsiteField />
     <div className={styles.field}><label htmlFor="senha">Sua senha</label><PasswordInput /></div>
     <p className={styles.recoveryLinks}><Link href="/forgot-password">Esqueci minha senha</Link></p>
     <label className={styles.checkbox}><input name="remember" type="checkbox" />Manter conectado por 7 dias</label>

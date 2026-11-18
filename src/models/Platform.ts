@@ -11,8 +11,10 @@ export async function platformSettings(client: Queryable = db, lock = false) {
 // Hold the settings lock until the enclosing creation transaction commits.
 export async function requireCapacity(kind: 'restaurants' | 'users', client: Queryable) {
   const settings = await platformSettings(client, true);
-  const table = kind === 'restaurants' ? 'empresas' : 'usuarios';
-  const count = Number((await client.query<{ count: string }>(`SELECT count(*) AS count FROM ${table}${kind === 'users' ? ' WHERE deleted_at IS NULL' : ''}`)).rows[0].count);
+  const countQuery = kind === 'restaurants'
+    ? 'SELECT count(*) AS count FROM empresas'
+    : 'SELECT count(*) AS count FROM usuarios WHERE deleted_at IS NULL';
+  const count = Number((await client.query<{ count: string }>(countQuery)).rows[0].count);
   const max = kind === 'restaurants' ? settings.maxRestaurants : settings.maxUsers;
   if (count >= max) throw new CapacityError(kind === 'restaurants' ? 'O limite de restaurantes foi atingido. Contate o administrador da plataforma.' : 'O limite de usuários foi atingido. Contate o administrador da plataforma.');
 }

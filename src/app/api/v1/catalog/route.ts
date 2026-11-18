@@ -9,11 +9,13 @@ import { inTransaction, isUniqueViolation } from '@/src/lib/postgres';
 import { findMembership } from '@/src/models/Membership';
 import { changeCatalogEntry, insertCatalogEntry, listProducts, listCategories, listMerchants, listStorageLocations } from '@/src/models/Catalog';
 export async function GET(request: Request) {
-  const user = await currentUser();
-  if (!user) return jsonError('Entre na sua conta para continuar.', 401);
-  if (!user.empresaId) return jsonError('Selecione um restaurante.', 403);
-  if (!matchesRestaurantContext(request, user.empresaId)) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
-  return NextResponse.json({ empresaId: user.empresaId, categories: await listCategories(user.empresaId), merchants: await listMerchants(user.empresaId), storageLocations: await listStorageLocations(user.empresaId), products: await listProducts(user.empresaId) }, { headers: { 'Cache-Control': 'no-store' } });
+  try {
+    const user = await currentUser();
+    if (!user) return jsonError('Entre na sua conta para continuar.', 401);
+    if (!user.empresaId) return jsonError('Selecione um restaurante.', 403);
+    if (!matchesRestaurantContext(request, user.empresaId)) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
+    return NextResponse.json({ empresaId: user.empresaId, categories: await listCategories(user.empresaId), merchants: await listMerchants(user.empresaId), storageLocations: await listStorageLocations(user.empresaId), products: await listProducts(user.empresaId) }, { headers: { 'Cache-Control': 'no-store' } });
+  } catch { return jsonError('Não foi possível concluir a solicitação.', 500); }
 }
 function productDetails(body: Record<string, unknown>) {
   const defaultUnit = body.defaultUnit ?? 'un';
@@ -24,11 +26,11 @@ function productDetails(body: Record<string, unknown>) {
 }
 async function mutate(request: Request, remove: boolean) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
-  const user = await currentUser();
-  if (!user) return jsonError('Entre na sua conta para continuar.', 401);
-  if (!user.empresaId) return jsonError('Selecione um restaurante.', 403);
-  const empresaId = user.empresaId;
   try {
+    const user = await currentUser();
+    if (!user) return jsonError('Entre na sua conta para continuar.', 401);
+    if (!user.empresaId) return jsonError('Selecione um restaurante.', 403);
+    const empresaId = user.empresaId;
     const body = await readBody(request);
     if (body.empresaId !== empresaId) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
     if (body.kind !== 'category' && body.kind !== 'merchant' && body.kind !== 'product' && body.kind !== 'storage') throw new InputError('Escolha categoria, local de compra, armazenamento ou produto.');
@@ -54,11 +56,11 @@ export async function PATCH(request: Request) { return mutate(request, false); }
 export async function DELETE(request: Request) { return mutate(request, true); }
 export async function POST(request: Request) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
-  const user = await currentUser();
-  if (!user) return jsonError('Entre na sua conta para continuar.', 401);
-  if (!user.empresaId) return jsonError('Selecione um restaurante.', 403);
-  const empresaId = user.empresaId;
   try {
+    const user = await currentUser();
+    if (!user) return jsonError('Entre na sua conta para continuar.', 401);
+    if (!user.empresaId) return jsonError('Selecione um restaurante.', 403);
+    const empresaId = user.empresaId;
     const body = await readBody(request);
     if (body.empresaId !== empresaId) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
     if (body.kind !== 'category' && body.kind !== 'merchant' && body.kind !== 'product' && body.kind !== 'storage') throw new InputError('Escolha categoria, local de compra, armazenamento ou produto.');

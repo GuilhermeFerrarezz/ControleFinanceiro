@@ -9,7 +9,7 @@ import { emailValue, InputError, passwordValue, readBody, textValue } from '@/sr
 import { consumeLimit } from '@/src/lib/rate-limit';
 import { createMembership } from '@/src/models/Membership';
 import { InvitationError, joinInvitation, validInvitation } from '@/src/lib/invitations';
-import { limitAuthSource, SecurityLimitError, withPasswordBudget } from '@/src/lib/security-limits';
+import { honeypotResponse, limitAuthSource, SecurityLimitError, withPasswordBudget } from '@/src/lib/security-limits';
 import { issueAuthToken } from '@/src/models/AuthToken';
 import { sendAuthEmail } from '@/src/lib/auth-email';
 import { allowAuthEmail, withAuthEmailBudget, withRecoveryRequestBudget } from '@/src/lib/auth-email-limits';
@@ -28,8 +28,10 @@ export async function POST(request: Request) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
   const startedAt = performance.now();
   try {
-    await limitAuthSource(request, 'register');
     const body = await readBody(request);
+    const ignored = honeypotResponse(body);
+    if (ignored) return ignored;
+    await limitAuthSource(request, 'register');
     const nome = textValue(body.nomeUsuario, 'O nome');
     const invited = body.invitationToken !== undefined;
     const empresaNome = invited ? null : textValue(body.nomeEmpresa, 'O nome do restaurante');

@@ -7,11 +7,11 @@ import { InputError } from '@/src/lib/validation';
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.',403);
-  const user = await currentUser();
-  if (!user) return jsonError('Entre na sua conta para continuar.',401);
-  if (user.role !== 'owner' || !user.empresaId) return jsonError('Apenas o dono pode remover funcionários.',403);
-  if (!matchesRestaurantContext(request, user.empresaId)) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
   try {
+    const user = await currentUser();
+    if (!user) return jsonError('Entre na sua conta para continuar.',401);
+    if (user.role !== 'owner' || !user.empresaId) return jsonError('Apenas o dono pode remover funcionários.',403);
+    if (!matchesRestaurantContext(request, user.empresaId)) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
     const id = uuidValue((await params).id);
     const result = await inTransaction(client => removeEmployeeMembership(id,user.empresaId!,user.id,client));
     if (result === 'forbidden') return jsonError('Apenas o dono pode remover funcionários.',403);

@@ -67,6 +67,46 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
   let firstCookie = '';
   let secondCookie = '';
   let userId = '';
+  await t.test('honeypot retorna 200 antes de consumir cotas ou criar dados de autenticação', async () => {
+    for (const route of ['login', 'register']) {
+      assert.match(await (await fetch(`${origin}/${route}`)).text(), /name="website"/);
+      const response = await post(`/auth/${route}`, { ...credentials, nomeUsuario: 'Teste', nomeEmpresa: 'Casa teste', website: 'preenchido' });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('set-cookie'), null);
+    }
+    for (const table of ['usuarios', 'empresas', 'auth_tokens', 'refresh_tokens', 'auth_rate_limits']) {
+      assert.equal((await query(storage, `SELECT count(*) AS n FROM ${table}`))[0].n, '0', table);
+    }
+  });
+  await t.test('CSP usa um nonce por resposta nos scripts da página e restringe a API', async () => {
+    const nonces = new Set<string>();
+    for (const path of ['/', '/login', '/forgot-password', '/reset-password', '/verify-email', '/login']) {
+      const response = await fetch(origin + path);
+      const policy = response.headers.get('content-security-policy') || '';
+      const scriptPolicy = policy.split(';').find(rule => rule.trim().startsWith('script-src ')) || '';
+      const nonce = /'nonce-([A-Za-z0-9+/=]+)'/.exec(scriptPolicy)?.[1];
+      assert.ok(nonce, path);
+      assert.ok(!nonces.has(nonce), path);
+      nonces.add(nonce);
+      assert.doesNotMatch(scriptPolicy, /unsafe-inline|unsafe-eval/);
+      const scripts = [...(await response.text()).matchAll(/<script\b[^>]*>/g)];
+      assert.ok(scripts.length > 0, path);
+      for (const [tag] of scripts) assert.ok(tag.includes(`nonce="${nonce}"`), path + ' ' + tag);
+      assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+      assert.equal(response.headers.get('x-frame-options'), 'DENY');
+    }
+    const api = await fetch(origin + '/api/v1/private');
+    assert.match(api.headers.get('content-security-policy') || '', /default-src 'none'/);
+  });
+  await t.test('erro de consulta de sessão retorna JSON genérico sem detalhes do PostgreSQL', async () => {
+    await query(storage, 'ALTER TABLE refresh_tokens RENAME TO fixture_sessions');
+    try {
+      const response = await fetch(origin + '/api/v1/private', { headers: { Cookie: 'session=' + 'a'.repeat(43) } });
+      assert.equal(response.status, 500);
+      assert.deepEqual(await response.json(), { erro: 'Não foi possível concluir a solicitação.' });
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+    } finally { await query(storage, 'ALTER TABLE fixture_sessions RENAME TO refresh_tokens'); }
+  });
   await t.test('todos os endpoints de negócio recusam acesso anônimo e identidade forjada', async () => {
     const root = 'src/app/api/v1';
     const files = (await readdir(root, { recursive: true })).filter(file => file.endsWith('route.ts') && !file.startsWith('auth'));
@@ -134,6 +174,7 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     assert.match(await (await fetch(`${origin}/dashboard`, { headers: { Cookie: verificationCookie } })).text(), /Confirme seu e-mail em até 7 dias/);
     const preview = await fetch(`${origin}/api/v1/auth/verify-email?token=${token}`, { redirect: 'manual' });
     assert.equal(preview.status, 303);
+    assert.equal(new URL(preview.headers.get('location')!, origin).hash, `#token=${token}`);
     assert.equal((await query(storage, 'SELECT id FROM auth_tokens WHERE user_id=$1', [user.id])).length, 1);
     await query(storage, "UPDATE auth_tokens SET expires_at='2000-01-01' WHERE user_id=$1", [user.id]);
     assert.equal((await post(`/auth/verify-email?token=${token}`, {})).status, 400);

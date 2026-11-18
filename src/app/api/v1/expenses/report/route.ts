@@ -5,10 +5,10 @@ import { dashboardPdf } from '@/src/lib/dashboard-pdf';
 import { SecurityLimitError, withExportBudget } from '@/src/lib/security-limits';
 export const runtime='nodejs';
 export async function GET(request:Request) {
-  const user=await currentUser();if(!user)return jsonError('Entre na sua conta para continuar.',401);
-  if(!user.empresaId)return jsonError('Selecione um restaurante.',403);
-  if(!matchesRestaurantContext(request,user.empresaId))return jsonError('O restaurante ativo mudou. Atualize a página.',409);
   try {
+    const user=await currentUser();if(!user)return jsonError('Entre na sua conta para continuar.',401);
+    if(!user.empresaId)return jsonError('Selecione um restaurante.',403);
+    if(!matchesRestaurantContext(request,user.empresaId))return jsonError('O restaurante ativo mudou. Atualize a página.',409);
     const empresaId = user.empresaId;
     return await withExportBudget(user.id, async () => {
     const filters=expenseFilters(new URL(request.url).searchParams);

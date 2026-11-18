@@ -25,12 +25,12 @@ test('links transacionais completos em sandbox, privacidade temporal e falhas do
   mailServer.listen(0,'127.0.0.1');await once(mailServer,'listening');const mailAddress=mailServer.address();assert.ok(mailAddress&&typeof mailAddress==='object');
   const listener=createPortServer();listener.listen(0,'127.0.0.1');await once(listener,'listening');const address=listener.address();assert.ok(address&&typeof address==='object');const port=address.port;await new Promise<void>(resolve=>listener.close(()=>resolve()));
   const origin=`http://127.0.0.1:${port}`;const publicOrigin='https://public.example.com';
-  const server=spawn(process.execPath,['--import','./tests/fixtures/resend-transport.mjs','node_modules/next/dist/bin/next','start','-p',String(port),'-H','127.0.0.1'],{env:{...process.env,NODE_ENV:'production',DATABASE_URL:fixture.connectionString,PLATFORM_ADMIN_USER_ID:id,APP_ORIGIN:publicOrigin,RESEND_API_KEY:'fake-isolated-key',RESEND_FROM_EMAIL:'',RESEND_SANDBOX_TO:sandboxTo,TEST_RESEND_ORIGIN:`http://127.0.0.1:${mailAddress.port}`},windowsHide:true,stdio:['ignore','pipe','pipe']});
+  const server=spawn(process.execPath,['--import','./tests/fixtures/resend-transport.mjs','node_modules/next/dist/bin/next','start','-p',String(port),'-H','127.0.0.1'],{env:{...process.env,NODE_ENV:'production',DATABASE_URL:fixture.connectionString,VERCEL:'',TRUSTED_CLIENT_IP_HEADER:'x-forwarded-for',PLATFORM_ADMIN_USER_ID:id,APP_ORIGIN:publicOrigin,RESEND_API_KEY:'fake-isolated-key',RESEND_FROM_EMAIL:'',RESEND_SANDBOX_TO:sandboxTo,TEST_RESEND_ORIGIN:`http://127.0.0.1:${mailAddress.port}`},windowsHide:true,stdio:['ignore','pipe','pipe']});
   let output='';server.stdout.on('data',chunk=>{output=(output+chunk).slice(-10000);});server.stderr.on('data',chunk=>{output=(output+chunk).slice(-10000);});
   t.after(async()=>{try{releases.forEach(release=>release());if(server.exitCode===null){const exited=once(server,'exit');server.kill();await exited;}}finally{mailServer.closeAllConnections();await new Promise<void>(resolve=>mailServer.close(()=>resolve()));await fixture.cleanup();}});
   async function waitFor(check:()=>Promise<boolean>|boolean,label:string){for(let i=0;i<150;i++){if(await check())return;await new Promise(resolve=>setTimeout(resolve,20));}assert.fail(label);}
   await waitFor(async()=>{try{return(await fetch(`${origin}/login`)).ok;}catch{return false;}},'Servidor indisponível');
-  const post=(path:string,body:unknown,cookie='')=>fetch(`${origin}/api/v1/auth/${path}`,{method:'POST',headers:{Origin:publicOrigin,'Content-Type':'application/json',Cookie:cookie},body:JSON.stringify(body),signal:AbortSignal.timeout(5000)});
+  const post=(path:string,body:unknown,cookie='',ip='192.0.2.1')=>fetch(`${origin}/api/v1/auth/${path}`,{method:'POST',headers:{Origin:publicOrigin,'Content-Type':'application/json',Cookie:cookie,'x-forwarded-for':ip},body:JSON.stringify(body),signal:AbortSignal.timeout(5000)});
   const clearLimits=async(email:string,type:string,preserve?:string)=>{
     const keys=[`${type}:cooldown:${email}`,`${type}:email:${email}`,'auth-email:second','auth-email:minute','auth-email:day','auth-email:requests'].filter(key=>key!==preserve);
     await query(storage,'DELETE FROM auth_rate_limits WHERE key=ANY($1::text[])',[keys.map(key=>createHash('sha256').update(key).digest('hex'))]);
@@ -136,7 +136,29 @@ test('links transacionais completos em sandbox, privacidade temporal e falhas do
     release();assert.equal((await post('verify-email',{token:token(mail)})).status,200);
     assert.equal((await post('verify-email',{token:token(mail)})).status,400);
   });
-  await t.test('limite global de recuperação mantém resposta genérica e impede tentativas sem IP confiável',async()=>{
+  await t.test('IP no limite bloqueia login e cadastro, e descarta a recuperação antes da quota de e-mail', async () => {
+    const ip = '192.0.2.77';
+    const email = 'ip-limit@example.com';
+    const body = { email, senha: password, nomeUsuario: 'Conta limite', nomeEmpresa: 'Casa limite' };
+    const before = messages.length;
+    for (const [operation, count] of [['login', 100], ['register', 20], ['password_reset', 20]] as const) {
+      const key = digest(`${operation}:source:${ip}`);
+      await query(storage, 'INSERT INTO auth_rate_limits(key,count,window_start) VALUES ($1,$2,$3)', [key, count, Date.now()]);
+      const route = operation === 'password_reset' ? 'forgot-password' : operation;
+      const response = await post(route, body, '', ip);
+      assert.equal(response.status, operation === 'password_reset' ? 200 : 429);
+      const bucket = () => query(storage, 'SELECT count,xmin::text AS version FROM auth_rate_limits WHERE key=$1', [key]);
+      const saturated = await bucket();
+      assert.equal(saturated[0].count, count + 1);
+      assert.equal((await post(route, body, '', ip)).status, response.status);
+      assert.deepEqual(await bucket(), saturated, 'rejeições repetidas não reescrevem a linha saturada');
+    }
+    assert.equal(messages.length, before);
+    assert.equal((await query(storage, 'SELECT id FROM usuarios WHERE email=$1', [email])).length, 0);
+    assert.equal((await query(storage, 'SELECT key FROM auth_rate_limits WHERE key=$1', [digest(`password_reset:cooldown:${email}`)])).length, 0);
+    assert.equal((await post('login', body)).status, 401, 'outra origem ainda pode autenticar');
+  });
+  await t.test('limite global de recuperação mantém resposta genérica e impede tentativas',async()=>{
     const before=messages.length;
     for(const type of ['password_reset','email_verification']) {
       const key=digest(`${type}:request:global`);

@@ -32,7 +32,8 @@ for (const file of files) {
     if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(node.expression) && node.expression.text === 'require')) && node.arguments[0] && ts.isStringLiteral(node.arguments[0])) dependency(node.arguments[0].text);
     if (ts.isPropertyAccessExpression(node) && node.expression.getText(ast) === 'process' && node.name.text === 'env') {
       const access = node.parent;
-      const publicAccess = ts.isPropertyAccessExpression(access) && (access.name.text.startsWith('NEXT_PUBLIC_') || access.name.text === 'NODE_ENV');
+      // This client currently needs no environment-supplied configuration.
+      const publicAccess = ts.isPropertyAccessExpression(access) && access.name.text === 'NODE_ENV';
       if (!publicAccess) serverModules.add(file);
     }
     ts.forEachChild(node, visit);

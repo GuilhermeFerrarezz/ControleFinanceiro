@@ -6,13 +6,19 @@ export class SecurityLimitError extends InputError {
   readonly status = 429;
 }
 
+export function honeypotResponse(body: Record<string, unknown>) {
+  if (body.website === undefined || body.website === '') return null;
+  return Response.json({ message: 'Solicitação recebida.' }, { headers: { 'Cache-Control': 'no-store' } });
+}
+
 // Only enable after the ingress overwrites this header and blocks direct access.
 // Never infer trust from a client-supplied X-Forwarded-For header.
-export function trustedClientAddress(request: Request, header = process.env.TRUSTED_CLIENT_IP_HEADER) {
+export function trustedClientAddress(request: Request, header = process.env.VERCEL === '1'
+  ? 'x-vercel-forwarded-for' : process.env.TRUSTED_CLIENT_IP_HEADER) {
   if (!header) return null;
   const address = request.headers.get(header)?.trim() ?? '';
   const family = isIP(address);
-  if (!family) throw new InputError('Endereço de origem indisponível. Confira a configuração do proxy.');
+  if (!family || address.includes('%')) throw new InputError('Endereço de origem indisponível. Confira a configuração do proxy.');
   return family === 6 ? new URL(`http://[${address}]/`).hostname : address;
 }
 

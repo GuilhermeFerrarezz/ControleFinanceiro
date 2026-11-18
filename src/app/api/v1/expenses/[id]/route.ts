@@ -5,10 +5,10 @@ import { changeExpense, ExpenseError, uuidValue, validateExpense, versionValue }
 type Context = { params: Promise<{ id: string }> };
 async function mutate(request: Request, context: Context, remove: boolean) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
-  const user = await currentUser();
-  if (!user) return jsonError('Entre na sua conta para continuar.', 401);
-  if (!user.empresaId) return jsonError('Selecione um restaurante para continuar.', 403);
   try {
+    const user = await currentUser();
+    if (!user) return jsonError('Entre na sua conta para continuar.', 401);
+    if (!user.empresaId) return jsonError('Selecione um restaurante para continuar.', 403);
     const id = uuidValue((await context.params).id);
     const body = await readBody(request, 32768);
     if (body.expectedEmpresaId !== undefined && body.expectedEmpresaId !== user.empresaId) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);

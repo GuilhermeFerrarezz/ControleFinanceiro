@@ -7,9 +7,9 @@ import { inTransaction } from '@/src/lib/postgres';
 import { setSessionEmpresa } from '@/src/models/RefreshToken';
 export async function POST(request: Request) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
-  const user = await currentUser();
-  if (!user) return jsonError('Entre na sua conta para aceitar o convite.', 401);
   try {
+    const user = await currentUser();
+    if (!user) return jsonError('Entre na sua conta para aceitar o convite.', 401);
     const { token } = await readBody(request);
     const session = (await cookies()).get(SESSION_COOKIE)?.value || '';
     await inTransaction(async transaction => {

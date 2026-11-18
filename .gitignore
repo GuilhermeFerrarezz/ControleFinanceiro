@@ -37,6 +37,7 @@ yarn-error.log*
 # Local data and sessions must never be committed
 *.sqlite
 *.sqlite-*
+*.session.sql
 .backups/
 
 # vercel

@@ -10,9 +10,11 @@ export async function consumeLimit(key: string, limit: number, windowMs: number)
   const { rows } = await db.query<{ count: number }>(
     `INSERT INTO auth_rate_limits (key,count,window_start) VALUES ($1,1,$2)
      ON CONFLICT (key) DO UPDATE SET
-       count=CASE WHEN auth_rate_limits.window_start <= $3 THEN 1 ELSE LEAST(auth_rate_limits.count,$4)+1 END,
+       count=CASE WHEN auth_rate_limits.window_start <= $3 THEN 1 ELSE auth_rate_limits.count+1 END,
        window_start=CASE WHEN auth_rate_limits.window_start <= $3 THEN $2 ELSE auth_rate_limits.window_start END
+     WHERE auth_rate_limits.window_start <= $3 OR auth_rate_limits.count <= $4
      RETURNING count`, [hashedKey, now, now - windowMs, limit]);
-  return rows[0].count <= limit;
+  // A saturated bucket rejects subsequent requests without repeatedly rewriting its row.
+  return rows.length === 1 && rows[0].count <= limit;
 }
 let lastCleanup = 0;

@@ -74,6 +74,8 @@ Os limites de 15 envios/minuto e 100 por janela fixa de 24 horas continuam ativo
 
 Quando tiver um domínio verificado no Resend, remova `RESEND_SANDBOX_TO` e defina `RESEND_FROM_EMAIL` com um remetente desse domínio. Os envios voltarão a usar o e-mail de cada conta. Consulte a [restrição oficial do sandbox](https://resend.com/docs/knowledge-base/403-error-resend-dev-domain).
 
+Na Vercel, use o sandbox em **Preview**, com um banco separado das contas reais. O build de **Production** recusa o redirecionamento para uma caixa única porque ela receberia também os links de recuperação de senha de todos os clientes.
+
 ```sh
 npm run db:migrate
 npm run dev
@@ -133,7 +135,7 @@ O CSV e o ZIP preservam o conteúdo das embalagens em Produtos (JSON). No Excel,
 
 ### Segurança de implantação
 
-A [auditoria AppSec de 14/11/2026](docs/security-review-2026-11-14.md) documenta as correções e os limites da verificação. Configure HTTPS e `APP_ORIGIN` na implantação. Se houver proxy confiável, `TRUSTED_CLIENT_IP_HEADER=x-real-ip` habilita limites adicionais por origem; o proxy precisa sobrescrever esse cabeçalho e impedir acesso direto ao servidor. Sem proxy confiável, deixe a variável ausente: valores de IP fornecidos pelo cliente não devem ser confiados.
+Configure HTTPS e `APP_ORIGIN` na implantação. Na Vercel, com a variável de sistema `VERCEL=1`, a aplicação lê automaticamente o IP de `x-vercel-forwarded-for`. Em outra hospedagem, configure `TRUSTED_CLIENT_IP_HEADER=x-forwarded-for` somente se o proxy substituir o cabeçalho por um único IP e impedir acesso direto ao servidor. Sem esse ingresso, mantenha a variável ausente. Os limites globais e por e-mail continuam ativos. [Cabeçalhos de requisição da Vercel](https://vercel.com/docs/headers/request-headers#x-vercel-forwarded-for)
 
 Login e cadastro têm limites por conta e concorrência bcrypt limitada. Exportações têm até duas operações simultâneas por processo e 60 solicitações por usuário/minuto. PDFs muito extensos e planilhas acima do orçamento de células/dados retornam uma orientação para reduzir o período ou usar CSV em partes. Limites por rede, timeouts, quotas de banco e proteção DDoS devem existir também no ingresso.
 

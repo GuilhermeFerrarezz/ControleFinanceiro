@@ -7,7 +7,7 @@ import { clearSession, cookieOptions, createSession, jsonError, revokeSession, S
 import { cookies } from 'next/headers';
 import { emailValue, InputError, passwordValue, readBody } from '@/src/lib/validation';
 import { consumeLimit } from '@/src/lib/rate-limit';
-import { limitAuthSource, SecurityLimitError, withPasswordBudget } from '@/src/lib/security-limits';
+import { honeypotResponse, limitAuthSource, SecurityLimitError, withPasswordBudget } from '@/src/lib/security-limits';
 import { isPlatformOwner } from '@/src/lib/platform-owner';
 
 // A fixed hash keeps nonexistent accounts on the same bcrypt comparison path.
@@ -15,8 +15,10 @@ const dummyHash = bcrypt.hashSync('not-a-real-user-password', 10);
 export async function POST(request: Request) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
   try {
-    await limitAuthSource(request, 'login');
     const body = await readBody(request);
+    const ignored = honeypotResponse(body);
+    if (ignored) return ignored;
+    await limitAuthSource(request, 'login');
     const email = emailValue(body.email);
     const senha = passwordValue(body.senha);
     if (body.remember !== undefined && typeof body.remember !== 'boolean') throw new InputError('Opção de sessão inválida.');
