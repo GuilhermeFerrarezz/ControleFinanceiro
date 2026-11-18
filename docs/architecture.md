@@ -27,7 +27,7 @@ Convites são compartilhados manualmente por link; seu envio continua manual. O 
 
 ## Confirmação de e-mail e recuperação de senha
 
-O cadastro de donos e funcionários cria um token `email_verification` na mesma transação da conta e envia o link pelo Resend após o commit. `usuarios.email_verified_at` permanece nulo até a confirmação. Contas existentes continuam podendo entrar; a confirmação não muda a política de acesso atual.
+O cadastro de donos e funcionários cria um token `email_verification` na mesma transação da conta e envia o link pelo Resend após o commit. `usuarios.email_verified_at` permanece nulo até a confirmação. O acesso sem confirmação é permitido por 7 dias (168 horas) contados de `usuarios.created_at`, inclusive para contas existentes. A partir do limite, login e sessões já abertas ficam bloqueados no servidor até confirmar o e-mail. Não há alteração automática de `ativo`: a confirmação não reativa contas suspensas. Recuperar senha e pedir novos links não reiniciam o prazo. O link de confirmação mantém sua validade independente de 24 horas e pode ser solicitado novamente mesmo após o bloqueio.
 
 `src/models/AuthToken.ts` persiste somente SHA-256 de 32 bytes aleatórios gerados por `node:crypto`. `auth_tokens` permite um token por usuário e finalidade: confirmação por 24 horas e recuperação por 30 minutos. Reemissão substitui o token anterior. Emissão e consumo bloqueiam a identidade na mesma ordem; consumo, atualização do usuário e remoção do token acontecem em uma transação. A troca de senha usa bcrypt com o limite de concorrência existente e revoga todas as sessões do usuário.
 
@@ -131,3 +131,14 @@ Login e cadastro têm limites globais distribuídos de 300 e 30 tentativas/minut
 Banco, envio de e-mail e identidade administrativa têm marcadores `server-only`. Os tipos públicos do painel ficam em `platform-shared.ts`, sem depender do repositório SQL. A suíte verifica o grafo de imports estáticos/dinâmicos para impedir acesso de componentes de cliente aos módulos de servidor e dependências circulares. Scripts Node que importam serviços do servidor precisam de `--conditions=react-server`; os comandos npm e exemplos acima já incluem essa condição.
 
 Consulte a revisão atual em [Auditoria AppSec](security-appsec-review-2026-11-18.md). Revisões datadas anteriores registram o estado observado naquela ocasião.
+
+
+## Exclusão administrativa de restaurantes
+
+A administração da plataforma também permite excluir restaurantes previamente desativados. A ação `delete-restaurant` em `/api/v1/platform-admin` exige nome exato, senha, estado atual e autoridade administrativa revalidada sob bloqueio. A transação remove os dados vinculados e as sessões daquele contexto, preserva identidades e outros restaurantes e registra `restaurant_deleted` em `platform_audit`. A limpeza de estoque respeita a ordem das chaves estrangeiras restritivas antes de apagar o catálogo. Falha em qualquer etapa desfaz a exclusão inteira. Consulte [Administração](platform-admin.md).
+
+## Prazo obrigatório de confirmação
+
+A regra está centralizada em `src/lib/email-verification-policy.ts` e usa o relógio do PostgreSQL. É conferida ao resolver sessões, criar novas sessões, trocar o restaurante e validar vínculos/credenciais em mutações. Não depende de cron, temporizador do navegador ou campo enviado pelo cliente. Exatamente após 168 horas sem confirmação, as APIs de negócio recusam a sessão. Dados e vínculos permanecem preservados.
+
+A tela de login mantém apenas “Esqueci minha senha” como link de recuperação. Após validar a senha, uma conta cujo prazo acabou recebe o código `EMAIL_VERIFICATION_REQUIRED`, sem nova sessão; o formulário encaminha para `/verify-email?reason=expired`, com explicação e solicitação de novo link. Senha incorreta e conta inexistente continuam com resposta genérica. O lembrete dentro do sistema informa o prazo de sete dias. Confirmação e recuperação permanecem públicas e mantêm os rate limits existentes.

@@ -25,6 +25,6 @@ export async function PATCH(request: Request) {
   try {
     await requirePlatformAdmin();
     const result = await changePlatform(await readBody(request));
-    return NextResponse.json({message:result?.deletionMode==='anonymized' ? 'Conta excluída. Os dados de identificação foram removidos e o histórico foi preservado.' : result?.deletionMode==='removed' ? 'Conta excluída definitivamente.' : 'Alteração salva com sucesso.',...result},{headers:{'Cache-Control':'no-store'}});
+    return NextResponse.json({message:result && 'restaurantDeleted' in result ? 'Restaurante e seus dados excluídos definitivamente. As contas dos usuários foram preservadas.' : result?.deletionMode==='anonymized' ? 'Conta excluída. Os dados de identificação foram removidos e o histórico foi preservado.' : result?.deletionMode==='removed' ? 'Conta excluída definitivamente.' : 'Alteração salva com sucesso.',...result},{headers:{'Cache-Control':'no-store'}});
   } catch(error) { return failure(error); }
 }

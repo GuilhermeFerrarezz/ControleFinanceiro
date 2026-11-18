@@ -1,5 +1,6 @@
 import { db } from '../lib/db';
 import type { Queryable } from '../lib/postgres';
+import { EMAIL_ACCESS_SQL } from '../lib/email-verification-policy';
 export type RestaurantRole = 'owner' | 'employee';
 export interface IMembership { id: string; userId: string; empresaId: string; role: RestaurantRole }
 export interface IRestaurantAccess { id: string; nome: string; role: RestaurantRole }
@@ -8,7 +9,7 @@ export async function createMembership(userId: string, empresaId: string, role: 
   await client.query('INSERT INTO restaurant_members (user_id,empresa_id,role) VALUES ($1,$2,$3) ON CONFLICT (user_id,empresa_id) DO NOTHING', [userId, empresaId, role]);
 }
 export async function findMembership(userId: string, empresaId: string, client: Queryable = db, lock = false) {
-  return (await client.query<IMembership>(`SELECT m.id,m.user_id AS "userId",m.empresa_id AS "empresaId",m.role FROM restaurant_members m JOIN usuarios u ON u.id=m.user_id JOIN empresas e ON e.id=m.empresa_id WHERE m.user_id=$1 AND m.empresa_id=$2 AND u.ativo AND e.ativo ${lock ? 'FOR SHARE OF m,u,e' : ''}`, [userId, empresaId])).rows[0] ?? null;
+  return (await client.query<IMembership>(`SELECT m.id,m.user_id AS "userId",m.empresa_id AS "empresaId",m.role FROM restaurant_members m JOIN usuarios u ON u.id=m.user_id JOIN empresas e ON e.id=m.empresa_id WHERE m.user_id=$1 AND m.empresa_id=$2 AND u.ativo AND e.ativo AND ${EMAIL_ACCESS_SQL} ${lock ? 'FOR SHARE OF m,u,e' : ''}`, [userId, empresaId])).rows[0] ?? null;
 }
 export async function hasMemberships(userId: string) {
   return (await db.query<{ exists: boolean }>('SELECT EXISTS (SELECT 1 FROM restaurant_members WHERE user_id=$1)', [userId])).rows[0].exists;

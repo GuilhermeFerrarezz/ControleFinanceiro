@@ -18,6 +18,10 @@ export async function updateEmpresa(id: string, nome: string, cnpj: string | nul
   await client.query('UPDATE empresas SET nome=$2,cnpj=$3,updated_at=CURRENT_TIMESTAMP WHERE id=$1', [id, nome, cnpj]);
 }
 export async function deleteEmpresa(id: string, client: Queryable) {
+  // Remove children with restrictive FKs before cascading the catalog. All
+  // statements share the caller's transaction, including the admin audit.
+  await client.query('DELETE FROM inventory_movements WHERE empresa_id=$1', [id]);
+  await client.query('DELETE FROM inventory_products WHERE empresa_id=$1', [id]);
   await client.query('DELETE FROM expense_audit WHERE empresa_id=$1', [id]);
   await client.query('DELETE FROM expenses WHERE empresa_id=$1', [id]);
   // Keep accounts and sessions usable, selecting another accessible restaurant when available.

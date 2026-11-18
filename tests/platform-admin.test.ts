@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID, createHash } from 'node:crypto';
+import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
@@ -214,5 +214,67 @@ test('admin exclusivo, cotas concorrentes e suspensão reversível', {timeout:18
     }finally{await lock.query('ROLLBACK');lock.release();if(pending)await pending;}
     adminCookie=cookie(await post('/auth/login',{email:'platform@example.com',senha:password}));
     assert.equal((await send('/admin','GET',undefined,adminCookie)).status,200);
+  });
+  await t.test('excluir restaurante exige administrador, senha, nome atual e desativação prévia',async()=>{
+    await clearAdminAttempts();
+    const id=randomUUID();const name='Restaurante protegido';const userId=await provision('restaurant-delete-guard@platform.example');
+    await query(storage,'INSERT INTO empresas(id,nome) VALUES ($1,$2)',[id,name]);
+    await query(storage,"INSERT INTO restaurant_members(user_id,empresa_id,role) VALUES ($1,$2,'owner')",[userId,id]);
+    const ordinary=cookie(await post('/auth/login',{email:'restaurant-delete-guard@platform.example',senha:password}));
+    const body={action:'delete-restaurant',id,name,confirmation:name,expectedActive:true,senha:password};
+    assert.equal((await patch(body,'')).status,401);
+    assert.equal((await patch(body,ordinary)).status,403);
+    assert.equal((await patch(body,adminCookie,'https://hostil.invalid')).status,403);
+    assert.equal((await patch({...body,senha:'errada'})).status,403);
+    assert.equal((await patch({...body,confirmation:undefined})).status,400);
+    assert.equal((await patch({...body,confirmation:'EXCLUIR'})).status,400);
+    assert.equal((await patch(body)).status,409,'restaurante ativo não pode ser apagado');
+    assert.equal((await change({action:'restaurant',id,ativo:false,expectedActive:true})).status,200);
+    assert.equal((await patch(body)).status,409,'situação antiga deve ser rejeitada');
+    assert.equal((await patch({...body,expectedActive:false,name:'Nome antigo',confirmation:'Nome antigo'})).status,409);
+    assert.equal((await query(storage,'SELECT id FROM empresas WHERE id=$1',[id])).length,1);
+    assert.equal((await query(storage,"SELECT id FROM platform_audit WHERE target_id=$1 AND action='restaurant_deleted'",[id])).length,0);
+  });
+  await t.test('exclusão é atômica, remove dados vinculados e preserva usuários, outros restaurantes e histórico administrativo',async()=>{
+    await clearAdminAttempts();
+    const owner=await provision('restaurant-delete-owner@platform.example');const employee=await provision('restaurant-delete-employee@platform.example');
+    const target=randomUUID();const other=randomUUID();const name='Casa a excluir';
+    await query(storage,'INSERT INTO empresas(id,nome,ativo) VALUES ($1,$2,FALSE),($3,\'Casa preservada\',TRUE)',[target,name,other]);
+    await query(storage,"INSERT INTO restaurant_members(user_id,empresa_id,role) VALUES ($1,$3,'owner'),($2,$3,'employee'),($1,$4,'owner')",[owner,employee,target,other]);
+    await query(storage,'UPDATE usuarios SET empresa_id=$2 WHERE id=$1',[owner,target]);
+    for(const restaurant of [target,other]) {
+      const expense=randomUUID();const product=randomUUID();
+      await query(storage,"INSERT INTO expenses(id,empresa_id,created_by,updated_by,request_id,description,amount_cents,date,category) VALUES ($1,$2,$3,$3,$4,'Compra',1234,'2026-11-18','outros')",[expense,restaurant,owner,randomUUID()]);
+      await query(storage,"INSERT INTO expense_audit(expense_id,empresa_id,actor_id,action) VALUES ($1,$2,$3,'created')",[expense,restaurant,owner]);
+      await query(storage,"INSERT INTO daily_revenue(empresa_id,date,amount_cents) VALUES ($1,'2026-11-18',3456)",[restaurant]);
+      await query(storage,"INSERT INTO restaurant_catalog(id,empresa_id,kind,name,normalized_name) VALUES ($1,$2,'product','Arroz','arroz')",[product,restaurant]);
+      await query(storage,"INSERT INTO inventory_products(empresa_id,product_id,unit) VALUES ($1,$2,'kg')",[restaurant,product]);
+      await query(storage,"INSERT INTO inventory_movements(empresa_id,product_id,actor_id,request_id,quantity,date,source) VALUES ($1,$2,$3,$4,1,'2026-11-18','opening')",[restaurant,product,owner,randomUUID()]);
+      await query(storage,"INSERT INTO restaurant_invitations(empresa_id,invited_by,email,token_hash,expires_at) VALUES ($1,$2,'future-delete@platform.example',$3,clock_timestamp()+interval '1 day')",[restaurant,owner,createHash('sha256').update(randomUUID()).digest('hex')]);
+    }
+    const rawOther=randomBytes(32).toString('base64url');const staleTarget=randomBytes(32).toString('base64url');
+    for(const [token,restaurant] of [[rawOther,other],[staleTarget,target]]) await query(storage,"INSERT INTO refresh_tokens(token,user_id,empresa_id,expires_at) VALUES ($1,$2,$3,clock_timestamp()+interval '1 day')",[createHash('sha256').update(token).digest('hex'),owner,restaurant]);
+    const tables=['expenses','expense_audit','daily_revenue','restaurant_catalog','inventory_products','inventory_movements','restaurant_invitations','restaurant_members','refresh_tokens'];
+    const otherBefore=await Promise.all(tables.map(table=>query(storage,`SELECT * FROM ${table} WHERE empresa_id=$1 ORDER BY 1`,[other])));
+    const usersBefore=await query(storage,'SELECT id,nome,email,ativo,senha FROM usuarios ORDER BY id');
+    const before=await overview();const body={action:'delete-restaurant',id:target,name,confirmation:name,expectedActive:false};
+    await query(storage,"CREATE FUNCTION reject_restaurant_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action='restaurant_deleted' THEN RAISE EXCEPTION 'isolated rollback test'; END IF; RETURN NEW; END $$");
+    await query(storage,'CREATE TRIGGER reject_restaurant_audit BEFORE INSERT ON platform_audit FOR EACH ROW EXECUTE FUNCTION reject_restaurant_audit()');
+    try {
+      assert.equal((await change(body)).status,500);
+      for(const table of tables) assert.ok((await query(storage,`SELECT * FROM ${table} WHERE empresa_id=$1`,[target])).length>0,`${table} deve ser restaurado após rollback`);
+    } finally {
+      await query(storage,'DROP TRIGGER reject_restaurant_audit ON platform_audit');await query(storage,'DROP FUNCTION reject_restaurant_audit()');
+    }
+    const responses=await Promise.all([change(body),change(body)]);assert.deepEqual(responses.map(row=>row.status).sort(),[200,404]);
+    assert.equal((await query(storage,'SELECT id FROM empresas WHERE id=$1',[target])).length,0);
+    for(const table of tables) assert.equal((await query(storage,`SELECT * FROM ${table} WHERE empresa_id=$1`,[target])).length,0,table);
+    assert.deepEqual(await Promise.all(tables.map(table=>query(storage,`SELECT * FROM ${table} WHERE empresa_id=$1 ORDER BY 1`,[other]))),otherBefore);
+    assert.deepEqual(await query(storage,'SELECT id,nome,email,ativo,senha FROM usuarios ORDER BY id'),usersBefore);
+    assert.equal((await query(storage,'SELECT empresa_id FROM usuarios WHERE id=$1',[owner]))[0].empresa_id,null);
+    assert.equal((await send('/api/v1/private','GET',undefined,`session=${rawOther}`)).status,200);
+    assert.equal((await send('/api/v1/private','GET',undefined,`session=${staleTarget}`)).status,401);
+    const after=await overview();assert.equal(after.totals.restaurants,before.totals.restaurants-1);assert.equal(after.totals.users,before.totals.users);
+    const audit=await query<{actor_id:string;after:{kind:string}}>(storage,"SELECT actor_id,after FROM platform_audit WHERE action='restaurant_deleted' AND target_id=$1",[target]);assert.equal(audit.length,1);assert.equal(audit[0].actor_id,adminId);assert.equal(audit[0].after.kind,'restaurant');
   });
 });

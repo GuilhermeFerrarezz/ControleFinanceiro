@@ -131,7 +131,7 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     const verificationCookie = (unverifiedLogin.headers.get('set-cookie') || '').split(';')[0];
     const beforeVerification = await (await fetch(`${origin}/api/v1/private`, { headers: { Cookie: verificationCookie } })).json();
     assert.equal(beforeVerification.user.emailVerified, false);
-    assert.match(await (await fetch(`${origin}/dashboard`, { headers: { Cookie: verificationCookie } })).text(), /Seu e-mail ainda não foi confirmado/);
+    assert.match(await (await fetch(`${origin}/dashboard`, { headers: { Cookie: verificationCookie } })).text(), /Confirme seu e-mail em até 7 dias/);
     const preview = await fetch(`${origin}/api/v1/auth/verify-email?token=${token}`, { redirect: 'manual' });
     assert.equal(preview.status, 303);
     assert.equal((await query(storage, 'SELECT id FROM auth_tokens WHERE user_id=$1', [user.id])).length, 1);
@@ -144,7 +144,7 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     assert.ok((await query(storage, 'SELECT email_verified_at FROM usuarios WHERE id=$1', [user.id]))[0].email_verified_at);
     const afterVerification = await (await fetch(`${origin}/api/v1/private`, { headers: { Cookie: verificationCookie } })).json();
     assert.equal(afterVerification.user.emailVerified, true);
-    assert.doesNotMatch(await (await fetch(`${origin}/dashboard`, { headers: { Cookie: verificationCookie } })).text(), /Seu e-mail ainda não foi confirmado/);
+    assert.doesNotMatch(await (await fetch(`${origin}/dashboard`, { headers: { Cookie: verificationCookie } })).text(), /Confirme seu e-mail em até 7 dias/);
     assert.equal((await query(storage, 'SELECT id FROM auth_tokens WHERE user_id=$1', [user.id])).length, 0);
     for (const [key, count] of [['auth-email:second', 2], ['auth-email:minute', 15], ['auth-email:day',100]] as const) {
       const hashedKey = createHash('sha256').update(key).digest('hex');
@@ -586,5 +586,52 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
       await lock.query('ROLLBACK'); lock.release();
       if (pending) await pending;
     }
+  });
+  await t.test('e-mail deve ser confirmado em 7 dias, inclusive com sessão aberta; recuperar senha não contorna o bloqueio', async () => {
+    const email = 'verification-deadline@example.com';
+    const senha = 'senha-prazo-verificacao-123';
+    assert.equal((await post('/auth/register', { email, senha, nomeUsuario: 'Prazo de confirmação', nomeEmpresa: 'Casa com prazo' })).status, 201);
+    const login = await post('/auth/login', { email, senha, remember: true }); assert.equal(login.status, 200);
+    const cookie = (login.headers.get('set-cookie') || '').split(';')[0];
+    const [account] = await query<{ id: string }>(storage, 'SELECT id FROM usuarios WHERE email=$1', [email]);
+    await query(storage, "UPDATE usuarios SET created_at=clock_timestamp()-interval '167 hours' WHERE id=$1", [account.id]);
+    assert.equal((await fetch(`${origin}/api/v1/private`, { headers: { Cookie: cookie } })).status, 200);
+    await query(storage, "UPDATE usuarios SET created_at=clock_timestamp()-interval '168 hours' WHERE id=$1", [account.id]);
+    const root = 'src/app/api/v1';
+    for (const file of (await readdir(root, { recursive: true })).filter(file => file.endsWith('route.ts') && !file.startsWith('auth'))) {
+      const source = await readFile(join(root, file), 'utf8');
+      const path = file.replaceAll('\\', '/').replace('/route.ts', '').replaceAll('[id]', '11111111-1111-4111-8111-111111111111');
+      for (const [, method] of source.matchAll(/export async function (GET|POST|PATCH|DELETE)\(/g)) {
+        const response = await fetch(`${origin}/api/v1/${path}`, { method, headers: { Cookie: cookie, Origin: origin, 'Content-Type': 'application/json' }, ...(method === 'GET' ? {} : { body: '{}' }) });
+        assert.equal(response.status, 401, `${method} ${path} deve bloquear a sessão após o prazo`);
+      }
+    }
+    assert.equal((await fetch(`${origin}/dashboard`, { headers: { Cookie: cookie }, redirect: 'manual' })).status, 307);
+    assert.equal((await post('/auth/login', { email, senha: 'senha-incorreta' })).status, 401);
+    const blocked = await post('/auth/login', { email, senha }); assert.equal(blocked.status, 403);
+    assert.equal((await blocked.json()).code, 'EMAIL_VERIFICATION_REQUIRED');
+    assert.match(blocked.headers.get('set-cookie') || '', /Max-Age=0/);
+    assert.equal((await fetch(`${origin}/verify-email?reason=expired`)).status, 200);
+    const html = await (await fetch(`${origin}/login`)).text();
+    assert.doesNotMatch(html, /href="\/verify-email"/); assert.match(html, /href="\/forgot-password"/);
+    const resend = await post('/auth/resend-verification', { email }); assert.equal(resend.status, 200);
+    assert.deepEqual(await resend.json(), await (await post('/auth/resend-verification', { email: 'absent-deadline@example.com' })).json());
+    const issue = async (type: 'password_reset' | 'email_verification') => {
+      const client = await storage.connect();
+      try { await client.query('BEGIN'); const token = await issueAuthToken(account.id, type, client); await client.query('COMMIT'); return token; }
+      finally { await client.query('ROLLBACK'); client.release(); }
+    };
+    const reset = await issue('password_reset');
+    const newPassword = 'senha-nova-prazo-123';
+    assert.equal((await post('/auth/reset-password', { token: reset, senha: newPassword })).status, 200);
+    assert.equal((await post('/auth/login', { email, senha: newPassword })).status, 403);
+    const verification = await issue('email_verification');
+    await query(storage, 'UPDATE usuarios SET ativo=FALSE WHERE id=$1', [account.id]);
+    assert.equal((await post('/auth/verify-email', { token: verification })).status, 400);
+    assert.equal((await query(storage, 'SELECT ativo FROM usuarios WHERE id=$1', [account.id]))[0].ativo, false);
+    await query(storage, 'UPDATE usuarios SET ativo=TRUE WHERE id=$1', [account.id]);
+    assert.equal((await post('/auth/verify-email', { token: verification })).status, 200);
+    assert.equal((await post('/auth/login', { email, senha: newPassword })).status, 200);
+    assert.equal((await post('/auth/verify-email', { token: verification })).status, 400);
   });
 });

@@ -11,6 +11,7 @@ Sistema para organizar a gestão financeira de restaurantes, pensado para acompa
 - **Funcionários:** abrem o convite, criam uma conta ou entram com uma conta existente e passam a fazer parte do restaurante.
 - **Acessos individuais:** cada pessoa usa seu próprio e-mail e senha. A senha deve ter pelo menos 6 caracteres.
 - **Mais de um restaurante:** uma conta pode participar de diferentes restaurantes e alternar entre eles no painel.
+- **Confirmação de e-mail:** confirme em até 7 dias após o cadastro para manter o acesso. Após esse prazo, o acesso fica bloqueado até confirmar; é possível solicitar um novo link público, válido por 24 horas. Recuperar a senha não elimina esse bloqueio.
 
 A central financeira reúne o resumo dos gastos, valores pagos e a pagar, média diária e gráficos de evolução e categorias. Use o seletor de ano ou as datas para consultar períodos, categorias e situações de pagamento. No gráfico de categorias, clique ou toque em uma fatia para ver seu nome, valor e percentual.
 

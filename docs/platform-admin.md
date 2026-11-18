@@ -2,6 +2,14 @@
 
 O painel `/admin` controla restaurantes e usuários, com ativação/suspensão e limites globais. Não há integração de cobrança: o administrador decide manualmente quando suspender ou reativar.
 
+## Excluir um restaurante
+
+Na aba **Restaurantes**, desative o restaurante e clique em **Excluir restaurante**. A exclusão só é permitida para restaurantes desativados e exige digitar o nome exato e confirmar a senha da conta administradora. O servidor revalida administrador, sessão, senha, nome e situação atual dentro da transação. Uma listagem desatualizada deve ser recarregada antes de confirmar.
+
+Essa ação é irreversível: remove gastos, auditoria financeira, faturamento, cadastros, estoque, movimentações, convites e vínculos daquele restaurante. As sessões que ainda apontarem para ele são revogadas. As contas dos usuários, outros restaurantes e suas sessões/dados são preservados. A exclusão libera a vaga de restaurante, sem alterar o total de usuários. O histórico administrativo registra responsável, restaurante e situação anterior, e permanece após a exclusão.
+
+Para inadimplência, use **Desativar**, que preserva todos os dados e permite reativação. A exclusão serve para remover testes ou encerrar definitivamente um cadastro. Não existe exclusão automática por falta de pagamento.
+
 ## Primeiro acesso
 
 1. Aplique `npm run db:migrate` e crie sua conta pessoal pelo cadastro do site, se ainda não tiver conta.

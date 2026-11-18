@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { findUsuarioByEmail } from '@/src/models/Usuario';
 import { hasMemberships } from '@/src/models/Membership';
 import { userRestaurants } from '@/src/lib/restaurants';
-import { cookieOptions, createSession, jsonError, revokeSession, SESSION_COOKIE, trustedOrigin } from '@/src/lib/auth';
+import { clearSession, cookieOptions, createSession, jsonError, revokeSession, SESSION_COOKIE, trustedOrigin } from '@/src/lib/auth';
 import { cookies } from 'next/headers';
 import { emailValue, InputError, passwordValue, readBody } from '@/src/lib/validation';
 import { consumeLimit } from '@/src/lib/rate-limit';
@@ -24,6 +24,7 @@ export async function POST(request: Request) {
     const usuario = await findUsuarioByEmail(email);
     const valid = await withPasswordBudget(() => bcrypt.compare(senha, usuario ? usuario.senha : dummyHash));
     if (!usuario?.ativo || !valid) return jsonError('Credenciais inválidas.', 401);
+    if (!usuario.emailAccessAllowed) return clearSession(NextResponse.json({ erro: 'Confirme seu e-mail para continuar. O prazo de 7 dias após o cadastro terminou.', code: 'EMAIL_VERIFICATION_REQUIRED' }, { status: 403, headers: { 'Cache-Control': 'no-store' } }));
     const restaurants = await userRestaurants(usuario.id);
     if (!restaurants.length && await hasMemberships(usuario.id) && !isPlatformOwner(usuario.id)) return jsonError('Conta indisponível. Contate o responsável pelo restaurante.', 403);
     const cookieStore = await cookies();

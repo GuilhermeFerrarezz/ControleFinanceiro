@@ -6,7 +6,7 @@ import PasswordInput from './PasswordInput';
 import styles from './auth.module.css';
 import {resolveAuthLinkToken} from '../lib/auth-link';
 
-export default function AccountRecoveryForm({ mode, token: initialToken = '' }: { mode: 'verify' | 'forgot' | 'reset'; token?: string }) {
+export default function AccountRecoveryForm({ mode, token: initialToken = '', verificationExpired = false }: { mode: 'verify' | 'forgot' | 'reset'; token?: string; verificationExpired?: boolean }) {
   const [token,setToken]=useState(initialToken);
   const [ready,setReady]=useState(false);
   const [loading, setLoading] = useState(false);
@@ -44,6 +44,7 @@ export default function AccountRecoveryForm({ mode, token: initialToken = '' }: 
   }
   if (!ready) return <p className={styles.intro} role="status">Preparando seu acesso...</p>;
   return <><span className="eyebrow">Cuidado com seu acesso</span><h1>{title}</h1>
+    {mode === 'verify' && verificationExpired && !hasToken && <p className={styles.ownerNote}>O prazo de 7 dias após o cadastro terminou. Confirme seu e-mail para voltar a acessar o sistema. Solicite um novo link abaixo.</p>}
     <p className={styles.intro}>{mode === 'forgot' ? 'Informe seu e-mail para receber um link válido por 30 minutos.' : mode === 'reset' ? 'Escolha uma senha que você não usa em outros sites.' : hasToken ? 'Confirme abaixo para verificar o endereço da sua conta.' : 'Informe seu e-mail para receber um novo link de confirmação, válido por 24 horas.'}</p>
     {mode === 'reset' && !hasToken ? <p className={styles.error} role="alert">Link inválido ou ausente. <Link href="/forgot-password">Solicitar um novo link</Link></p> :
       <form className={styles.form} onSubmit={submit} aria-busy={loading}>
