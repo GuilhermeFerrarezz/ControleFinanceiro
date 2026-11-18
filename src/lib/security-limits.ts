@@ -17,6 +17,8 @@ export function trustedClientAddress(request: Request, header = process.env.TRUS
 }
 
 export async function limitAuthSource(request: Request, operation: 'login' | 'register') {
+  // A distributed fallback is mandatory even without a trusted IP header.
+  if (!await consumeLimit(`${operation}:global`, operation === 'login' ? 300 : 30, 60_000)) throw new SecurityLimitError('Muitas tentativas. Tente novamente em instantes.');
   const address = trustedClientAddress(request);
   if (address && !await consumeLimit(`${operation}:source:${address}`, operation === 'login' ? 100 : 20,
     operation === 'login' ? 60_000 : 3600_000)) throw new SecurityLimitError('Muitas tentativas desta origem. Tente mais tarde.');

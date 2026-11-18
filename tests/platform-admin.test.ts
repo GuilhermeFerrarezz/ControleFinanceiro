@@ -32,9 +32,10 @@ test('admin exclusivo, cotas concorrentes e suspensão reversível', {timeout:18
     assert.equal((await send('/api/v1/platform-admin')).status,401);
     assert.equal((await patch({action:'settings'} ,'')).status,401);
     assert.equal((await send('/admin')).status,307);
-    const signup=await post('/auth/register',{nomeUsuario:'Dono comum',nomeEmpresa:'Casa protegida',email:'owner@platform.example',senha:password,platformAdmin:true,papel:'admin',role:'superadmin'});assert.equal(signup.status,201);
+    const signup=await post('/auth/register',{nomeUsuario:'Dono comum',nomeEmpresa:'Casa protegida',email:'owner@platform.example',senha:password,platformAdmin:true,platformRole:'ADMIN',papel:'admin',role:'ADMIN'});assert.equal(signup.status,201);
     ownerCookie=cookie(await post('/auth/login',{email:'owner@platform.example',senha:password}));
-    const identity=await(await send('/api/v1/private','GET',undefined,ownerCookie)).json();ownerId=identity.user.id;empresaId=identity.user.empresaId;assert.equal(identity.user.platformAdmin,false);
+    const identity=await(await send('/api/v1/private','GET',undefined,ownerCookie)).json();ownerId=identity.user.id;empresaId=identity.user.empresaId;assert.equal(identity.user.platformAdmin,false);assert.equal(identity.user.platformRole,'USER');
+    const adminIdentity=await(await send('/api/v1/private','GET',undefined,adminCookie)).json();assert.equal(adminIdentity.user.platformRole,'ADMIN');
     assert.equal((await send('/api/v1/platform-admin','GET',undefined,ownerCookie)).status,403);
     assert.equal((await patch({action:'settings',maxRestaurants:9999,maxUsers:9999,senha:password},ownerCookie)).status,403);
     assert.equal((await send('/admin','GET',undefined,ownerCookie)).status,404);
@@ -86,10 +87,13 @@ test('admin exclusivo, cotas concorrentes e suspensão reversível', {timeout:18
   await t.test('cotas são globais, incluem suspensos e não podem ser ultrapassadas por cadastros concorrentes',async()=>{
     let state=await overview();await settings(state.totals.restaurants+1,state.totals.users+10);
     const results=await Promise.all(['one','two'].map(name=>post('/auth/register',{nomeUsuario:`Dono ${name}`,nomeEmpresa:`Casa ${name}`,email:`quota-${name}@platform.example`,senha:password})));
-    assert.deepEqual(results.map(r=>r.status).sort(),[201,400]);
+    assert.deepEqual(results.map(r=>r.status),[201,201]);
+    assert.deepEqual(await results[0].json(),await results[1].json(),'lotação não revela se o e-mail existe');
+    assert.equal((await query(storage,"SELECT id FROM usuarios WHERE email IN ('quota-one@platform.example','quota-two@platform.example')")).length,1);
     state=await overview();assert.equal(state.totals.restaurants,state.settings.maxRestaurants);
     const before=state.totals.users;await settings(state.settings.maxRestaurants+3,before);
-    const denied=await post('/auth/register',{nomeUsuario:'Sem vaga',nomeEmpresa:'Casa sem vaga',email:'full@platform.example',senha:password});assert.equal(denied.status,400);
+    const denied=await post('/auth/register',{nomeUsuario:'Sem vaga',nomeEmpresa:'Casa sem vaga',email:'full@platform.example',senha:password});assert.equal(denied.status,201);
+    assert.equal((await query(storage,"SELECT id FROM usuarios WHERE email='full@platform.example'")).length,0);
     assert.equal((await overview()).totals.restaurants,state.totals.restaurants,'restaurante não fica órfão quando falta vaga de usuário');
     await settings(state.settings.maxRestaurants+3,before+1);
     const invitation=await post('/invitations',{email:'invite-cap@platform.example'},ownerCookie);
@@ -100,8 +104,10 @@ test('admin exclusivo, cotas concorrentes e suspensão reversível', {timeout:18
     const inv=await post('/invitations',{email:'invite-cap@platform.example'},ownerCookie);assert.equal(inv.status,201);const token=(await inv.json()).path.split('/').at(-1);
     const added=await post('/auth/register',{nomeUsuario:'Funcionário limite',email:'invite-cap@platform.example',senha:password,invitationToken:token});assert.equal(added.status,201);
     const nextInv=await post('/invitations',{email:'invite-full@platform.example'},ownerCookie);assert.equal(nextInv.status,201);const nextToken=(await nextInv.json()).path.split('/').at(-1);
-    assert.equal((await post('/auth/register',{nomeUsuario:'Sem espaço',email:'invite-full@platform.example',senha:password,invitationToken:nextToken})).status,400);
-    await settings(0,0);assert.equal((await post('/auth/register',{nomeUsuario:'Sem cadastro',nomeEmpresa:'Bloqueada',email:'zero@platform.example',senha:password})).status,400);
+    assert.equal((await post('/auth/register',{nomeUsuario:'Sem espaço',email:'invite-full@platform.example',senha:password,invitationToken:nextToken})).status,201);
+    assert.equal((await query(storage,"SELECT id FROM usuarios WHERE email='invite-full@platform.example'")).length,0);
+    await settings(0,0);assert.equal((await post('/auth/register',{nomeUsuario:'Sem cadastro',nomeEmpresa:'Bloqueada',email:'zero@platform.example',senha:password})).status,201);
+    assert.equal((await query(storage,"SELECT id FROM usuarios WHERE email='zero@platform.example'")).length,0);
     assert.equal((await send('/api/v1/private','GET',undefined,adminCookie)).status,200,'reduzir cotas não exclui contas existentes');
   });
   await t.test('admin entra mesmo se seu restaurante estiver suspenso',async()=>{

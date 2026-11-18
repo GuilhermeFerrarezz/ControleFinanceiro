@@ -13,7 +13,7 @@ test('histórico fictício preenche campos, preserva dados existentes e não dup
   await fixture.pool.query(`INSERT INTO daily_revenue(empresa_id,date,amount_cents,delivery_meals,order_count)
     VALUES ($1,'2026-01-01',12345,9,4),($1,'2026-01-02',0,NULL,NULL)`, [company]);
   const run = async () => {
-    const result = await promisify(execFile)(process.execPath, ['--import', 'tsx', 'scripts/seed-demo-history.ts', 'demo@history.invalid', company, '2026-01-01', '2026-02-28'], {
+    const result = await promisify(execFile)(process.execPath, ['--conditions=react-server', '--import', 'tsx', 'scripts/seed-demo-history.ts', 'demo@history.invalid', company, '2026-01-01', '2026-02-28'], {
       env: { ...process.env, DATABASE_URL: fixture.connectionString }, windowsHide: true,
     });
     return JSON.parse(result.stdout);

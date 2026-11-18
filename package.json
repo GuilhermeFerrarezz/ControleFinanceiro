@@ -7,9 +7,9 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "db:migrate": "node --env-file-if-exists=.env --import tsx scripts/migrate-db.ts",
-    "admin:configure": "node --env-file-if-exists=.env --import tsx scripts/configure-platform-admin.ts",
-    "test": "node --env-file-if-exists=.env --import tsx --test tests/*.test.ts",
+    "db:migrate": "node --conditions=react-server --env-file-if-exists=.env --import tsx scripts/migrate-db.ts",
+    "admin:configure": "node --conditions=react-server --env-file-if-exists=.env --import tsx scripts/configure-platform-admin.ts",
+    "test": "node --conditions=react-server --env-file-if-exists=.env --import tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -22,7 +22,8 @@
     "pdfkit": "^0.20.2",
     "pg": "^8.23.1",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "server-only": "0.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

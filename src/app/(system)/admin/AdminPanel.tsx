@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import type { PlatformOverview } from '@/src/models/Platform';
+import type { PlatformOverview } from '@/src/lib/platform-shared';
 import { api, errorMessage } from '@/src/lib/api';
 import PasswordInput from '@/src/components/PasswordInput';
 import Icon from '@/src/components/Icon';

@@ -98,7 +98,9 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     const signup = await post('/auth/register', { ...account, nomeUsuario: 'Recuperação', nomeEmpresa: 'Teste recuperação' });
     assert.equal(signup.status, 201);
     const signupBody = await signup.json();
-    assert.equal(signupBody.emailSent, false); assert.equal(signupBody.emailDelivery, 'unavailable');
+    assert.deepEqual(Object.keys(signupBody), ['message']);
+    const duplicate = await post('/auth/register', { ...account, nomeUsuario: 'Outro nome', nomeEmpresa: 'Outra casa' });
+    assert.equal(duplicate.status, 201); assert.deepEqual(await duplicate.json(), signupBody);
     const [user] = await query<{ id: string; email_verified_at: null }>(storage, 'SELECT id,email_verified_at FROM usuarios WHERE email=$1', [account.email]);
     assert.equal(user.email_verified_at, null);
     const [initial] = await query<{ token_hash: string; lifetime: number }>(storage, `SELECT token_hash,extract(epoch FROM expires_at-created_at)::float AS lifetime FROM auth_tokens WHERE user_id=$1`, [user.id]);
@@ -230,7 +232,7 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
   });
   await t.test('cadastro normaliza email e cria restaurante e administrador juntos', async () => {
     assert.equal((await post('/auth/register', { nomeUsuario: 'Proprietário', nomeEmpresa: 'Restaurante Teste', ...credentials, email: ' OWNER@Example.com ' })).status, 201);
-    assert.equal((await post('/auth/register', { nomeUsuario: 'Outro', nomeEmpresa: 'Outro restaurante', ...credentials })).status, 409);
+    assert.equal((await post('/auth/register', { nomeUsuario: 'Outro', nomeEmpresa: 'Outro restaurante', ...credentials })).status, 201);
     const users = await query<{ id: string; empresaId: string; papel: string; senha: string }>(storage, 'SELECT id, empresa_id AS "empresaId", papel, senha FROM usuarios');
     assert.equal(users.length, 1); assert.ok(users[0].empresaId); assert.equal(users[0].papel, 'admin');
     assert.notEqual(users[0].senha, credentials.senha); userId = users[0].id;
@@ -347,7 +349,7 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     const switched = await (await fetch(`${origin}/api/v1/private`, { headers: { Cookie: secondCookie } })).json();
     assert.equal(switched.user.empresaId, otherOwner.user.empresaId); assert.equal(switched.user.role, 'employee');
     assert.equal((await post('/invitations', { email: 'blocked@example.com' }, secondCookie)).status, 403);
-    assert.equal((await post('/company/switch', { empresaId: 'forged' }, secondCookie)).status, 403);
+    assert.equal((await post('/company/switch', { empresaId: 'forged' }, secondCookie)).status, 400);
     assert.equal((await post('/company/switch', { empresaId: originalOwner.user.empresaId }, secondCookie)).status, 200);
     const restored = await (await fetch(`${origin}/api/v1/private`, { headers: { Cookie: secondCookie } })).json();
     assert.equal(restored.user.role, 'owner');
@@ -489,11 +491,15 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     }
     assert.equal((await post('/company', { nomeEmpresa: 'Recomeço' }, cookie)).status, 201);
   });
-  await t.test('esgotar os antigos contadores globais não bloqueia outras contas e cabeçalhos de segurança são aplicados', async () => {
+  await t.test('limites globais protegem login e cadastro sem depender de IP; exportações têm quota própria', async () => {
     for (const key of ['login:global', 'register:global']) await query(storage,
       `INSERT INTO auth_rate_limits(key,count,window_start) VALUES ($1,99999,$2) ON CONFLICT(key) DO UPDATE SET count=99999,window_start=$2`,
       [createHash('sha256').update(key).digest('hex'), Date.now()]);
     const credentials = { email: 'not-globally-blocked@example.com', senha: 'test-password-123' };
+    assert.equal((await post('/auth/register', { ...credentials, nomeUsuario: 'Pessoa legítima', nomeEmpresa: 'Casa independente' })).status, 429);
+    assert.equal((await post('/auth/login', credentials)).status, 429);
+    assert.equal((await query(storage, 'SELECT id FROM usuarios WHERE email=$1', [credentials.email])).length, 0);
+    for (const key of ['login:global', 'register:global']) await query(storage, 'DELETE FROM auth_rate_limits WHERE key=$1', [createHash('sha256').update(key).digest('hex')]);
     assert.equal((await post('/auth/register', { ...credentials, nomeUsuario: 'Pessoa legítima', nomeEmpresa: 'Casa independente' })).status, 201);
     const login = await post('/auth/login', credentials);
     assert.equal(login.status, 200);
@@ -502,6 +508,7 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     const exportKey = createHash('sha256').update(`exports:${identity.id}`).digest('hex');
     await query(storage, 'INSERT INTO auth_rate_limits(key,count,window_start) VALUES ($1,61,$2)', [exportKey, Date.now()]);
     assert.equal((await fetch(`${origin}/api/v1/expenses?format=csv`, { headers: { Cookie: cookie } })).status, 429);
+    assert.equal((await fetch(`${origin}/api/v1/revenue`, { headers: { Cookie: cookie } })).status, 429);
     assert.equal((await fetch(`${origin}/api/v1/expenses`, { headers: { Cookie: cookie } })).status, 200);
     await query(storage, 'DELETE FROM auth_rate_limits WHERE key=$1', [exportKey]);
     const response = await fetch(`${origin}/login`);
@@ -516,5 +523,68 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     assert.equal((await post('/auth/login', { email: ' UNKNOWN@example.com ', senha: credentials.senha })).status, 429);
     const concurrent = await Promise.all(Array.from({ length: 6 }, () => post('/auth/login', { email: 'concurrent@example.com', senha: credentials.senha })));
     assert.deepEqual(concurrent.map(response => response.status).sort(), [401,401,401,401,401,429]);
+  });
+  await t.test('exclusões recusam senha trocada enquanto a requisição aguarda os bloqueios', async () => {
+    for (const endpoint of ['/company', '/expenses']) {
+      const email = `sensitive-${endpoint.slice(1)}@example.com`;
+      const senha = 'senha-anterior-sensivel-123';
+      assert.equal((await post('/auth/register', { email, senha, nomeUsuario: 'Teste concorrente', nomeEmpresa: 'Casa sensível' })).status, 201);
+      const login = await post('/auth/login', { email, senha }); assert.equal(login.status, 200);
+      const cookie = (login.headers.get('set-cookie') || '').split(';')[0];
+      const identity = (await (await fetch(`${origin}/api/v1/private`, { headers: { Cookie: cookie } })).json()).user;
+      const changedHash = await bcrypt.hash('senha-posterior-sensivel-123', 10);
+      const lock = await storage.connect();
+      let pending: Promise<Response> | undefined;
+      try {
+        await lock.query('BEGIN');
+        await lock.query('UPDATE usuarios SET senha=$2 WHERE id=$1', [identity.id, changedHash]);
+        pending = fetch(`${origin}/api/v1${endpoint}`, { method: 'DELETE', headers: { Cookie: cookie, Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ empresaId: identity.empresaId, senha, confirm: true, start: '2038-04-01', end: '2038-04-01' }) });
+        let waiting = false;
+        for (let attempt = 0; attempt < 150; attempt++) {
+          const rows = await query(storage, "SELECT pid FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE 'SELECT senha FROM usuarios WHERE id=$1 AND ativo%FOR SHARE'");
+          if (rows.length) { waiting = true; break; }
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        assert.ok(waiting, `${endpoint} não revalidou credenciais sob bloqueio`);
+        await lock.query('COMMIT');
+        assert.equal((await pending).status, 401);
+        assert.equal((await query(storage, 'SELECT id FROM empresas WHERE id=$1', [identity.empresaId])).length, 1);
+      } finally {
+        await lock.query('ROLLBACK'); lock.release();
+        if (pending) await pending;
+      }
+    }
+  });
+  await t.test('dois donos excluindo o mesmo restaurante não travam as sessões um do outro', async () => {
+    const senha = 'senha-concorrente-donos-123';
+    const email = 'concurrent-delete-owner@example.com';
+    assert.equal((await post('/auth/register', { email, senha, nomeUsuario: 'Primeiro dono', nomeEmpresa: 'Casa concorrente' })).status, 201);
+    const first = await post('/auth/login', { email, senha });
+    const firstCookie = (first.headers.get('set-cookie') || '').split(';')[0];
+    const identity = (await (await fetch(`${origin}/api/v1/private`, { headers: { Cookie: firstCookie } })).json()).user;
+    const [second] = await query<{ id: string }>(storage, "INSERT INTO usuarios(nome,email,senha) VALUES ('Segundo dono','concurrent-delete-other@example.com',$1) RETURNING id", [await bcrypt.hash(senha, 10)]);
+    await query(storage, "INSERT INTO restaurant_members(user_id,empresa_id,role) VALUES ($1,$2,'owner')", [second.id,identity.empresaId]);
+    const secondLogin = await post('/auth/login', { email: 'concurrent-delete-other@example.com', senha });
+    const secondCookie = (secondLogin.headers.get('set-cookie') || '').split(';')[0];
+    const lock = await storage.connect();
+    let pending: Promise<Response[]> | undefined;
+    try {
+      await lock.query('BEGIN');
+      await lock.query('SELECT id FROM empresas WHERE id=$1 FOR UPDATE', [identity.empresaId]);
+      pending = Promise.all([firstCookie,secondCookie].map(cookie => fetch(`${origin}/api/v1/company`, { method: 'DELETE', headers: { Cookie: cookie, Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ empresaId: identity.empresaId, senha }) })));
+      let waiting = false;
+      for (let attempt = 0; attempt < 150; attempt++) {
+        const rows = await query(storage, "SELECT pid FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE 'SELECT id FROM empresas WHERE id=$1 AND ativo=TRUE FOR UPDATE'");
+        if (rows.length === 2) { waiting = true; break; }
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      assert.ok(waiting, 'as duas exclusões devem aguardar o restaurante');
+      await lock.query('COMMIT');
+      assert.deepEqual((await pending).map(response => response.status).sort(), [200,404]);
+      assert.equal((await query(storage, 'SELECT id FROM empresas WHERE id=$1', [identity.empresaId])).length, 0);
+    } finally {
+      await lock.query('ROLLBACK'); lock.release();
+      if (pending) await pending;
+    }
   });
 });

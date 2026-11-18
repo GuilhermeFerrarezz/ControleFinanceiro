@@ -36,7 +36,7 @@ test('lançamentos completos usam categorias corretas, produtos e todos os dias,
   await fixture.pool.query(`INSERT INTO daily_revenue(empresa_id,date,amount_cents,delivery_meals,dine_in_meals,order_count)
     VALUES ($1,'2026-01-05',9999,3,2,4),($1,'2026-01-06',12345,2,3,4)`, [company]);
   const run = async () => {
-    const result = await promisify(execFile)(process.execPath, ['--import', 'tsx', 'scripts/seed-restaurant-demo.ts',
+    const result = await promisify(execFile)(process.execPath, ['--conditions=react-server', '--import', 'tsx', 'scripts/seed-restaurant-demo.ts',
       'complete@demo.invalid', company, '2026-01-01', '2026-12-31'], {
       env: { ...process.env, DATABASE_URL: fixture.connectionString }, windowsHide: true,
     });
@@ -106,7 +106,7 @@ test('lançamentos completos usam categorias corretas, produtos e todos os dias,
     assert.deepEqual(after.items, target.items);
     assert.ok((await fixture.pool.query('SELECT deleted_at FROM expenses WHERE id=$1', [monday.id])).rows[0].deleted_at);
     assert.deepEqual(await inventoryProducts(company, fixture.pool), stockBefore);
-    const verification = JSON.parse((await promisify(execFile)(process.execPath, ['--import', 'tsx', 'scripts/verify-restaurant-inventory.ts', company, '2026-01-01', '2026-12-31'], {
+    const verification = JSON.parse((await promisify(execFile)(process.execPath, ['--conditions=react-server', '--import', 'tsx', 'scripts/verify-restaurant-inventory.ts', company, '2026-01-01', '2026-12-31'], {
       env: { ...process.env, DATABASE_URL: fixture.connectionString }, windowsHide: true,
     })).stdout);
     assert.equal(verification.verified, true);
@@ -125,7 +125,7 @@ test('lançamentos completos usam categorias corretas, produtos e todos os dias,
         CASE WHEN $3 THEN CURRENT_TIMESTAMP ELSE NULL END FROM expenses WHERE id=$1 RETURNING *`, [target.id, demoKey, deleted])).rows[0];
     const manual = await clone(null, false);
     const deleted = await clone('restaurant-complete-v2:deleted-test', true);
-    const runPrices = async () => JSON.parse((await promisify(execFile)(process.execPath, ['--import', 'tsx', 'scripts/vary-demo-prices.ts',
+    const runPrices = async () => JSON.parse((await promisify(execFile)(process.execPath, ['--conditions=react-server', '--import', 'tsx', 'scripts/vary-demo-prices.ts',
       'complete@demo.invalid', company, '2026-01-01', '2026-02-28'], {
       env: { ...process.env, DATABASE_URL: fixture.connectionString }, windowsHide: true,
     })).stdout);

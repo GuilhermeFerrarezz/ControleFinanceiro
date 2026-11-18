@@ -91,7 +91,7 @@ O botão **Gerar PDF** baixa um resumo do período e dos filtros aplicados, com 
 Para carregar compras fictícias no restaurante administrado por uma conta existente, execute:
 
 ```sh
-node --env-file-if-exists=.env --import tsx scripts/seed-demo-data.ts EMAIL_DA_CONTA
+node --conditions=react-server --env-file-if-exists=.env --import tsx scripts/seed-demo-data.ts EMAIL_DA_CONTA
 ```
 
 O comando adiciona até 16 gastos nas últimas semanas, com produtos, unidades, valores, situações de pagamento e lançamentos sem detalhamento. Eles recebem o selo **Exemplo** e observações indicando que são fictícios. A execução novamente no mesmo mês não duplica os exemplos. Os valores entram nos totais do restaurante escolhido. Os gastos existentes são preservados.
@@ -122,3 +122,8 @@ O CSV e o ZIP preservam o conteúdo das embalagens em Produtos (JSON). No Excel,
 A [auditoria AppSec de 14/11/2026](docs/security-review-2026-11-14.md) documenta as correções e os limites da verificação. Configure HTTPS e `APP_ORIGIN` na implantação. Se houver proxy confiável, `TRUSTED_CLIENT_IP_HEADER=x-real-ip` habilita limites adicionais por origem; o proxy precisa sobrescrever esse cabeçalho e impedir acesso direto ao servidor. Sem proxy confiável, deixe a variável ausente: valores de IP fornecidos pelo cliente não devem ser confiados.
 
 Login e cadastro têm limites por conta e concorrência bcrypt limitada. Exportações têm até duas operações simultâneas por processo e 60 solicitações por usuário/minuto. PDFs muito extensos e planilhas acima do orçamento de células/dados retornam uma orientação para reduzir o período ou usar CSV em partes. Limites por rede, timeouts, quotas de banco e proteção DDoS devem existir também no ingresso.
+
+
+## Revisão de segurança
+
+As alterações e os limites da auditoria atual estão em [Auditoria AppSec de 18/11/2026](docs/security-appsec-review-2026-11-18.md). Banco, envio de e-mail e identidade administrativa são protegidos com `server-only`; scripts Node avulsos que importam esses serviços devem usar `--conditions=react-server`, como nos exemplos acima. Os comandos npm já incluem essa condição.

@@ -11,6 +11,7 @@ export const AUTH_EMAIL_MESSAGE = 'Se o e-mail estiver cadastrado e precisar des
 export async function requestEmailRoute(request: Request, type: AuthTokenType) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
   try {
+    if (!await consumeLimit(`${type}:request:global`, 120, 60_000)) return genericResponse();
     const address = trustedClientAddress(request);
     if (address && !await consumeLimit(`${type}:source:${address}`, 20, 3600_000)) return genericResponse();
     const body = await readBody(request);
@@ -31,6 +32,7 @@ function genericResponse() {
 export async function completeTokenRoute(request: Request, type: AuthTokenType) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
   try {
+    if (!await consumeLimit(`${type}:complete:global`, 120, 60_000)) throw new SecurityLimitError('Muitas tentativas. Tente mais tarde.');
     const body = await readBody(request);
     const address = trustedClientAddress(request);
     if (address && !await consumeLimit(`${type}:complete:${address}`, 30, 15 * 60_000)) throw new SecurityLimitError('Muitas tentativas. Tente mais tarde.');

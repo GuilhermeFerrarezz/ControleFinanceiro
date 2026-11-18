@@ -1,3 +1,4 @@
+import 'server-only';
 import type { AuthTokenType } from '../models/AuthToken';
 
 export function validateAuthEmailConfiguration(request: Request) {

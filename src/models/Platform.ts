@@ -2,9 +2,9 @@ import { db } from '../lib/db';
 import type { Queryable } from '../lib/postgres';
 import { InputError } from '../lib/validation';
 import { randomBytes } from 'node:crypto';
+import type { PlatformOverview, PlatformSettings } from '../lib/platform-shared';
 
 export class CapacityError extends InputError {}
-export type PlatformSettings = { maxRestaurants: number; maxUsers: number };
 export async function platformSettings(client: Queryable = db, lock = false) {
   return (await client.query<PlatformSettings>(`SELECT max_restaurants AS "maxRestaurants",max_users AS "maxUsers" FROM platform_settings WHERE id=1 ${lock ? 'FOR UPDATE' : ''}`)).rows[0];
 }
@@ -19,7 +19,7 @@ export async function requireCapacity(kind: 'restaurants' | 'users', client: Que
 export async function platformAudit(actorId: string, action: string, targetId: string | null, before: unknown, after: unknown, client: Queryable) {
   await client.query('INSERT INTO platform_audit(actor_id,action,target_id,before,after) VALUES ($1,$2,$3,$4::jsonb,$5::jsonb)', [actorId,action,targetId,JSON.stringify(before),JSON.stringify(after)]);
 }
-export async function platformOverview(query: string, page: number) {
+export async function platformOverview(query: string, page: number): Promise<PlatformOverview> {
   const term = `%${query}%`;
   const offset = (page - 1) * 30;
   const [settings, totals, restaurants, users, audit] = await Promise.all([
@@ -31,7 +31,6 @@ export async function platformOverview(query: string, page: number) {
   ]);
   return { settings, totals: totals.rows[0], restaurants: restaurants.rows.slice(0,30), users: users.rows.slice(0,30), hasNext: restaurants.rows.length > 30 || users.rows.length > 30, audit: audit.rows, page, query };
 }
-export type PlatformOverview = Awaited<ReturnType<typeof platformOverview>>;
 
 export class AccountDeletionError extends InputError {
   constructor(message: string, public status: number) { super(message); }

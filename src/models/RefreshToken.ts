@@ -6,11 +6,13 @@ export interface IRefreshToken { id: string; token: string; userId: string; empr
 export interface ISessionIdentity { id: string; nome: string; email: string; emailVerified: boolean; empresaId: string | null; empresaNome: string | null; role: RestaurantRole | null }
 export async function createRefreshToken(token: string, userId: string, empresaId: string | null, expiresAt: Date, expectedPasswordHash: string) {
   return inTransaction(async client => {
+    // Match restaurant deletion's lock order: restaurant before identity. Do
+    // not hold a user lock while waiting for a restaurant being deleted.
+    if (empresaId && !(await client.query(`SELECT e.id FROM empresas e JOIN restaurant_members m ON m.empresa_id=e.id WHERE e.id=$1 AND e.ativo AND m.user_id=$2 FOR SHARE OF e,m`, [empresaId,userId])).rowCount) return false;
     // Serialize with password reset: a comparison made before reset cannot
     // create a fresh session after reset has revoked the existing sessions.
     const user = (await client.query<{ senha: string; ativo: boolean }>('SELECT senha,ativo FROM usuarios WHERE id=$1 FOR UPDATE', [userId])).rows[0];
     if (!user?.ativo || user.senha !== expectedPasswordHash) return false;
-    if (empresaId && !(await client.query(`SELECT e.id FROM empresas e JOIN restaurant_members m ON m.empresa_id=e.id WHERE e.id=$1 AND e.ativo AND m.user_id=$2 FOR SHARE OF e,m`, [empresaId,userId])).rowCount) return false;
     await client.query('INSERT INTO refresh_tokens (token,user_id,empresa_id,expires_at) VALUES ($1,$2,$3,$4)', [token, userId, empresaId, expiresAt]);
     return true;
   });

@@ -9,7 +9,8 @@ import { withAuthEmailBudget } from './auth-email-limits';
 
 export async function requestAuthEmail(email: string, type: AuthTokenType, request: Request) {
   validateAuthEmailConfiguration(request);
-  if (!(await findUsuarioByEmail(email))?.ativo) return;
+  const account = await findUsuarioByEmail(email);
+  if (!account?.ativo || (type === 'email_verification' && account.emailVerifiedAt)) return;
   return withAuthEmailBudget(async () => {
     const issued = await inTransaction(async client => {
       const user = await findUsuarioByEmail(email, client);

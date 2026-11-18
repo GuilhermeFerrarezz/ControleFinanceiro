@@ -70,7 +70,7 @@ async function main() {
   if (!process.argv[2]) throw new Error('Informe a pasta gerada pela auditoria.');
   const fixture = await isolatedDatabase();
   try {
-    const { stdout } = await promisify(execFile)(process.execPath, ['--import', 'tsx', 'scripts/verify-financial-roundtrip.ts', '--worker', folder], {
+    const { stdout } = await promisify(execFile)(process.execPath, ['--conditions=react-server', '--import', 'tsx', 'scripts/verify-financial-roundtrip.ts', '--worker', folder], {
       env: { ...process.env, DATABASE_URL: fixture.connectionString }, windowsHide: true, maxBuffer: 1024 * 1024,
     });
     const result = JSON.parse(stdout);

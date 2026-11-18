@@ -10,7 +10,7 @@ export default function FormCadastro({ invitation }: { invitation?: { token: str
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [success, setSuccess] = useState(false);
-  const [confirmation, setConfirmation] = useState<{ email: string; delivery: 'sent' | 'development' | 'unavailable' } | null>(null);
+  const [confirmation, setConfirmation] = useState<{ email: string } | null>(null);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (loading || success) return;
     const data = new FormData(event.currentTarget);
@@ -18,10 +18,10 @@ export default function FormCadastro({ invitation }: { invitation?: { token: str
     try {
       const response = await api.post('/auth/register', { ...Object.fromEntries(data), ...(invitation ? { invitationToken: invitation.token } : {}) }, { timeout: 20000 });
       setSuccess(true); setMessage(response.data.message);
-      setConfirmation({ email: String(data.get('email') || '').trim().toLowerCase(), delivery: response.data.emailDelivery || 'unavailable' });
+      setConfirmation({ email: String(data.get('email') || '').trim().toLowerCase() });
     } catch (error) { setMessage(errorMessage(error)); } finally { setLoading(false); }
   }
-  if (confirmation) return <EmailConfirmationNotice email={confirmation.email} delivery={confirmation.delivery} />;
+  if (confirmation) return <EmailConfirmationNotice email={confirmation.email} />;
   return <><span className="eyebrow">{invitation ? 'Tem lugar para você na equipe' : 'Um novo capítulo para o seu restaurante'}</span><h1>{invitation ? <>Faça parte<br />da mesma receita.</> : <>Sua casa.<br />Mais organizada.</>}</h1><p className={styles.intro}>{invitation ? `Crie seu acesso pessoal para participar de ${invitation.restaurante}.` : 'Crie sua conta como dono. Depois, convide os funcionários que fazem tudo acontecer com você.'}</p><div className={styles.ownerNote}><Icon name={invitation ? 'team' : 'store'} /><div><strong>{invitation ? `Convite para ${invitation.restaurante}` : 'Você no comando, sua equipe junto.'}</strong>{invitation ? 'Você entrará como funcionário deste restaurante.' : 'Só você administra os convites e os acessos do restaurante.'}</div></div>
     <form className={styles.form} onSubmit={submit} aria-busy={loading}>
       <label className={styles.field} htmlFor="nomeUsuario">Seu nome<input className={styles.input} id="nomeUsuario" name="nomeUsuario" autoComplete="name" placeholder="Como podemos chamar você?" minLength={2} maxLength={120} required disabled={success} /></label>

@@ -8,12 +8,14 @@ function normalizeOrigin(value: string) {
 
 export function trustedOrigin(request: Request, configuredOrigin = process.env.APP_ORIGIN) {
   if (request.headers.get('sec-fetch-site') === 'cross-site') return false;
+  const configured = configuredOrigin?.trim() ? normalizeOrigin(configuredOrigin.trim()) : null;
+  if (configuredOrigin?.trim() && !configured) return false;
   const origin = request.headers.get('origin');
   // Non-browser clients may omit Origin; browser requests must match our origin.
   if (!origin) return true;
   const source = normalizeOrigin(origin);
   if (!source) return false;
-  if (configuredOrigin?.trim()) return source === normalizeOrigin(configuredOrigin.trim());
+  if (configured) return source === configured;
 
   const internalUrl = new URL(request.url);
   // Next.js can give Route Handlers an internal localhost URL even when the

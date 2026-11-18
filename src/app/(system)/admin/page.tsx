@@ -7,7 +7,7 @@ export const metadata = {title:'Administração da plataforma | Saldo da Casa',r
 export default async function AdminPage() {
   const user = await currentUser();
   if (!user) redirect('/login?next=/admin');
-  if (!user.platformAdmin) notFound();
+  if (user.platformRole !== 'ADMIN') notFound();
   const data = await platformOverview('',1);
   return <><Header nome="Administração da plataforma" user={user}/><AdminPanel initialData={data} adminId={user.id}/></>;
 }

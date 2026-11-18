@@ -10,6 +10,7 @@ import { assignFirstEmpresa, findUsuarioByEmail } from '@/src/models/Usuario';
 import bcrypt from 'bcryptjs';
 import { consumeLimit } from '@/src/lib/rate-limit';
 import { SecurityLimitError, withPasswordBudget } from '@/src/lib/security-limits';
+import { ReauthenticationError, requireCurrentCredentials, type Reauthentication } from '@/src/lib/reauthentication';
 export async function POST(request: Request) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
   const user = await currentUser();
@@ -43,11 +44,13 @@ async function changeCompany(request: Request, deleting: boolean) {
     if (body.empresaId !== empresaId) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
     let nome = '';
     let cnpj: string | null = null;
+    let proof: Reauthentication | undefined;
     if (deleting) {
       const senha = passwordValue(body.senha);
       if (!await consumeLimit(`delete-company:${user.id}`, 5, 15 * 60_000)) return jsonError('Muitas tentativas. Aguarde 15 minutos.', 429);
       const account = await findUsuarioByEmail(user.email);
       if (!account || account.id !== user.id || !await withPasswordBudget(() => bcrypt.compare(senha, account.senha))) return jsonError('Senha do admin incorreta.', 403);
+      proof = { userId: user.id, passwordHash: account.senha, sessionHash: hashToken((await cookies()).get(SESSION_COOKIE)?.value || '') };
     } else {
       nome = textValue(body.nomeEmpresa, 'O nome do restaurante');
       if (typeof body.cnpj !== 'string') throw new InputError('Informe o CNPJ ou deixe o campo vazio.');
@@ -58,6 +61,9 @@ async function changeCompany(request: Request, deleting: boolean) {
     return await inTransaction(async transaction => {
       const restaurant = await transaction.query('SELECT id FROM empresas WHERE id=$1 AND ativo=TRUE FOR UPDATE', [empresaId]);
       if (!restaurant.rowCount) return jsonError('Restaurante não encontrado.', 404);
+      // Lock the restaurant before sessions: deletion updates every session in
+      // this restaurant, including those of another owner waiting to delete it.
+      if (proof) await requireCurrentCredentials(proof, transaction);
       const membership = await findMembership(user.id, empresaId, transaction, true);
       if (membership?.role !== 'owner') return jsonError('Somente o admin pode alterar ou excluir o restaurante.', 403);
       if (deleting) await deleteEmpresa(empresaId, transaction);
@@ -65,6 +71,7 @@ async function changeCompany(request: Request, deleting: boolean) {
       return NextResponse.json({ message: deleting ? 'Restaurante excluído.' : 'Dados atualizados.' });
     });
   } catch (error) {
+    if (error instanceof ReauthenticationError) return jsonError(error.message, 401);
     if (error instanceof SecurityLimitError) return jsonError(error.message, 429);
     if (isUniqueViolation(error)) return jsonError('Este CNPJ já está cadastrado.', 409);
     return jsonError(error instanceof InputError ? error.message : 'Não foi possível alterar o restaurante.', error instanceof InputError ? 400 : 500);

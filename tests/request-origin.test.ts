@@ -23,4 +23,6 @@ test('a origem pública configurada permanece restrita, inclusive atrás de prox
   assert.equal(trustedOrigin(request('https://financeiro.example.com'), 'https://financeiro.example.com'), true);
   assert.equal(trustedOrigin(request('http://192.168.1.50:3000'), 'https://financeiro.example.com'), false);
   assert.equal(trustedOrigin(request('http://192.168.1.50:3000'), 'origem-invalida'), false);
+  assert.equal(trustedOrigin(new Request('https://financeiro.example.com/api/v1/auth/login'), 'origem-invalida'), false);
+  assert.equal(trustedOrigin(new Request('https://financeiro.example.com/api/v1/auth/login'), 'https://financeiro.example.com'), true);
 });

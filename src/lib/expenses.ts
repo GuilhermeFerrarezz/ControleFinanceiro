@@ -8,6 +8,7 @@ import { inTransaction } from './postgres';
 import { financeComparison, financeDays } from './revenue';
 import { InputError } from './validation';
 import { findMembership } from '../models/Membership';
+import { requireCurrentCredentials, type Reauthentication } from './reauthentication';
 import { listCategories, listMerchants, lockCatalog } from '../models/Catalog';
 import { addDays, buildExpenseSeries, categoryInfo, daysBetween, EXPENSE_CATEGORIES, MAX_AMOUNT_CENTS, monthPeriod, yearPeriod, todayInSaoPaulo, PAYMENT_METHODS, type ExpenseDashboardData, type ExpenseFilters, type ExpenseInput, type ExpenseRecord } from './expense-shared';
 
@@ -109,13 +110,15 @@ export async function changeExpense(actor: ExpenseActor,id: string,version: numb
     await insertExpenseAudit(updated,actor.id,input ? 'updated' : 'deleted',inputSnapshot(expense),inputSnapshot(updated),client);
   });
 }
-export async function deleteExpensePeriod(actor: ExpenseActor, body: Record<string, unknown>) {
+export async function deleteExpensePeriod(actor: ExpenseActor, body: Record<string, unknown>, proof: Reauthentication) {
   const start = dateValue(body.start);
   const end = dateValue(body.end);
   if (start > end) throw new InputError('A data inicial deve ser anterior ou igual à data final.');
   if (body.confirm !== true) throw new InputError('Confirme a exclusão dos lançamentos do período.');
   if (body.empresaId !== actor.empresaId) throw new ExpenseError('O restaurante ativo mudou. Atualize a página.', 409);
   return inTransaction(async client => {
+    if (proof.userId !== actor.id) throw new ExpenseError('Credenciais inválidas.', 401);
+    await requireCurrentCredentials(proof, client);
     const membership = await findMembership(actor.id, actor.empresaId, client, true);
     if (membership?.role !== 'owner') throw new ExpenseError('Somente o admin pode excluir os lançamentos de um período.', 403);
     await lockCatalog(actor.empresaId, client);

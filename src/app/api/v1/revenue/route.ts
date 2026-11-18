@@ -6,6 +6,7 @@ import { deleteRevenue, listRevenue, saveRevenue } from '@/src/lib/revenue';
 import { parseRevenueCsv, revenueCsv } from '@/src/lib/revenue-csv';
 import { InputError, readBody } from '@/src/lib/validation';
 import { revenueCount } from '@/src/lib/revenue-counts';
+import { SecurityLimitError, withExportBudget } from '@/src/lib/security-limits';
 
 function revenueAmount(value: unknown) {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value > MAX_AMOUNT_CENTS) {
@@ -22,13 +23,17 @@ export async function GET(request: Request) {
     const params = new URL(request.url).searchParams;
     const template = params.get('format') === 'template';
     const period = expenseFilters(params);
-    const rows = template ? [{ date: period.start, totalCents: 12590, deliveryMeals: 6, dineInMeals: 4, orderCount: 5 }] : await listRevenue(user.empresaId, period);
-    return new Response(revenueCsv(rows), { headers: {
+    const empresaId = user.empresaId;
+    return await withExportBudget(user.id, async () => {
+      const rows = template ? [{ date: period.start, totalCents: 12590, deliveryMeals: 6, dineInMeals: 4, orderCount: 5 }] : await listRevenue(empresaId, period);
+      return new Response(revenueCsv(rows), { headers: {
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': `attachment; filename="${template ? 'modelo-faturamento' : 'faturamento'}-${period.start}.csv"`,
       'Cache-Control': 'no-store',
-    } });
+      } });
+    });
   } catch (error) {
+    if (error instanceof SecurityLimitError) return jsonError(error.message, 429);
     return jsonError(error instanceof InputError ? error.message : 'Não foi possível exportar o faturamento.', error instanceof InputError ? 400 : 500);
   }
 }

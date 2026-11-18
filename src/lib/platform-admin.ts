@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { currentUser, hashToken, SESSION_COOKIE } from './auth';
 import { cookies } from 'next/headers';
-import { isPlatformOwner } from './platform-owner';
+import { isPlatformOwner, platformRole } from './platform-owner';
 import { inTransaction } from './postgres';
 import { consumeLimit } from './rate-limit';
 import { InputError, passwordValue } from './validation';
@@ -16,7 +16,7 @@ export class PlatformError extends InputError {
 export async function requirePlatformAdmin() {
   const user = await currentUser();
   if (!user) throw new PlatformError('Entre na sua conta.',401);
-  if (!isPlatformOwner(user.id) || !user.emailVerified) throw new PlatformError('Acesso restrito ao administrador da plataforma.',403);
+  if (user.platformRole !== 'ADMIN') throw new PlatformError('Acesso restrito ao administrador da plataforma.',403);
   return user;
 }
 export async function changePlatform(body: Record<string, unknown>) {
@@ -40,7 +40,7 @@ export async function changePlatform(body: Record<string, unknown>) {
     // after acquiring locks, including the password snapshot and verification.
     const settings = await platformSettings(client,true);
     const locked = (await client.query<{ ativo: boolean; senha: string; verified: boolean }>('SELECT ativo,senha,(email_verified_at IS NOT NULL) AS verified FROM usuarios WHERE id=$1 FOR UPDATE',[actor.id])).rows[0];
-    if (!isPlatformOwner(actor.id) || !locked?.ativo || !locked.verified || locked.senha!==account.senha) throw new PlatformError('Sessão indisponível. Entre novamente.',403);
+    if (!locked?.ativo || platformRole(actor.id, locked.verified) !== 'ADMIN' || locked.senha!==account.senha) throw new PlatformError('Sessão indisponível. Entre novamente.',403);
     const session=await client.query('SELECT id FROM refresh_tokens WHERE token=$1 AND user_id=$2 AND expires_at>clock_timestamp() FOR SHARE',[sessionHash,actor.id]);
     if (!session.rowCount) throw new PlatformError('Sessão inválida ou expirada. Entre novamente.',401);
     if (body.action==='settings') {

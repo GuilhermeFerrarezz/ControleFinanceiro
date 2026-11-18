@@ -120,4 +120,33 @@ test('links transacionais completos, privacidade temporal e falhas do provedor',
       assert.equal((await query<{count:number}>(storage,'SELECT count FROM auth_rate_limits WHERE key=$1',[hashed]))[0].count,1);
     }
   });
+  await t.test('cadastro entrega confirmação sem revelar conta existente nem aguardar o provedor',async()=>{
+    const email='new-signup-link@example.com';await clearLimits(email,'email_verification');status=200;
+    const before=messages.length;const release=holdProvider();
+    const body={email,senha:password,nomeUsuario:'Novo cadastro',nomeEmpresa:'Nova casa'};
+    const fresh=await post('register',body);assert.equal(fresh.status,201);const generic=await fresh.json();
+    assert.deepEqual(Object.keys(generic),['message']);
+    await waitFor(()=>messages.length===before+1,'Cadastro não enviou confirmação');
+    const duplicate=await post('register',body);assert.equal(duplicate.status,201);assert.deepEqual(await duplicate.json(),generic);
+    assert.equal(messages.length,before+1,'Cadastro repetido não dispara envio adicional');
+    const mail=messages[before];assert.deepEqual(mail.to,[email]);assert.equal(url(mail).pathname,'/verify-email');assert.equal(url(mail).search,'');
+    const [row]=await query<{token_hash:string}>(storage,"SELECT t.token_hash FROM auth_tokens t JOIN usuarios u ON u.id=t.user_id WHERE u.email=$1 AND t.type='email_verification'",[email]);
+    assert.equal(row.token_hash,digest(token(mail)));assert.notEqual(row.token_hash,token(mail));
+    release();assert.equal((await post('verify-email',{token:token(mail)})).status,200);
+    assert.equal((await post('verify-email',{token:token(mail)})).status,400);
+  });
+  await t.test('limite global de recuperação mantém resposta genérica e impede tentativas sem IP confiável',async()=>{
+    const before=messages.length;
+    for(const type of ['password_reset','email_verification']) {
+      const key=digest(`${type}:request:global`);
+      await query(storage,'INSERT INTO auth_rate_limits(key,count,window_start) VALUES ($1,120,$2) ON CONFLICT(key) DO UPDATE SET count=120,window_start=$2',[key,Date.now()]);
+      const path=type==='password_reset'?'forgot-password':'resend-verification';
+      const known=await post(path,{email:'security-link@example.com'});const unknown=await post(path,{email:'unknown@example.com'});
+      assert.equal(known.status,200);assert.equal(unknown.status,200);assert.deepEqual(await known.json(),await unknown.json());
+      const completeKey=digest(`${type}:complete:global`);
+      await query(storage,'INSERT INTO auth_rate_limits(key,count,window_start) VALUES ($1,120,$2) ON CONFLICT(key) DO UPDATE SET count=120,window_start=$2',[completeKey,Date.now()]);
+      assert.equal((await post(type==='password_reset'?'reset-password':'verify-email',{token:'invalid',senha:password})).status,429);
+    }
+    assert.equal(messages.length,before);
+  });
 });
