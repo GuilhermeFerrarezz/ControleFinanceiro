@@ -9,7 +9,7 @@ Sistema para organizar a gestão financeira de restaurantes, pensado para acompa
 - **Dono do restaurante:** cria sua conta, cadastra o restaurante e administra a equipe.
 - **Convites:** o dono informa o e-mail de um funcionário, gera um link pessoal e o compartilha com ele. Não há envio automático de e-mail.
 - **Funcionários:** abrem o convite, criam uma conta ou entram com uma conta existente e passam a fazer parte do restaurante.
-- **Acessos individuais:** cada pessoa usa seu próprio e-mail e senha. Novas senhas exigem pelo menos 15 caracteres, inclusive ao recuperar a conta. Senhas antigas continuam válidas para login.
+- **Acessos individuais:** cada pessoa usa seu próprio e-mail e senha. Novas senhas exigem pelo menos 8 caracteres, uma letra maiúscula e um símbolo, inclusive ao recuperar a conta. Senhas antigas continuam válidas para login.
 - **Mais de um restaurante:** uma conta pode participar de diferentes restaurantes e alternar entre eles no painel.
 - **Confirmação de e-mail:** confirme em até 7 dias após o cadastro para manter o acesso. Após esse prazo, o acesso fica bloqueado até confirmar; é possível solicitar um novo link público, válido por 24 horas. Recuperar a senha não elimina esse bloqueio.
 

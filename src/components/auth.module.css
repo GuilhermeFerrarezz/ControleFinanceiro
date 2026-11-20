@@ -30,3 +30,8 @@
 .confirmationEmail { display:block; overflow-wrap:anywhere; color:var(--ink); margin-top:8px; }
 .confirmationHelp { color:#63754f; font-size:15px; line-height:1.8; }
 .confirmation .ownerNote { margin-bottom:0; }
+
+.passwordRequirements { list-style:none; padding:0; margin:2px 0 0; display:grid; gap:7px; color:#737b69; font-size:12px; font-weight:400; line-height:1.5; }
+.passwordRequirements li { display:block; }
+.passwordRequirements .requirementMet { color:#345b33; }
+.requirementStatus { font-size:11px; }

@@ -34,14 +34,14 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     method, headers: { Cookie: cookie, Origin: requestOrigin, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const register = async (email: string) => {
-    assert.equal((await api('/auth/register', '', 'POST', { nomeUsuario: 'Dono', nomeEmpresa: email.startsWith('other') ? 'Outra casa' : 'Casa principal', email, senha: 'senha-de-teste-123' })).status, 201);
+    assert.equal((await api('/auth/register', '', 'POST', { nomeUsuario: 'Dono', nomeEmpresa: email.startsWith('other') ? 'Outra casa' : 'Casa principal', email, senha: 'Senha-de-teste-123' })).status, 201);
   };
-  const login = async (email: string) => { const response = await api('/auth/login', '', 'POST', { email, senha: 'senha-de-teste-123' }); assert.equal(response.status, 200); return (response.headers.get('set-cookie') || '').split(';')[0]; };
+  const login = async (email: string) => { const response = await api('/auth/login', '', 'POST', { email, senha: 'Senha-de-teste-123' }); assert.equal(response.status, 200); return (response.headers.get('set-cookie') || '').split(';')[0]; };
   await register('owner@expenses.invalid'); await register('other@expenses.invalid');
   const owner = await login('owner@expenses.invalid'); const other = await login('other@expenses.invalid');
   const invitation = await api('/invitations', owner, 'POST', { email: 'employee@expenses.invalid' }); assert.equal(invitation.status, 201);
   const token = (await invitation.json()).path.split('/').at(-1);
-  assert.equal((await api('/auth/register', '', 'POST', { nomeUsuario: 'Funcionário', email: 'employee@expenses.invalid', senha: 'senha-de-teste-123', invitationToken: token })).status, 201);
+  assert.equal((await api('/auth/register', '', 'POST', { nomeUsuario: 'Funcionário', email: 'employee@expenses.invalid', senha: 'Senha-de-teste-123', invitationToken: token })).status, 201);
   const employee = await login('employee@expenses.invalid');
   const ownerUser = (await (await api('/private', owner)).json()).user;
   const employeeUser = (await (await api('/private', employee)).json()).user;
@@ -555,8 +555,8 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.doesNotMatch(employeePage, /Excluir lançamentos do período/);
     // Concurrent retries must not delete/audit the same record twice.
     const responses = await Promise.all([
-      api('/expenses', owner, 'DELETE', { ...deletion, senha: 'senha-de-teste-123', category: 'alimentos', page: 1 }),
-      api('/expenses', owner, 'DELETE', { ...deletion, senha: 'senha-de-teste-123' }),
+      api('/expenses', owner, 'DELETE', { ...deletion, senha: 'Senha-de-teste-123', category: 'alimentos', page: 1 }),
+      api('/expenses', owner, 'DELETE', { ...deletion, senha: 'Senha-de-teste-123' }),
     ]);
     for (const response of responses) assert.equal(response.status, 200, await response.clone().text());
     const results = await Promise.all(responses.map(response => response.json()));
@@ -572,7 +572,7 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     }
     assert.equal((await query(fixture.pool, "SELECT id FROM expense_audit WHERE expense_id=$1 AND action='deleted'", [oldId])).length, 1);
     assert.equal((await query(fixture.pool, 'SELECT id FROM expenses WHERE id=ANY($1::uuid[]) AND deleted_at IS NULL', [[outsideId, otherId]])).length, 2);
-    assert.equal((await api('/expenses', owner, 'DELETE', { ...deletion, senha: 'senha-de-teste-123', start: '2038-03-01', end: '2038-03-01' })).status, 200);
+    assert.equal((await api('/expenses', owner, 'DELETE', { ...deletion, senha: 'Senha-de-teste-123', start: '2038-03-01', end: '2038-03-01' })).status, 200);
     assert.equal((await query(fixture.pool, 'SELECT id FROM expenses WHERE id=$1 AND deleted_at IS NULL', [outsideId])).length, 0);
   });
   await t.test('identificadores de outro restaurante não liberam painel, exportações ou troca de sessão', async () => {
@@ -603,7 +603,7 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     const deletion = { empresaId: ownerUser.empresaId, start: '2051-04-01', end: '2051-04-01', confirm: true };
     assert.equal((await create(owner, { date: deletion.start })).status, 201);
     for (let attempt = 0; attempt < 2; attempt++) await api('/expenses', owner, 'DELETE', { ...deletion, senha: 'incorreta' });
-    assert.equal((await api('/expenses', owner, 'DELETE', { ...deletion, senha: 'senha-de-teste-123' })).status, 429);
+    assert.equal((await api('/expenses', owner, 'DELETE', { ...deletion, senha: 'Senha-de-teste-123' })).status, 429);
     assert.equal((await list(owner, range)).count, 1);
   });
   await t.test('auditoria financeira reconcilia centavos entre banco, filtros, gráficos e Excel', async () => {

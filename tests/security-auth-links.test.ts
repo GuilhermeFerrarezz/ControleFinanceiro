@@ -10,7 +10,7 @@ import {isolatedDatabase,query} from './postgres-fixture';
 
 test('links transacionais completos em sandbox, privacidade temporal e falhas do provedor', {timeout:120_000},async t=>{
   const fixture=await isolatedDatabase();const storage=fixture.pool;
-  const id=randomUUID();const verifyId=randomUUID();const password='known-password-123';
+  const id=randomUUID();const verifyId=randomUUID();const password='Known-password-123';
   const hash=await bcrypt.hash(password,10);
   await query(storage,"INSERT INTO usuarios(id,nome,email,senha,email_verified_at) VALUES ($1,'Admin de teste','security-link@example.com',$2,clock_timestamp()),($3,'Verificação de teste','verify-link@example.com',$2,NULL)",[id,hash,verifyId]);
   type Mail={from:string;to:string[];text:string;html:string;subject:string;cc?:unknown;bcc?:unknown};
@@ -60,10 +60,10 @@ test('links transacionais completos em sandbox, privacidade temporal e falhas do
     await waitFor(()=>messages.length===2,'Falha simulada não ocorreu');
     await waitFor(async()=>{const rows=await query<{token_hash:string}>(storage,'SELECT token_hash FROM auth_tokens WHERE user_id=$1',[id]);return rows[0]?.token_hash===digest(previous);},'Link anterior não foi restaurado');
     assert.doesNotMatch(output,/FAKE_PROVIDER_SECRET/);assert.ok(!output.includes(previous));assert.ok(!output.includes(token(messages[1])));
-    const result=await post('reset-password',{token:previous,senha:'new-password-after-reset-123',email:'verify-link@example.com',userId:verifyId});assert.equal(result.status,200);assert.match(result.headers.get('set-cookie')||'',/Max-Age=0/);
-    assert.equal((await post('reset-password',{token:previous,senha:'another-password-123'})).status,400);
+    const result=await post('reset-password',{token:previous,senha:'New-password-after-reset-123',email:'verify-link@example.com',userId:verifyId});assert.equal(result.status,200);assert.match(result.headers.get('set-cookie')||'',/Max-Age=0/);
+    assert.equal((await post('reset-password',{token:previous,senha:'Another-password-123'})).status,400);
     assert.equal((await post('login',{email:'security-link@example.com',senha:password})).status,401);
-    assert.equal((await post('login',{email:'security-link@example.com',senha:'new-password-after-reset-123'})).status,200);
+    assert.equal((await post('login',{email:'security-link@example.com',senha:'New-password-after-reset-123'})).status,200);
     assert.equal((await query(storage,'SELECT senha FROM usuarios WHERE id=$1',[verifyId]))[0].senha,hash);
   });
   await t.test('compensação não ressuscita token após uso bem-sucedido durante falha de envio',async()=>{
@@ -75,11 +75,11 @@ test('links transacionais completos em sandbox, privacidade temporal e falhas do
     const errors=output.split('Não foi possível processar o envio.').length;
     await post('forgot-password',{email:'security-link@example.com'});await waitFor(()=>messages.length===count+2,'Emissão não ocorreu');
     const candidate=token(messages[count+1]);
-    const used=await post('reset-password',{token:candidate,senha:'final-password-reset-123'});assert.equal(used.status,200);release();
+    const used=await post('reset-password',{token:candidate,senha:'Final-password-reset-123'});assert.equal(used.status,200);release();
     await waitFor(()=>output.split('Não foi possível processar o envio.').length>errors,'Compensação não finalizou');
     assert.equal((await query(storage,'SELECT id FROM auth_tokens WHERE user_id=$1',[id])).length,0);
-    assert.equal((await post('reset-password',{token:candidate,senha:'reuse-password-123'})).status,400);
-    assert.equal((await post('reset-password',{token:previous,senha:'old-password-123'})).status,400);
+    assert.equal((await post('reset-password',{token:candidate,senha:'Reuse-password-123'})).status,400);
+    assert.equal((await post('reset-password',{token:previous,senha:'Old-password-123'})).status,400);
   });
   await t.test('confirmação é de uso único, rejeita finalidade errada e respeita suspensão',async()=>{
     const count=messages.length;
@@ -94,7 +94,7 @@ test('links transacionais completos em sandbox, privacidade temporal e falhas do
     assert.ok((await query(storage,'SELECT email_verified_at FROM usuarios WHERE id=$1',[verifyId]))[0].email_verified_at);
     await clearLimits('verify-link@example.com','password_reset');await post('forgot-password',{email:'verify-link@example.com'});await waitFor(()=>messages.length===count+2,'Recuperação não enviada');
     await query(storage,'UPDATE usuarios SET ativo=FALSE WHERE id=$1',[verifyId]);
-    assert.equal((await post('reset-password',{token:token(messages[count+1]),senha:'blocked-password-123'})).status,400);
+    assert.equal((await post('reset-password',{token:token(messages[count+1]),senha:'Blocked-password-123'})).status,400);
     assert.equal((await query(storage,'SELECT senha FROM usuarios WHERE id=$1',[verifyId]))[0].senha,hash);
   });
   await t.test('15 por minuto e 100 por 24 horas: aceita o último, bloqueia o seguinte e renova a janela',async()=>{
