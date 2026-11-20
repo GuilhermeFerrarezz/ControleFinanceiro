@@ -296,15 +296,20 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     const tokens = await query<{ token: string }>(storage, 'SELECT token FROM refresh_tokens');
     assert.equal(tokens.length, 2); assert.ok(tokens.every(row => row.token.length === 64 && !firstCookie.includes(row.token)));
   });
-  await t.test('tutorial aparece no primeiro acesso e conclusão só altera a conta autenticada', async () => {
+  await t.test('tutorial é reservado uma única vez por conta antes de concluir, inclusive entre sessões concorrentes', async () => {
     const page = () => fetch(`${origin}/dashboard/help`, { headers: { Cookie: firstCookie } });
-    assert.match(await (await page()).text(), /id="tour-title"/);
+    assert.doesNotMatch(await (await page()).text(), /id="tour-title"/);
     assert.equal((await post('/auth/tutorial', {})).status, 401);
     assert.equal((await post('/auth/tutorial', {}, firstCookie, 'https://hostil.invalid')).status, 403);
     assert.equal((await query(storage, 'SELECT tutorial_completed_at FROM usuarios WHERE id=$1', [userId]))[0].tutorial_completed_at, null);
-    assert.equal((await post('/auth/tutorial', { userId: 'forged' }, firstCookie)).status, 200);
+    const results = await Promise.all([firstCookie, secondCookie].map(cookie => post('/auth/tutorial', { mode: 'start', userId: 'forged' }, cookie)));
+    assert.ok(results.every(response => response.status === 200));
+    const starts = await Promise.all(results.map(response => response.json()));
+    assert.deepEqual(starts.map(result => result.showTutorial).sort(), [false, true]);
     const saved = await query(storage, 'SELECT tutorial_completed_at FROM usuarios WHERE id=$1', [userId]);
     assert.ok(saved[0].tutorial_completed_at);
+    assert.deepEqual(await (await post('/auth/tutorial', { mode: 'start' }, firstCookie)).json(), { showTutorial: false });
+    assert.equal((await post('/auth/tutorial', { mode: 'invalid' }, firstCookie)).status, 400);
     assert.equal((await post('/auth/tutorial', {}, secondCookie)).status, 200);
     assert.deepEqual(await query(storage, 'SELECT tutorial_completed_at FROM usuarios WHERE id=$1', [userId]), saved);
     const html = await (await page()).text();

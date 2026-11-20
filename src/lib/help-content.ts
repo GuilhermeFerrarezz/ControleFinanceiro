@@ -14,9 +14,9 @@ export type HelpTopic = {
 
 export const HELP_TOPICS: HelpTopic[] = [
   { id: 'guided-tour', group: 'start', title: 'Como iniciar, pular ou rever o tutorial?',
-    summary: 'O primeiro acesso às abas do restaurante apresenta um passeio guiado pelas telas.',
+    summary: 'O tutorial abre automaticamente uma única vez por conta, no primeiro acesso às abas do restaurante.',
     steps: ['Clique em Começar para conhecer cada aba. Próxima abre a área seguinte e Anterior retorna à etapa anterior.',
-      'Use Pular tutorial ou a tecla Escape para encerrar. A escolha fica salva na sua conta, inclusive para outros dispositivos.',
+      'A primeira apresentação fica salva na sua conta assim que o tutorial abre, inclusive para outros dispositivos. Ele não volta automaticamente ao recarregar, sair ou trocar de restaurante, mesmo sem concluir. Use Pular tutorial ou Escape para encerrar.',
       'Na Ajuda, clique em Rever tutorial quando quiser fazer o passeio novamente.'],
     note: 'O passeio apresenta as telas sem cadastrar compras ou alterar valores. Se aparecer um erro ao salvar sua preferência, tente novamente antes de fechar.' },
   { id: 'stock-setup', group: 'inventory', title: 'Como ativar produtos no estoque?',
