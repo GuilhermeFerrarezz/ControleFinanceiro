@@ -25,7 +25,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - name: Install encryption tool
+      - name: Preparar ferramentas de backup
         run: |
           set -euo pipefail
           apt-get update -qq
@@ -43,55 +43,79 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
+          echo 'Etapa 1/4 - Conferindo a configuração e a chave pública.'
           if [[ -z "$PGDATABASE" || -z "$AGE_RECIPIENT" ]]; then
-            echo 'Configure BACKUP_DATABASE_URL and BACKUP_AGE_RECIPIENT in GitHub Settings.' >&2
+            echo 'Configure o secret BACKUP_DATABASE_URL e a variável BACKUP_AGE_RECIPIENT em Settings > Secrets and variables > Actions.' >&2
             exit 1
           fi
           if [[ ! "$PGDATABASE" =~ ^postgres(ql)?:// || "$PGDATABASE" == *'-pooler.'* ]]; then
-            echo 'BACKUP_DATABASE_URL must be a direct PostgreSQL connection, without pooling.' >&2
-            exit 1
-          fi
-          connection_error=$(mktemp)
-          trap 'rm -f -- "$connection_error"' EXIT
-          server_version=$(psql -X -A -t --no-password --dbname="$PGDATABASE" -c 'SHOW server_version_num' 2>"$connection_error") || {
-            # Classify failures without printing credentials or database diagnostics.
-            if grep -qi 'password authentication failed' "$connection_error"; then
-              echo 'Database authentication failed. Update BACKUP_DATABASE_URL with the current Neon password.' >&2
-            elif grep -Eqi 'root certificate|certificate verify failed|server certificate' "$connection_error"; then
-              echo 'Database TLS verification failed. Check the trusted CA bundle and connection SSL parameters.' >&2
-            elif grep -Eqi 'could not translate host|could not resolve|timeout|timed out|Connection refused' "$connection_error"; then
-              echo 'Database host unavailable. Check the direct Neon endpoint, network access and database status.' >&2
-            else
-              echo 'Unable to connect to the backup database. Check the connection URL and permissions.' >&2
-            fi
-            exit 1
-          }
-          rm -f -- "$connection_error"
-          trap - EXIT
-          client_version=$(pg_dump --version | grep -oE '[0-9]+' | head -1)
-          if [[ ! "$server_version" =~ ^[0-9]+$ ]] || (( server_version / 10000 > client_version )); then
-            echo 'Set BACKUP_POSTGRES_IMAGE to a PostgreSQL client at least as recent as the server.' >&2
+            echo 'Copie a URL completa em Neon > Connect com Connection pooling desligado e salve em BACKUP_DATABASE_URL.' >&2
             exit 1
           fi
           mkdir -p backup
-          trap 'rm -f -- backup/database.dump.age' EXIT
+          diagnostics=$(mktemp -d)
+          complete=false
+          cleanup() {
+            rm -rf -- "$diagnostics"
+            if [[ "$complete" != true ]]; then rm -f -- backup/database.dump.age; fi
+          }
+          trap cleanup EXIT
+          # Verify the public recipient before connecting or exporting private data.
+          if ! age -r "$AGE_RECIPIENT" -o "$diagnostics/key-check.age" </dev/null 2>"$diagnostics/age"; then
+            echo 'Chave pública inválida. Em Actions > Variables, salve em BACKUP_AGE_RECIPIENT somente a chave age1..., sem aspas, prefixo ou chave privada.' >&2
+            exit 1
+          fi
+          echo 'Etapa 2/4 - Conectando ao Neon e conferindo a versão.'
+          connection_error="$diagnostics/connection"
+          server_version=$(psql -X -A -t --no-password --dbname="$PGDATABASE" -c 'SHOW server_version_num' 2>"$connection_error") || {
+            # Classify failures without printing credentials or database diagnostics.
+            if grep -qi 'password authentication failed' "$connection_error"; then
+              echo 'Senha do banco recusada. Atualize o secret BACKUP_DATABASE_URL com a URL e a senha atuais do Neon.' >&2
+            elif grep -Eqi 'root certificate|certificate verify failed|server certificate' "$connection_error"; then
+              echo 'Falha na validação TLS. Confira o arquivo de certificados confiáveis e os parâmetros SSL da conexão.' >&2
+            elif grep -Eqi 'could not translate host|could not resolve|timeout|timed out|Connection refused' "$connection_error"; then
+              echo 'Endereço do Neon indisponível. Confira a URL direta, o estado do banco e eventuais restrições de rede.' >&2
+            else
+              echo 'Não foi possível conectar. Confira a URL completa do secret BACKUP_DATABASE_URL e as permissões do usuário.' >&2
+            fi
+            exit 1
+          }
+          client_version=$(pg_dump --version | grep -oE '[0-9]+' | head -1)
+          if [[ ! "$server_version" =~ ^[0-9]+$ ]] || (( server_version / 10000 > client_version )); then
+            echo 'Cliente PostgreSQL incompatível. Ajuste a variável BACKUP_POSTGRES_IMAGE para postgres:VERSAO-bookworm, usando a versão do servidor ou superior.' >&2
+            exit 1
+          fi
+          echo 'Etapa 3/4 - Exportando o banco inteiro e criptografando.'
           # No unencrypted dump is written to disk. Hide provider/database
           # diagnostics, which could contain user data or connection details.
-          if ! pg_dump --dbname="$PGDATABASE" --no-password --format=custom --no-owner --no-acl --lock-wait-timeout=30s 2>/dev/null \
-            | age -r "$AGE_RECIPIENT" -o backup/database.dump.age 2>/dev/null; then
-            echo 'Backup failed. Check credentials, permissions, client version and public encryption key.' >&2
+          if pg_dump --dbname="$PGDATABASE" --no-password --format=custom --no-owner --no-acl --lock-wait-timeout=30s 2>"$diagnostics/dump" \
+            | age -r "$AGE_RECIPIENT" -o backup/database.dump.age 2>"$diagnostics/age"; then
+            :
+          else
+            pipeline_status=("${PIPESTATUS[@]}")
+            if (( pipeline_status[1] != 0 )); then
+              echo 'Falha ao criptografar ou gravar o arquivo. Confira a chave pública e o espaço disponível no executor.' >&2
+            elif grep -Eqi 'permission denied|row-level security' "$diagnostics/dump"; then
+              echo 'Exportação sem permissão para ler todos os dados. Use em BACKUP_DATABASE_URL uma conta autorizada a ler o banco inteiro.' >&2
+            elif grep -Eqi 'server version mismatch|aborting because of server version' "$diagnostics/dump"; then
+              echo 'Versão do pg_dump incompatível. Atualize BACKUP_POSTGRES_IMAGE para a versão principal do PostgreSQL de origem.' >&2
+            elif grep -Eqi 'timeout|timed out|could not connect|connection.*closed|SSL|password authentication failed' "$diagnostics/dump"; then
+              echo 'A conexão falhou durante a exportação. Confira a disponibilidade do Neon e a URL atual e inicie uma nova execução.' >&2
+            else
+              echo "Falha na exportação pg_dump (código ${pipeline_status[0]}). A criptografia funcionou. Confira as permissões e a compatibilidade do banco."
+            fi
             exit 1
           fi
           # Bound artifact storage. Do not silently replace a backup with a partial dump.
           bytes=$(wc -c < backup/database.dump.age)
           if (( bytes < 1 || bytes > 41943040 )); then
-            echo 'Encrypted backup is empty or exceeds 40 MiB. Review artifact storage before increasing this limit.' >&2
+            echo 'Backup vazio ou maior que 40 MiB. Confira o consumo de armazenamento antes de aumentar esse limite.' >&2
             exit 1
           fi
-          trap - EXIT
-          echo "Encrypted backup created (${bytes} bytes)."
+          complete=true
+          echo "Etapa 4/4 - Backup criptografado pronto (${bytes} bytes). O próximo passo enviará o arquivo para Artifacts."
 
-      - name: Store encrypted backup for seven days
+      - name: Salvar arquivo por sete dias em Artifacts
         # actions/upload-artifact v7, pinned to an immutable commit.
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
@@ -101,6 +125,6 @@ jobs:
           compression-level: 0
           if-no-files-found: error
 
-      - name: Remove runner copy
+      - name: Limpar cópia do executor
         if: always()
         run: rm -f -- backup/database.dump.age
