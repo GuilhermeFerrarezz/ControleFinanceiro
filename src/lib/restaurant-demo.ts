@@ -5,7 +5,7 @@ import { findMembership } from '../models/Membership';
 import { normalizeCatalogName } from './catalog-shared';
 import { dateValue, validateExpense } from './expenses';
 import { addDays, daysBetween, PAYMENT_METHODS, todayInSaoPaulo, type ExpenseItem } from './expense-shared';
-import { inTransaction } from './postgres';
+import { inTransaction, type Queryable } from './postgres';
 import { demoUnitPrice } from './demo-prices';
 import { sumCents } from './financial-math';
 import { isDeepStrictEqual } from 'node:util';
@@ -65,10 +65,10 @@ export function restaurantDemoSales(date: string) {
     totalCents: deliveryMeals * 2200 + dineInMeals * 2800 + (index % 10) * 500 };
 }
 
-export async function seedRestaurantDemo(actor: { id: string; empresaId: string }, start: string, end: string) {
+export async function seedRestaurantDemo(actor: { id: string; empresaId: string }, start: string, end: string, connection?: Queryable) {
   dateValue(start); dateValue(end);
   if (start > end) throw new Error('O início deve ser anterior ao fim.');
-  return inTransaction(async client => {
+  const seed = async (client: Queryable) => {
     if ((await findMembership(actor.id, actor.empresaId, client, true))?.role !== 'owner') throw new Error('Selecione uma conta administradora.');
     await lockCatalog(actor.empresaId, client);
     const categories = await listCategories(actor.empresaId, client);
@@ -178,7 +178,8 @@ export async function seedRestaurantDemo(actor: { id: string; empresaId: string 
     }
     await assertStockBalances(actor.empresaId, client);
     return { start, end, days: daysBetween(start, end), closedMondays, expensesAdded, expensesUpdated, closedPurchasesRemoved, expensesSkipped, revenueWritten, revenuePreserved, categoryCounts };
-  });
+  };
+  return connection ? seed(connection) : inTransaction(seed);
 }
 
 export async function varyRestaurantDemoPrices(actor: { id: string; empresaId: string }, start: string, end: string) {
