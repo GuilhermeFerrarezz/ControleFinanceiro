@@ -304,4 +304,45 @@ FROM expenses e CROSS JOIN LATERAL jsonb_array_elements(e.items) WITH ORDINALITY
 CROSS JOIN LATERAL (SELECT CASE WHEN item->>'unit' IN ('pacote','caixa') THEN coalesce(item->'packageContent'->>'unit',item->>'unit') ELSE item->>'unit' END AS unit) measure
 WHERE e.deleted_at IS NULL;
 
+
+-- Update the standard catalog once, retaining IDs, purchases and stock history.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version='20261120_standard_products') THEN
+    UPDATE restaurant_catalog SET deleted_at=coalesce(deleted_at,CURRENT_TIMESTAMP)
+    WHERE kind='product' AND normalized_name IN (
+      'carne bovina','carne suina','frango','peixe','tomate','alface','cenoura',
+      'macarrao','queijo','detergente','embalagem para marmita'
+    );
+
+    INSERT INTO restaurant_catalog (empresa_id,kind,name,normalized_name,default_unit)
+    SELECT e.id,'product',p.name,p.normalized,p.unit FROM empresas e CROSS JOIN (VALUES
+        ('Açúcar','acucar','kg'),
+        ('Água sanitária','agua sanitaria','L'),
+        ('Alcatra','alcatra','kg'),
+        ('Alho','alho','kg'),
+        ('Arroz','arroz','kg'),
+        ('Azeite','azeite','L'),
+        ('Batata','batata','kg'),
+        ('Batata frita congelada','batata frita congelada','kg'),
+        ('Café','cafe','kg'),
+        ('Cebola','cebola','kg'),
+        ('Contra-Filé','contra-file','kg'),
+        ('Farinha de Trigo','farinha de trigo','kg'),
+        ('Feijão','feijao','kg'),
+        ('Filé Mignon','file mignon','kg'),
+        ('Leite','leite','L'),
+        ('Linguiça','linguica','kg'),
+        ('Molho de tomate','molho de tomate','pacote'),
+        ('Óleo de soja','oleo de soja','L'),
+        ('Ovos','ovos','un'),
+        ('Pernil','pernil','kg'),
+        ('Sal','sal','kg'),
+        ('Tilápia','tilapia','kg')
+    ) p(name,normalized,unit)
+    ON CONFLICT (empresa_id,kind,normalized_name) DO NOTHING;
+
+    INSERT INTO schema_migrations(version) VALUES ('20261120_standard_products');
+  END IF;
+END $$;
+
 COMMIT;
