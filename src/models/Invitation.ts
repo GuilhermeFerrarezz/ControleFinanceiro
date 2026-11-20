@@ -5,12 +5,14 @@ const columns = 'i.id,i.empresa_id AS "empresaId",i.invited_by AS "invitedBy",i.
 export async function findValidInvitation(hash: string, client: Queryable = db, lock = false) {
   return (await client.query<IInvitation & { empresaNome: string }>(`SELECT ${columns},e.nome AS "empresaNome"
     FROM restaurant_invitations i JOIN empresas e ON e.id=i.empresa_id
-    WHERE i.token_hash=$1 AND i.accepted_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > CURRENT_TIMESTAMP AND e.ativo=TRUE
+    WHERE i.token_hash=$1 AND i.accepted_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > clock_timestamp() AND e.ativo=TRUE
     ${lock ? 'FOR UPDATE OF i' : ''}`, [hash])).rows[0] ?? null;
 }
 export async function acceptInvitation(id: string, client: Queryable) {
-  return (await client.query(`UPDATE restaurant_invitations SET accepted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
-    WHERE id=$1 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP RETURNING id`, [id])).rowCount === 1;
+  // CURRENT_TIMESTAMP is fixed at BEGIN and can accept an expired invitation
+  // after a lock wait. Recheck the actual clock at the consuming write.
+  return (await client.query(`UPDATE restaurant_invitations SET accepted_at=clock_timestamp(),updated_at=clock_timestamp()
+    WHERE id=$1 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > clock_timestamp() RETURNING id`, [id])).rowCount === 1;
 }
 export async function revokePendingInvitations(empresaId: string, email: string, client: Queryable) {
   await client.query(`UPDATE restaurant_invitations SET revoked_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
@@ -21,7 +23,7 @@ export async function insertInvitation(empresaId: string, invitedBy: string, ema
 }
 export async function listInvitations(empresaId: string) {
   return (await db.query<IInvitation>(`SELECT ${columns} FROM restaurant_invitations i WHERE empresa_id=$1
-    AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP ORDER BY created_at DESC,id`, [empresaId])).rows;
+    AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > clock_timestamp() ORDER BY created_at DESC,id`, [empresaId])).rows;
 }
 export async function revokeInvitation(id: string, empresaId: string, client: Queryable = db) {
   return (await client.query(`UPDATE restaurant_invitations SET revoked_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
