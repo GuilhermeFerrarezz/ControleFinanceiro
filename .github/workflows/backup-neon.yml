@@ -38,6 +38,7 @@ jobs:
           PGCONNECT_TIMEOUT: '15'
           PGAPPNAME: saldo-da-casa-backup
           PGSSLMODE: verify-full
+          PGSSLROOTCERT: /etc/ssl/certs/ca-certificates.crt
           PGOPTIONS: '-c default_transaction_read_only=on -c statement_timeout=600000'
         run: |
           set -euo pipefail
@@ -50,10 +51,23 @@ jobs:
             echo 'BACKUP_DATABASE_URL must be a direct PostgreSQL connection, without pooling.' >&2
             exit 1
           fi
-          server_version=$(psql -X -A -t --no-password --dbname="$PGDATABASE" -c 'SHOW server_version_num' 2>/dev/null) || {
-            echo 'Unable to connect to the backup database. Check the connection and permissions.' >&2
+          connection_error=$(mktemp)
+          trap 'rm -f -- "$connection_error"' EXIT
+          server_version=$(psql -X -A -t --no-password --dbname="$PGDATABASE" -c 'SHOW server_version_num' 2>"$connection_error") || {
+            # Classify failures without printing credentials or database diagnostics.
+            if grep -qi 'password authentication failed' "$connection_error"; then
+              echo 'Database authentication failed. Update BACKUP_DATABASE_URL with the current Neon password.' >&2
+            elif grep -Eqi 'root certificate|certificate verify failed|server certificate' "$connection_error"; then
+              echo 'Database TLS verification failed. Check the trusted CA bundle and connection SSL parameters.' >&2
+            elif grep -Eqi 'could not translate host|could not resolve|timeout|timed out|Connection refused' "$connection_error"; then
+              echo 'Database host unavailable. Check the direct Neon endpoint, network access and database status.' >&2
+            else
+              echo 'Unable to connect to the backup database. Check the connection URL and permissions.' >&2
+            fi
             exit 1
           }
+          rm -f -- "$connection_error"
+          trap - EXIT
           client_version=$(pg_dump --version | grep -oE '[0-9]+' | head -1)
           if [[ ! "$server_version" =~ ^[0-9]+$ ]] || (( server_version / 10000 > client_version )); then
             echo 'Set BACKUP_POSTGRES_IMAGE to a PostgreSQL client at least as recent as the server.' >&2
