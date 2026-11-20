@@ -9,6 +9,7 @@
     "lint": "eslint",
     "db:migrate": "node --conditions=react-server --env-file-if-exists=.env --import tsx scripts/migrate-db.ts",
     "admin:configure": "node --conditions=react-server --env-file-if-exists=.env --import tsx scripts/configure-platform-admin.ts",
+    "demo:create": "node --conditions=react-server --env-file-if-exists=.env --import tsx scripts/create-demo-account.ts",
     "test": "node --conditions=react-server --env-file-if-exists=.env --import tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },

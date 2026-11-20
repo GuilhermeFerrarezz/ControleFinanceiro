@@ -2,6 +2,8 @@
 
 Para configurar o acesso exclusivo ao painel `/admin`, os limites globais e a suspensão de restaurantes/usuários, consulte [Administração da plataforma](docs/platform-admin.md).
 
+Para criar uma conta separada com três meses de dados fictícios, consulte [Conta de demonstração](docs/demo-account.md).
+
 Sistema para organizar a gestão financeira de restaurantes, pensado para acompanhar gastos com alimentos, funcionários e despesas da operação.
 
 ## Como funciona
