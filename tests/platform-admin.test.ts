@@ -46,6 +46,49 @@ test('admin exclusivo, cotas concorrentes e suspensão reversível', {timeout:18
     assert.equal((await send('/api/v1/platform-admin','GET',undefined,adminCookie)).status,403);
     await query(storage,'UPDATE usuarios SET email_verified_at=clock_timestamp() WHERE id=$1',[adminId]);
   });
+  await t.test('integrantes são paginados, isolados por restaurante e exclusivos do administrador', async () => {
+    const target = randomUUID(), other = randomUUID();
+    const people = Array.from({ length: 34 }, () => randomUUID());
+    await query(storage,"INSERT INTO empresas(id,nome,ativo) VALUES ($1,'Equipe paginada',FALSE),($2,'Outra equipe',TRUE)",[target,other]);
+    await query(storage,`INSERT INTO usuarios(id,nome,email,senha,ativo,email_verified_at,deleted_at)
+      SELECT id,'Integrante '||lpad(n::text,2,'0'),'roster-'||n||'@platform.example','private-password-hash',n<>2 AND n<>33,
+      CASE WHEN n=1 THEN clock_timestamp() END,CASE WHEN n=33 THEN clock_timestamp() END
+      FROM unnest($1::uuid[]) WITH ORDINALITY AS person(id,n)`,[people]);
+    await query(storage,`INSERT INTO restaurant_members(user_id,empresa_id,role)
+      SELECT id,CASE WHEN n=34 THEN $3::uuid ELSE $2::uuid END,CASE WHEN n=1 THEN 'owner' ELSE 'employee' END
+      FROM unnest($1::uuid[]) WITH ORDINALITY AS person(id,n)`,[people,target,other]);
+    const url = `/api/v1/platform-admin?restaurantId=${target}`;
+    assert.equal((await send(url)).status,401);
+    assert.equal((await send(url,'GET',undefined,ownerCookie)).status,403);
+    await query(storage,'UPDATE usuarios SET email_verified_at=NULL WHERE id=$1',[adminId]);
+    assert.equal((await send(url,'GET',undefined,adminCookie)).status,403);
+    await query(storage,'UPDATE usuarios SET email_verified_at=clock_timestamp() WHERE id=$1',[adminId]);
+    const first = await send(url,'GET',undefined,adminCookie);
+    assert.equal(first.status,200);
+    assert.equal(first.headers.get('cache-control'),'no-store');
+    const data = await first.json();
+    assert.deepEqual(data.restaurant,{id:target,nome:'Equipe paginada',ativo:false});
+    assert.equal(data.members.length,30); assert.equal(data.hasNext,true);
+    assert.equal(data.members[0].role,'owner'); assert.equal(data.members[0].emailVerified,true);
+    assert.equal(data.members[1].ativo,false);
+    for(const member of data.members) assert.deepEqual(Object.keys(member).sort(),['id','nome','email','role','ativo','emailVerified'].sort());
+    const second = await(await send(url+'&page=2','GET',undefined,adminCookie)).json();
+    assert.equal(second.members.length,2); assert.equal(second.hasNext,false);
+    const all = [...data.members,...second.members];
+    assert.equal(new Set(all.map(member=>member.id)).size,32);
+    assert.equal(all.some(member=>member.email==='roster-33@platform.example'||member.email==='roster-34@platform.example'),false);
+    assert.doesNotMatch(JSON.stringify(data),/senha|token|private-password-hash/);
+    for(const queryString of ['restaurantId=invalid',`restaurantId=${target}&page=0`,`restaurantId=${target}&page=1.5`]) {
+      assert.equal((await send('/api/v1/platform-admin?'+queryString,'GET',undefined,adminCookie)).status,400);
+    }
+    assert.equal((await send('/api/v1/platform-admin?restaurantId='+randomUUID(),'GET',undefined,adminCookie)).status,404);
+    const html = await(await send('/admin','GET',undefined,adminCookie)).text();
+    assert.match(html,/Ver integrantes/);
+    assert.doesNotMatch(html,/roster-01@platform.example/,'integrantes são consultados apenas ao expandir');
+    await query(storage,'DELETE FROM usuarios WHERE id=ANY($1::uuid[])',[people]);
+    await query(storage,'DELETE FROM empresas WHERE id=ANY($1::uuid[])',[[target,other]]);
+    await query(storage,'DELETE FROM auth_rate_limits WHERE key=$1',[createHash('sha256').update(`platform-admin:read:${adminId}`).digest('hex')]);
+  });
   await t.test('alterações exigem origem, senha e dados atuais; administrador não suspende a si mesmo',async()=>{
     const state=await overview();const body={action:'settings',maxRestaurants:12,maxUsers:100,expectedSettings:state.settings};
     assert.equal((await patch({...body,senha:password},adminCookie,'https://hostil.invalid')).status,403);

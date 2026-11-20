@@ -2,7 +2,24 @@ import { db } from '../lib/db';
 import type { Queryable } from '../lib/postgres';
 import { InputError } from '../lib/validation';
 import { randomBytes } from 'node:crypto';
-import type { PlatformOverview, PlatformSettings } from '../lib/platform-shared';
+import type { PlatformOverview, PlatformSettings, PlatformRestaurantMembers } from '../lib/platform-shared';
+import { inTransaction } from '../lib/postgres';
+
+// Caller must authorize the platform administrator before entering this repository.
+export async function platformRestaurantMembers(id: string, page: number): Promise<PlatformRestaurantMembers | null> {
+  return inTransaction(async client => {
+    const restaurant = (await client.query<PlatformRestaurantMembers['restaurant']>(
+      'SELECT id,nome,ativo FROM empresas WHERE id=$1', [id])).rows[0];
+    if (!restaurant) return null;
+    const { rows } = await client.query<PlatformRestaurantMembers['members'][number]>(
+      `SELECT m.id,u.nome,u.email,m.role,u.ativo,(u.email_verified_at IS NOT NULL) AS "emailVerified"
+       FROM restaurant_members m JOIN usuarios u ON u.id=m.user_id
+       WHERE m.empresa_id=$1 AND u.deleted_at IS NULL
+       ORDER BY CASE m.role WHEN 'owner' THEN 0 ELSE 1 END,lower(u.nome),m.id LIMIT 31 OFFSET $2`,
+      [id, (page - 1) * 30]);
+    return { restaurant, members: rows.slice(0, 30), page, hasNext: rows.length > 30 };
+  }, true);
+}
 
 export class CapacityError extends InputError {}
 export async function platformSettings(client: Queryable = db, lock = false) {

@@ -1,5 +1,11 @@
 // Public DTOs only. This module must remain safe for browser imports.
 export type PlatformSettings = { maxRestaurants: number; maxUsers: number };
+export type PlatformRestaurantMembers = {
+  restaurant: { id: string; nome: string; ativo: boolean };
+  members: { id: string; nome: string; email: string; role: 'owner' | 'employee'; ativo: boolean; emailVerified: boolean }[];
+  page: number;
+  hasNext: boolean;
+};
 export type PlatformOverview = {
   settings: PlatformSettings;
   totals: { restaurants: number; users: number; activeRestaurants: number; activeUsers: number };

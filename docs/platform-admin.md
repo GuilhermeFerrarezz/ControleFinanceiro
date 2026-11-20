@@ -2,6 +2,12 @@
 
 O painel `/admin` controla restaurantes e usuários, com ativação/suspensão e limites globais. Não há integração de cobrança: o administrador decide manualmente quando suspender ou reativar.
 
+## Integrantes dos restaurantes
+
+Na aba **Restaurantes**, clique em **Ver integrantes** para consultar nome, e-mail, função (dono ou funcionário), situação da conta e confirmação de e-mail. A consulta mostra 30 pessoas por página, inclui contas suspensas e permite consultar restaurantes suspensos. Contas excluídas e convites ainda não aceitos não são integrantes. O botão **Ocultar integrantes** recolhe a lista.
+
+Somente o administrador da plataforma pode acessar essa consulta, inclusive pela API. Ela não retorna senhas, tokens ou dados financeiros. Conta ativa e e-mail confirmado não garantem acesso se o restaurante estiver suspenso.
+
 ## Excluir um restaurante
 
 Na aba **Restaurantes**, desative o restaurante e clique em **Excluir restaurante**. A exclusão só é permitida para restaurantes desativados e exige digitar o nome exato e confirmar a senha da conta administradora. O servidor revalida administrador, sessão, senha, nome e situação atual dentro da transação. Uma listagem desatualizada deve ser recarregada antes de confirmar.

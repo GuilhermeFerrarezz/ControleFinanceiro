@@ -1,4 +1,4 @@
-.main { max-width:1280px; margin:auto; padding:40px 32px 80px; color:var(--ink); }
+.main { width:100%; min-width:0; max-width:1280px; margin:auto; padding:40px 32px 80px; color:var(--ink); }
 .heading { display:flex; justify-content:space-between; align-items:center; gap:20px; margin-bottom:30px; }
 .heading h1 { font-family:Georgia,serif; font-weight:400; font-size:42px; margin:12px 0; }
 .heading p,.card>p { color:#737e6b; line-height:1.7; }
@@ -22,3 +22,11 @@
 .audit { list-style:none; padding:0; }.audit li { display:flex; flex-direction:column; gap:8px; padding:18px 0; border-bottom:1px solid var(--line); }.audit span,.audit small { font-size:12px; color:#7d8771; }.audit code { overflow-wrap:anywhere; font-size:12px; }
 .empty { padding:24px 0; color:#7d8771; }.dialog { border:1px solid var(--line); border-radius:14px; width:min(480px,calc(100vw - 32px)); padding:28px; color:var(--ink); background:#fffefa; margin:auto; }.dialog::backdrop { background:#183d2e66; }.dialog h2 { font-family:Georgia,serif; font-weight:400; font-size:28px; margin:0 0 20px; }.dialog p { color:#737e6b; line-height:1.8; font-size:14px; margin:16px 0; }.dialog strong { overflow-wrap:anywhere; }.dialog label { margin-bottom:10px; }.actions { display:flex; justify-content:flex-end; gap:12px; margin-top:24px; }
 @media(max-width:700px) { .main { padding:24px 16px 50px; }.heading { align-items:flex-start; flex-direction:column; }.heading h1 { font-size:34px; }.metrics { gap:12px; }.metrics article { padding:18px; }.metrics strong { font-size:28px; }.card { padding:18px; }.search { align-items:stretch; flex-direction:column; }.limits { grid-template-columns:1fr; }.tabs button { padding:10px 13px; }.pagination :global(.button) { font-size:12px; padding:10px; } }
+
+.members { margin-top:12px; }
+.membersToggle,.membersPagination button { border:1px solid var(--line); background:transparent; color:var(--green); padding:8px 10px; border-radius:6px; font-size:12px; }
+.members section { margin-top:12px; min-width:230px; font-size:12px; line-height:1.6; }
+.membersList { list-style:none; padding:0; margin:0; max-height:400px; overflow:auto; }
+.membersList li { padding:12px 0; border-bottom:1px solid var(--line); display:flex; flex-direction:column; gap:4px; }
+.membersList span { overflow-wrap:anywhere; }
+.membersPagination { display:flex; align-items:center; gap:10px; margin-top:12px; }

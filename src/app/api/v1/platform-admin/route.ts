@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { jsonError, trustedOrigin } from '@/src/lib/auth';
 import { changePlatform, PlatformError, requirePlatformAdmin } from '@/src/lib/platform-admin';
-import { platformOverview } from '@/src/models/Platform';
+import { platformOverview, platformRestaurantMembers } from '@/src/models/Platform';
+import { z } from 'zod';
 import { InputError, readBody } from '@/src/lib/validation';
 import { consumeLimit } from '@/src/lib/rate-limit';
 import { SecurityLimitError } from '@/src/lib/security-limits';
@@ -17,6 +18,14 @@ export async function GET(request: Request) {
     const params = new URL(request.url).searchParams;
     const q = (params.get('q') || '').trim(); const page = Number(params.get('page') || 1);
     if (q.length>120 || q.includes('\0') || !Number.isSafeInteger(page) || page<1 || page>1000000) throw new InputError('Busca ou página inválida.');
+    const restaurantId = params.get('restaurantId');
+    if (restaurantId !== null) {
+      const parsed = z.uuid().safeParse(restaurantId);
+      if (!parsed.success) throw new InputError('Restaurante inválido.');
+      const result = await platformRestaurantMembers(parsed.data, page);
+      if (!result) throw new PlatformError('Restaurante não encontrado.', 404);
+      return NextResponse.json(result, { headers: { 'Cache-Control': 'no-store' } });
+    }
     return NextResponse.json(await platformOverview(q,page),{headers:{'Cache-Control':'no-store'}});
   } catch(error) { return failure(error); }
 }
