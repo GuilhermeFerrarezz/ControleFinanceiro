@@ -3,9 +3,10 @@ import type { Queryable } from '../lib/postgres';
 import type { RestaurantRole } from './Membership';
 import { inTransaction } from '../lib/postgres';
 import { EMAIL_ACCESS_SQL } from '../lib/email-verification-policy';
+import { resetLimit } from '../lib/rate-limit';
 export interface IRefreshToken { id: string; token: string; userId: string; empresaId: string | null; expiresAt: Date }
 export interface ISessionIdentity { id: string; nome: string; email: string; emailVerified: boolean; empresaId: string | null; empresaNome: string | null; role: RestaurantRole | null }
-export async function createRefreshToken(token: string, userId: string, empresaId: string | null, expiresAt: Date, expectedPasswordHash: string) {
+export async function createRefreshToken(token: string, userId: string, empresaId: string | null, expiresAt: Date, expectedPasswordHash: string, loginLimitKey: string) {
   return inTransaction(async client => {
     // Match restaurant deletion's lock order: restaurant before identity. Do
     // not hold a user lock while waiting for a restaurant being deleted.
@@ -16,6 +17,7 @@ export async function createRefreshToken(token: string, userId: string, empresaI
     if (!user?.ativo || user.senha !== expectedPasswordHash) return false;
     if (!(await client.query(`SELECT id FROM usuarios u WHERE id=$1 AND ${EMAIL_ACCESS_SQL}`, [userId])).rowCount) return false;
     await client.query('INSERT INTO refresh_tokens (token,user_id,empresa_id,expires_at) VALUES ($1,$2,$3,$4)', [token, userId, empresaId, expiresAt]);
+    await resetLimit(loginLimitKey, client);
     return true;
   });
 }

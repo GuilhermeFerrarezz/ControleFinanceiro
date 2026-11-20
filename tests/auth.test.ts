@@ -581,6 +581,20 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     assert.equal(response.headers.get('x-frame-options'), 'DENY');
     assert.equal(response.headers.get('strict-transport-security'), 'max-age=31536000');
   });
+  await t.test('login bem-sucedido zera o limite por e-mail e continua contando no limite global', async () => {
+    const email = 'successful-login-limit@example.com';
+    const senha = 'Senha-teste-login-limite-123';
+    await query(storage, 'INSERT INTO usuarios (nome,email,senha) VALUES ($1,$2,$3)', ['Limite de login', email, await bcrypt.hash(senha, 10)]);
+    const login = (password: string) => post('/auth/login', { email, senha: password });
+    const globalKey = createHash('sha256').update('login:global').digest('hex');
+    await query(storage, 'DELETE FROM auth_rate_limits WHERE key=$1', [globalKey]);
+    for (let i = 0; i < 6; i++) assert.equal((await login(senha)).status, 200);
+    for (let i = 0; i < 4; i++) assert.equal((await login('Senha-incorreta')).status, 401);
+    assert.equal((await login(senha)).status, 200);
+    for (let i = 0; i < 5; i++) assert.equal((await login('Senha-incorreta')).status, 401);
+    assert.equal((await login(senha)).status, 429);
+    assert.equal((await query(storage, 'SELECT count FROM auth_rate_limits WHERE key=$1', [globalKey]))[0].count, 17);
+  });
   await t.test('expiração e limitação de tentativas são aplicadas', async () => {
     await query(storage, `UPDATE refresh_tokens SET expires_at = '2000-01-01 00:00:00.000 +00:00'`);
     assert.equal((await fetch(`${origin}/api/v1/private`, { headers: { Cookie: secondCookie } })).status, 401);

@@ -22,7 +22,10 @@ export async function POST(request: Request) {
     const email = emailValue(body.email);
     const senha = passwordValue(body.senha);
     if (body.remember !== undefined && typeof body.remember !== 'boolean') throw new InputError('Opção de sessão inválida.');
-    if (!await consumeLimit(`login:${email}`, 5, 15 * 60_000)) return jsonError('Muitas tentativas. Aguarde 15 minutos.', 429);
+    // Reserve an attempt before comparing the password so concurrent requests
+    // respect the same limit. A committed session resets this account's bucket.
+    const loginLimitKey = `login:${email}`;
+    if (!await consumeLimit(loginLimitKey, 5, 15 * 60_000)) return jsonError('Muitas tentativas. Aguarde 15 minutos.', 429);
     const usuario = await findUsuarioByEmail(email);
     const valid = await withPasswordBudget(() => bcrypt.compare(senha, usuario ? usuario.senha : dummyHash));
     if (!usuario?.ativo || !valid) return jsonError('Credenciais inválidas.', 401);
@@ -30,7 +33,7 @@ export async function POST(request: Request) {
     const restaurants = await userRestaurants(usuario.id);
     if (!restaurants.length && await hasMemberships(usuario.id) && !isPlatformOwner(usuario.id)) return jsonError('Conta indisponível. Contate o responsável pelo restaurante.', 403);
     const cookieStore = await cookies();
-    const session = await createSession(usuario.id, body.remember === true, usuario.senha);
+    const session = await createSession(usuario.id, body.remember === true, usuario.senha, loginLimitKey);
     if (!session) return jsonError('Credenciais inválidas.', 401);
     await revokeSession(cookieStore.get(SESSION_COOKIE)?.value);
     const response = NextResponse.json({ message: 'Login realizado.' }, { headers: { 'Cache-Control': 'no-store' } });

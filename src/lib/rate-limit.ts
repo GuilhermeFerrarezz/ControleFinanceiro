@@ -1,5 +1,15 @@
 import { createHash } from 'node:crypto';
 import { db } from './db';
+import type { Queryable } from './postgres';
+
+function hashLimitKey(key: string) {
+  return createHash('sha256').update(key).digest('hex');
+}
+
+export async function resetLimit(key: string, client: Queryable) {
+  await client.query('DELETE FROM auth_rate_limits WHERE key=$1', [hashLimitKey(key)]);
+}
+
 export async function consumeLimit(key: string, limit: number, windowMs: number) {
   const now = Date.now();
   if (now - lastCleanup >= 60_000) {
@@ -8,7 +18,7 @@ export async function consumeLimit(key: string, limit: number, windowMs: number)
       SELECT key FROM auth_rate_limits WHERE window_start < $1 ORDER BY window_start LIMIT 1000
     )`, [now - 24 * 60 * 60_000]);
   }
-  const hashedKey = createHash('sha256').update(key).digest('hex');
+  const hashedKey = hashLimitKey(key);
   const { rows } = await db.query<{ count: number }>(
     `INSERT INTO auth_rate_limits (key,count,window_start) VALUES ($1,1,$2)
      ON CONFLICT (key) DO UPDATE SET
