@@ -39,6 +39,10 @@ yarn-error.log*
 *.sqlite-*
 *.session.sql
 .backups/
+*.dump
+*.dump.age
+backup-neon-key*.txt
+backup-neon-key*.age
 
 # vercel
 .vercel

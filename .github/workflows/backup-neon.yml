@@ -1,0 +1,92 @@
+name: Backup Neon
+
+on:
+  schedule:
+    # 03:17 America/Sao_Paulo (UTC-3). GitHub schedules may be delayed.
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neon-production-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    # Do not expose production database credentials to development branches.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container:
+      image: ${{ vars.BACKUP_POSTGRES_IMAGE || 'postgres:18-bookworm' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install encryption tool
+        run: |
+          set -euo pipefail
+          apt-get update -qq
+          apt-get install -y --no-install-recommends age ca-certificates
+
+      - name: Export and encrypt database
+        env:
+          PGDATABASE: ${{ secrets.BACKUP_DATABASE_URL }}
+          AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+          PGCONNECT_TIMEOUT: '15'
+          PGAPPNAME: saldo-da-casa-backup
+          PGSSLMODE: verify-full
+          PGOPTIONS: '-c default_transaction_read_only=on -c statement_timeout=600000'
+        run: |
+          set -euo pipefail
+          umask 077
+          if [[ -z "$PGDATABASE" || -z "$AGE_RECIPIENT" ]]; then
+            echo 'Configure BACKUP_DATABASE_URL and BACKUP_AGE_RECIPIENT in GitHub Settings.' >&2
+            exit 1
+          fi
+          if [[ ! "$PGDATABASE" =~ ^postgres(ql)?:// || "$PGDATABASE" == *'-pooler.'* ]]; then
+            echo 'BACKUP_DATABASE_URL must be a direct PostgreSQL connection, without pooling.' >&2
+            exit 1
+          fi
+          server_version=$(psql -X -A -t --no-password --dbname="$PGDATABASE" -c 'SHOW server_version_num' 2>/dev/null) || {
+            echo 'Unable to connect to the backup database. Check the connection and permissions.' >&2
+            exit 1
+          }
+          client_version=$(pg_dump --version | grep -oE '[0-9]+' | head -1)
+          if [[ ! "$server_version" =~ ^[0-9]+$ ]] || (( server_version / 10000 > client_version )); then
+            echo 'Set BACKUP_POSTGRES_IMAGE to a PostgreSQL client at least as recent as the server.' >&2
+            exit 1
+          fi
+          mkdir -p backup
+          trap 'rm -f -- backup/database.dump.age' EXIT
+          # No unencrypted dump is written to disk. Hide provider/database
+          # diagnostics, which could contain user data or connection details.
+          if ! pg_dump --dbname="$PGDATABASE" --no-password --format=custom --no-owner --no-acl --lock-wait-timeout=30s 2>/dev/null \
+            | age -r "$AGE_RECIPIENT" -o backup/database.dump.age 2>/dev/null; then
+            echo 'Backup failed. Check credentials, permissions, client version and public encryption key.' >&2
+            exit 1
+          fi
+          # Bound artifact storage. Do not silently replace a backup with a partial dump.
+          bytes=$(wc -c < backup/database.dump.age)
+          if (( bytes < 1 || bytes > 41943040 )); then
+            echo 'Encrypted backup is empty or exceeds 40 MiB. Review artifact storage before increasing this limit.' >&2
+            exit 1
+          fi
+          trap - EXIT
+          echo "Encrypted backup created (${bytes} bytes)."
+
+      - name: Store encrypted backup for seven days
+        # actions/upload-artifact v7, pinned to an immutable commit.
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: neon-backup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: backup/database.dump.age
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Remove runner copy
+        if: always()
+        run: rm -f -- backup/database.dump.age

@@ -2,6 +2,8 @@
 
 Para configurar o acesso exclusivo ao painel `/admin`, os limites globais e a suspensão de restaurantes/usuários, consulte [Administração da plataforma](docs/platform-admin.md).
 
+Para ativar backups diários criptografados do Neon no GitHub Actions e testar a restauração, siga [Backups do banco](docs/backups.md). A rotina só executa na `main` e requer configuração no GitHub; o deploy na Vercel não a ativa sozinho.
+
 Sistema para organizar a gestão financeira de restaurantes, pensado para acompanhar gastos com alimentos, funcionários e despesas da operação.
 
 ## Como funciona
