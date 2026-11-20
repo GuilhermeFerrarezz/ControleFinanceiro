@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { filterHelpTopics, HELP_GROUPS } from '@/src/lib/help-content';
 import Icon from './Icon';
 import styles from './help.module.css';
+import { TUTORIAL_EVENT } from '@/src/lib/tutorial';
 
 const firstSteps = [
   { title: 'Organize a casa', text: 'Prepare categorias, fornecedores e produtos.', href: '/dashboard/catalog', icon: 'store' },
@@ -13,16 +14,17 @@ const firstSteps = [
   { title: 'Entenda o resultado', text: 'Compare as vendas com todos os gastos.', href: '/dashboard/profit', icon: 'chart' },
 ] as const;
 
-export default function HelpCenter({ role }: { role: 'owner' | 'employee' }) {
+export default function HelpCenter({ role, platformAdmin = false }: { role: 'owner' | 'employee'; platformAdmin?: boolean }) {
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState('all');
-  const topics = filterHelpTopics(query, group);
+  const topics = filterHelpTopics(query, group).filter(topic => !topic.platformOnly || platformAdmin);
   const searching = query.trim().length > 0;
   function reset() { setQuery(''); setGroup('all'); }
   return <div className={styles.center}>
     <section className={styles.start} aria-labelledby="help-start-title">
       <div className={styles.sectionHeading}>
         <div><span className={styles.eyebrow}>COMECE POR AQUI</span><h2 id="help-start-title">Sua rotina em quatro passos</h2></div>
+        <button type="button" className="button button-outline" onClick={() => window.dispatchEvent(new Event(TUTORIAL_EVENT))}>Rever tutorial</button>
         <span className={styles.role}><Icon name="shield" size={16} />Seu acesso: {role === 'owner' ? 'Dono' : 'Funcionário'}</span>
       </div>
       <ol className={styles.steps}>{firstSteps.map((step, index) => <li key={step.href}>
@@ -41,7 +43,7 @@ export default function HelpCenter({ role }: { role: 'owner' | 'employee' }) {
         <p className={styles.searchHint}>Busque uma ação, um campo ou o nome de uma tela.</p>
         <nav className={styles.topicsNav} aria-label="Assuntos da ajuda">
           <button type="button" aria-pressed={group === 'all'} onClick={() => setGroup('all')}>Todos os assuntos <Icon name="arrow" size={14} /></button>
-          {HELP_GROUPS.map(item => <button type="button" key={item.id} aria-pressed={group === item.id} onClick={() => setGroup(item.id)}>{item.label}<Icon name="arrow" size={14} /></button>)}
+          {HELP_GROUPS.filter(item => item.id !== 'platform' || platformAdmin).map(item => <button type="button" key={item.id} aria-pressed={group === item.id} onClick={() => setGroup(item.id)}>{item.label}<Icon name="arrow" size={14} /></button>)}
         </nav>
         <p className={styles.sidebarNote}>Abra uma pergunta para ver o passo a passo. Os atalhos levam à tela em que você faz a ação.</p>
       </aside>

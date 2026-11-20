@@ -4,6 +4,7 @@ import { emailValue } from './validation';
 
 function deliverySettings() {
   const configured = process.env.RESEND_SANDBOX_TO?.trim();
+  if (configured && process.env.VERCEL_ENV === 'production') throw new Error('Sandbox de e-mail não permitido em Production.');
   let sandboxTo: string | undefined;
   if (configured) {
     try { sandboxTo = emailValue(configured); }
@@ -60,6 +61,8 @@ export async function sendAuthEmail(email: string, type: AuthTokenType, token: s
     signal: AbortSignal.timeout(10_000),
   });
   // Never log provider responses: they may contain addresses or the original link.
+  // Release the HTTP body/connection even for rejected deliveries.
+  await response.body?.cancel();
   if (!response.ok) throw new Error('Falha no envio transacional.');
   return 'sent' as const;
 }

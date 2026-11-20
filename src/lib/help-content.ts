@@ -2,15 +2,86 @@ export const HELP_GROUPS = [
   { id: 'start', label: 'Primeiros passos' }, { id: 'expenses', label: 'Gastos e compras' },
   { id: 'revenue', label: 'Faturamento e lucro' }, { id: 'analysis', label: 'Gráficos e insumos' },
   { id: 'files', label: 'Importar e exportar' }, { id: 'management', label: 'Cadastros e equipe' },
+  { id: 'inventory', label: 'Estoque' }, { id: 'account', label: 'Conta e acesso' },
+  { id: 'platform', label: 'Administração da plataforma' },
   { id: 'questions', label: 'Dúvidas frequentes' },
 ] as const;
 
 export type HelpTopic = {
   id: string; group: typeof HELP_GROUPS[number]['id']; title: string; summary: string;
-  steps: string[]; example?: string; note?: string; href?: string; action?: string; ownerOnly?: boolean;
+  steps: string[]; example?: string; note?: string; href?: string; action?: string; ownerOnly?: boolean; platformOnly?: boolean;
 };
 
 export const HELP_TOPICS: HelpTopic[] = [
+  { id: 'guided-tour', group: 'start', title: 'Como iniciar, pular ou rever o tutorial?',
+    summary: 'O primeiro acesso às abas do restaurante apresenta um passeio guiado pelas telas.',
+    steps: ['Clique em Começar para conhecer cada aba. Próxima abre a área seguinte e Anterior retorna à etapa anterior.',
+      'Use Pular tutorial ou a tecla Escape para encerrar. A escolha fica salva na sua conta, inclusive para outros dispositivos.',
+      'Na Ajuda, clique em Rever tutorial quando quiser fazer o passeio novamente.'],
+    note: 'O passeio apresenta as telas sem cadastrar compras ou alterar valores. Se aparecer um erro ao salvar sua preferência, tente novamente antes de fechar.' },
+  { id: 'stock-setup', group: 'inventory', title: 'Como ativar produtos no estoque?',
+    summary: 'Escolha os produtos que deseja controlar e informe unidade, mínimo, armazenamento e fornecedores.',
+    steps: ['Em Estoque, clique em Adicionar produto ao estoque e escolha um produto cadastrado.',
+      'Defina a unidade de controle. O sistema converte gramas para kg e mililitros para L; pacotes e caixas precisam de conteúdo informado.',
+      'Informe estoque mínimo, local de armazenamento e fornecedores principais. Você também pode ativar o estoque ao cadastrar um produto em Cadastros.',
+      'Registre o saldo que já possui usando Entrada. Compras anteriores à ativação não são recebidas automaticamente.'],
+    note: 'A unidade de controle fica fixa após a ativação. Os locais de armazenamento também podem ser organizados em Cadastros.',
+    href: '/dashboard/inventory', action: 'Configurar estoque' },
+  { id: 'stock-purchases', group: 'inventory', title: 'Como receber uma compra no estoque?',
+    summary: 'A mesma compra registra o custo financeiro e as quantidades recebidas.',
+    steps: ['Em Novo gasto, adicione os produtos, quantidades e valores da compra.',
+      'Para os produtos com controle ativo, marque a opção de entrada no estoque. Informe o conteúdo por embalagem quando comprar pacotes ou caixas.',
+      'Salve o gasto e confira o saldo e o histórico na aba Estoque.',
+      'Ao corrigir ou excluir uma compra recebida, o estoque é recalculado. Se a alteração produzir saldo inválido, confira os movimentos antes de continuar.'],
+    note: 'Entrada avulsa na aba Estoque altera a quantidade. Para registrar também o custo, use um lançamento de compra.',
+    href: '/dashboard/expenses', action: 'Registrar compra' },
+  { id: 'stock-movements', group: 'inventory', title: 'Como registrar consumo, perda ou contagem física?',
+    summary: 'Registre o que entrou, saiu ou foi contado e consulte o histórico de movimentos.',
+    steps: ['Em Estoque, abra as ações do produto e escolha consumo na cozinha, perda / vencimento ou entrada avulsa.',
+      'Informe a quantidade, a data e, se quiser, o motivo. Consumo e perda reduzem o saldo; entrada aumenta.',
+      'Para conferir uma contagem física, informe o total contado. O sistema registra a diferença em relação ao saldo atual.',
+      'Consulte o histórico pelo produto e use a paginação para ver movimentos anteriores. Para corrigir, registre uma entrada ou contagem; os movimentos anteriores ficam preservados.'],
+    note: 'Os avisos Sem estoque, Repor estoque e Em dia usam o saldo atual e o mínimo configurado. Se outra pessoa alterar o saldo, atualize a página antes de confirmar uma contagem.',
+    href: '/dashboard/inventory', action: 'Consultar estoque' },
+  { id: 'verify-account', group: 'account', title: 'Como confirmar meu e-mail e manter o acesso?',
+    summary: 'A confirmação deve ser concluída em até 7 dias após o cadastro.',
+    steps: ['Após criar a conta, abra o e-mail de confirmação e clique no link. Confira também a pasta de spam.',
+      'Na página aberta, confirme a ação. O link de verificação vale por 24 horas e é usado uma única vez.',
+      'Se não recebeu ou o link expirou, use Confirmar e-mail no aviso do cabeçalho ou a página de confirmação para solicitar outro.',
+      'Depois de 7 dias sem confirmar, o acesso ao sistema fica bloqueado. Solicite outro link, confirme e entre novamente.'],
+    note: 'Confirmar o endereço não desfaz uma suspensão aplicada pelo administrador. Se houver um aviso para aguardar, tente novamente mais tarde.',
+    href: '/verify-email', action: 'Confirmar meu e-mail' },
+  { id: 'recover-password', group: 'account', title: 'Esqueci a senha. Como recuperar minha conta?',
+    summary: 'Solicite um link pelo e-mail cadastrado e escolha uma nova senha.',
+    steps: ['Na tela de login, clique em Esqueci minha senha e informe o e-mail da conta.',
+      'Abra a mensagem recebida, inclusive na pasta de spam, e use o link em até 30 minutos.',
+      'Informe uma nova senha e confirme a redefinição. O link é de uso único; se estiver inválido ou expirado, solicite outro.',
+      'Entre com a nova senha. As sessões anteriores são encerradas após a redefinição.'],
+    note: 'A solicitação mostra uma mensagem genérica para proteger as contas. Recuperar a senha não confirma o e-mail nem remove bloqueios administrativos.',
+    href: '/forgot-password', action: 'Recuperar minha senha' },
+  { id: 'access-blocked', group: 'account', title: 'Meu acesso foi bloqueado ou o restaurante está indisponível. O que fazer?',
+    summary: 'Confira a confirmação do e-mail e contate o responsável quando houver suspensão.',
+    steps: ['Se o aviso pedir confirmação após o prazo de 7 dias, solicite um novo link e confirme o e-mail.',
+      'Se seu vínculo de funcionário foi removido, peça um novo convite ao dono do restaurante.',
+      'Se a conta ou o restaurante foi suspenso, contate o administrador da plataforma para verificar a liberação.',
+      'Use o menu com seu nome para sair da conta, especialmente em um computador compartilhado.'],
+    note: 'Pagamentos e mensalidades são tratados diretamente com o administrador, fora do site.' },
+  { id: 'platform-limits', group: 'platform', platformOnly: true, title: 'Como controlar os limites e suspender acessos na plataforma?',
+    summary: 'O administrador exclusivo controla restaurantes, usuários e limites pelo painel administrativo.',
+    steps: ['No menu da conta, abra Administrar plataforma. Consulte as abas de restaurantes e usuários e use busca e paginação.',
+      'Em configurações, defina o número máximo de restaurantes e usuários. Contas e restaurantes desativados continuam ocupando vagas; contas excluídas deixam de contar no limite de usuários.',
+      'Desative um restaurante ou uma conta para interromper o acesso. As alterações exigem a senha da conta administradora.',
+      'Para liberar o acesso novamente, ative o cadastro e peça à pessoa para entrar. Confira as alterações recentes na auditoria.'],
+    note: 'Reduzir um limite não exclui cadastros existentes. O painel fica disponível somente para a conta administradora configurada no servidor.',
+    href: '/admin', action: 'Abrir administração' },
+  { id: 'platform-deletion', group: 'platform', platformOnly: true, title: 'Como excluir contas ou restaurantes pelo painel?',
+    summary: 'As exclusões exigem confirmação e senha. Confira o alvo antes de autorizar.',
+    steps: ['Para excluir um restaurante, primeiro desative-o. Escolha Excluir restaurante, digite o nome exato e sua senha.',
+      'A exclusão do restaurante remove seus gastos, faturamento, estoque, catálogo, convites e vínculos. As contas pessoais permanecem.',
+      'Para excluir uma conta, confira as condições apresentadas pelo painel e digite EXCLUIR e sua senha. Se houver histórico vinculado, os dados cadastrais são anonimizados para preservar a autoria operacional.',
+      'Se a conta for a única dona de um restaurante, resolva esse vínculo antes de excluí-la. A conta administradora não pode ser excluída pelo painel.'],
+    note: 'Para interromper acesso por mensalidade pendente, use a desativação. A exclusão de restaurante é permanente.',
+    href: '/admin', action: 'Consultar o painel' },
   { id: 'routine', group: 'start', title: 'Por onde começar e o que fazer todos os dias?',
     summary: 'Uma rotina simples: organize os cadastros, registre os gastos, feche as vendas e acompanhe o resultado.',
     steps: ['Em Cadastros, confira suas categorias, locais e produtos. Use nomes que façam sentido para sua rotina, como Mercado, Hortifruti e Moto 1.',
@@ -196,7 +267,7 @@ export const HELP_TOPICS: HelpTopic[] = [
 ];
 
 export function normalizeHelpSearch(value: string) {
-  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\be-mail\b/g, 'email').trim();
 }
 
 export function filterHelpTopics(query: string, group = 'all') {

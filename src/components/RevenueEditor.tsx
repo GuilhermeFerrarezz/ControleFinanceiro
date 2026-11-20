@@ -14,6 +14,8 @@ export default function RevenueEditor({ empresaId, today, rows, existingRows = r
 }) {
   const router = useRouter();
   const [date, setDate] = useState(today);
+  const [expected, setExpected] = useState<DailyRevenue | null>(() => existingRows.find(row => row.date === today) ?? null);
+  const hasLegacyMeals = existingRows.some(row => row.mealsSold != null);
   const [amount, setAmount] = useState(() => {
     const existing = existingRows.find(row => row.date === today);
     return existing ? decimalCents(existing.totalCents) : '';
@@ -41,7 +43,7 @@ export default function RevenueEditor({ empresaId, today, rows, existingRows = r
     setBusy(true); setDeleteError(''); setError(''); setNotice('');
     try {
       await api.delete('/revenue', { data: { empresaId, ...deleting, confirm: true } });
-      if (date === deleting.date) { setAmount(''); setDeliveryMeals(''); setDineInMeals(''); setOrderCount(''); }
+      if (date === deleting.date) { setExpected(null); setAmount(''); setDeliveryMeals(''); setDineInMeals(''); setOrderCount(''); }
       setDeleting(null);
       setNotice(`Faturamento de ${displayDate(deleting.date)} excluído.`);
       router.refresh();
@@ -54,6 +56,7 @@ export default function RevenueEditor({ empresaId, today, rows, existingRows = r
   function chooseDate(value: string) {
     setDate(value);
     const existing = existingRows.find(row => row.date === value);
+    setExpected(existing ?? null);
     setAmount(existing ? decimalCents(existing.totalCents) : '');
     setDeliveryMeals(String(existing?.deliveryMeals ?? ''));
     setDineInMeals(String(existing?.dineInMeals ?? ''));
@@ -66,14 +69,16 @@ export default function RevenueEditor({ empresaId, today, rows, existingRows = r
     if (totalCents === null) { setError('Informe um valor válido, como 1.250,90 ou 0,00.'); return; }
     setBusy(true); setError(''); setNotice('');
     try {
-      await api.post('/revenue', { mode: 'save', empresaId, date, totalCents,
-        mealsSold: existingRows.find(row => row.date === date)?.mealsSold ?? null,
+      const next = { date, totalCents,
+        mealsSold: expected?.mealsSold ?? null,
         deliveryMeals: deliveryMeals === '' ? null : Number(deliveryMeals),
         dineInMeals: dineInMeals === '' ? null : Number(dineInMeals),
-        orderCount: orderCount === '' ? null : Number(orderCount) });
+        orderCount: orderCount === '' ? null : Number(orderCount) };
+      await api.post('/revenue', { mode: 'save', empresaId, ...next, expected });
+      setExpected(next);
       setNotice(`Faturamento de ${displayDate(date)} salvo.`);
       router.refresh();
-    } catch (cause) { setError(errorMessage(cause)); }
+    } catch (cause) { setError(errorMessage(cause)); router.refresh(); }
     finally { setBusy(false); }
   }
   async function reviewFile(file?: File) {
@@ -131,10 +136,10 @@ export default function RevenueEditor({ empresaId, today, rows, existingRows = r
     <div className={styles.sheetScroll}>
       <table className={styles.sheetTable}>
         <caption className={styles.sheetCaption}>Faturamento registrado</caption>
-        <thead><tr><th scope="col">Data</th><th scope="col">Faturamento</th><th scope="col">Marmitex delivery</th><th scope="col">Refeições no restaurante</th>{existingRows.some(row => row.mealsSold != null) && <th scope="col">Total antigo sem divisão</th>}<th scope="col">Pedidos</th>{canEdit && <th scope="col">Ações</th>}</tr></thead>
+        <thead><tr><th scope="col">Data</th><th scope="col">Faturamento</th><th scope="col">Marmitex delivery</th><th scope="col">Refeições no restaurante</th>{hasLegacyMeals && <th scope="col">Total antigo sem divisão</th>}<th scope="col">Pedidos</th>{canEdit && <th scope="col">Ações</th>}</tr></thead>
         <tbody>{[...rows].reverse().map(row => <tr key={row.date}>
           <th scope="row">{displayDate(row.date)}{row.isDemo && <small className={styles.demoBadge}>Contém exemplos</small>}</th><td>{money(row.totalCents)}</td>
-          <td>{row.deliveryMeals?.toLocaleString('pt-BR') ?? 'Não informado'}</td><td>{row.dineInMeals?.toLocaleString('pt-BR') ?? 'Não informado'}</td>{existingRows.some(row => row.mealsSold != null) && <td>{row.mealsSold?.toLocaleString('pt-BR') ?? '—'}</td>}<td>{row.orderCount?.toLocaleString('pt-BR') ?? 'Não informado'}</td>
+          <td>{row.deliveryMeals?.toLocaleString('pt-BR') ?? 'Não informado'}</td><td>{row.dineInMeals?.toLocaleString('pt-BR') ?? 'Não informado'}</td>{hasLegacyMeals && <td>{row.mealsSold?.toLocaleString('pt-BR') ?? '—'}</td>}<td>{row.orderCount?.toLocaleString('pt-BR') ?? 'Não informado'}</td>
           {canEdit && <td><div className={styles.rowActions}>
             <button className={styles.textButton} type="button" disabled={busy} onClick={() => { chooseDate(row.date); amountInput.current?.focus(); }}>Editar</button>
             <button className={styles.textButton} type="button" disabled={busy} aria-label={`Excluir faturamento de ${displayDate(row.date)}`}

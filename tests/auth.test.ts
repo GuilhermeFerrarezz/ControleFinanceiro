@@ -179,7 +179,7 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     await query(storage, "UPDATE auth_tokens SET expires_at='2000-01-01' WHERE user_id=$1", [user.id]);
     assert.equal((await post(`/auth/verify-email?token=${token}`, {})).status, 400);
     token = await issue('email_verification');
-    assert.equal((await post('/auth/reset-password', { token, senha: 'senha-nova-123' })).status, 400);
+    assert.equal((await post('/auth/reset-password', { token, senha: 'senha-nova-longa-123' })).status, 400);
     const verification = await Promise.all([post(`/auth/verify-email?token=${token}`, {}), post('/auth/verify-email', { token })]);
     assert.deepEqual(verification.map(r => r.status).sort(), [200,400]);
     assert.ok((await query(storage, 'SELECT email_verified_at FROM usuarios WHERE id=$1', [user.id]))[0].email_verified_at);
@@ -203,20 +203,20 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     const [reset] = await query<{ token_hash: string; lifetime: number }>(storage, `SELECT token_hash,extract(epoch FROM expires_at-created_at)::float AS lifetime FROM auth_tokens WHERE user_id=$1`, [user.id]);
     assert.notEqual(reset.token_hash, token); assert.ok(Math.abs(reset.lifetime - 1800) < 2);
     await query(storage, "UPDATE auth_tokens SET expires_at='2000-01-01' WHERE user_id=$1", [user.id]);
-    assert.equal((await post('/auth/reset-password', { token, senha: 'senha-nova-123' })).status, 400);
+    assert.equal((await post('/auth/reset-password', { token, senha: 'senha-nova-longa-123' })).status, 400);
     const replaced = await issue('password_reset'); token = await issue('password_reset');
-    assert.equal((await post('/auth/reset-password', { token: replaced, senha: 'senha-nova-123' })).status, 400);
+    assert.equal((await post('/auth/reset-password', { token: replaced, senha: 'senha-nova-longa-123' })).status, 400);
     assert.equal((await post('/auth/reset-password', { token, senha: 'curta' })).status, 400);
     const login = await post('/auth/login', account);
     const cookie = (login.headers.get('set-cookie') || '').split(';')[0];
     const [other] = await query<{ id: string; senha: string }>(storage, `INSERT INTO usuarios(nome,email,senha) SELECT 'Outra conta','recovery-other@example.com',senha FROM usuarios WHERE id=$1 RETURNING id,senha`, [user.id]);
-    const resets = await Promise.all([post('/auth/reset-password', { token, senha: 'senha-nova-123', userId: other.id, email: 'recovery-other@example.com' }), post('/auth/reset-password', { token, senha: 'senha-nova-123' })]);
+    const resets = await Promise.all([post('/auth/reset-password', { token, senha: 'senha-nova-longa-123', userId: other.id, email: 'recovery-other@example.com' }), post('/auth/reset-password', { token, senha: 'senha-nova-longa-123' })]);
     assert.deepEqual(resets.map(r => r.status).sort(), [200,400]);
     assert.equal((await query(storage, 'SELECT senha FROM usuarios WHERE id=$1', [other.id]))[0].senha, other.senha, 'o token só altera a conta à qual pertence');
     await query(storage, 'DELETE FROM usuarios WHERE id=$1', [other.id]);
     assert.equal((await fetch(`${origin}/api/v1/private`, { headers: { Cookie: cookie } })).status, 401);
     assert.equal((await post('/auth/login', account)).status, 401);
-    assert.equal((await post('/auth/login', { ...account, senha: 'senha-nova-123' })).status, 200);
+    assert.equal((await post('/auth/login', { ...account, senha: 'senha-nova-longa-123' })).status, 200);
     await recoveryTest.test('login iniciado com senha antiga não sobrevive a uma troca concorrente', async () => {
       const lock = await storage.connect();
       const nextHash = await bcrypt.hash('senha-concorrente-123', 10);
@@ -225,7 +225,7 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
         await lock.query('BEGIN');
         await lock.query('UPDATE usuarios SET senha=$1 WHERE id=$2', [nextHash, user.id]);
         await lock.query('DELETE FROM refresh_tokens WHERE user_id=$1', [user.id]);
-        pending = post('/auth/login', { ...account, senha: 'senha-nova-123' });
+        pending = post('/auth/login', { ...account, senha: 'senha-nova-longa-123' });
         let waiting = false;
         for (let attempt = 0; attempt < 100; attempt++) {
           const rows = await query(storage, "SELECT pid FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE 'SELECT senha%FROM usuarios WHERE id=%FOR UPDATE'");
@@ -252,7 +252,7 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     assert.match(html, /O controle, aqui/);
     assert.match(html, /href="\/register"/);
     const register = await (await fetch(`${origin}/register`)).text();
-    assert.match(register, /minLength="6"/i);
+    assert.match(register, /minLength="15"/i);
   });
   await t.test('cookie falso não libera páginas nem API; headers de identidade são ignorados', async () => {
     const page = await fetch(`${origin}/dashboard`, { redirect: 'manual', headers: { Cookie: 'session=invalid; refreshToken=invalid' } });
@@ -292,6 +292,21 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     const tokens = await query<{ token: string }>(storage, 'SELECT token FROM refresh_tokens');
     assert.equal(tokens.length, 2); assert.ok(tokens.every(row => row.token.length === 64 && !firstCookie.includes(row.token)));
   });
+  await t.test('tutorial aparece no primeiro acesso e conclusão só altera a conta autenticada', async () => {
+    const page = () => fetch(`${origin}/dashboard/help`, { headers: { Cookie: firstCookie } });
+    assert.match(await (await page()).text(), /id="tour-title"/);
+    assert.equal((await post('/auth/tutorial', {})).status, 401);
+    assert.equal((await post('/auth/tutorial', {}, firstCookie, 'https://hostil.invalid')).status, 403);
+    assert.equal((await query(storage, 'SELECT tutorial_completed_at FROM usuarios WHERE id=$1', [userId]))[0].tutorial_completed_at, null);
+    assert.equal((await post('/auth/tutorial', { userId: 'forged' }, firstCookie)).status, 200);
+    const saved = await query(storage, 'SELECT tutorial_completed_at FROM usuarios WHERE id=$1', [userId]);
+    assert.ok(saved[0].tutorial_completed_at);
+    assert.equal((await post('/auth/tutorial', {}, secondCookie)).status, 200);
+    assert.deepEqual(await query(storage, 'SELECT tutorial_completed_at FROM usuarios WHERE id=$1', [userId]), saved);
+    const html = await (await page()).text();
+    assert.doesNotMatch(html, /id="tour-title"/);
+    assert.match(html, /Rever tutorial/);
+  });
   await t.test('sessão usa identidade do servidor e impede novo restaurante', async () => {
     const response = await fetch(`${origin}/api/v1/private`, { headers: { Cookie: firstCookie, 'user-id': 'forged' } });
     assert.equal(response.status, 200);
@@ -330,7 +345,7 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     assert.equal((await post('/auth/login', credentials)).status, 403);
     await query(storage, 'UPDATE empresas SET ativo = TRUE');
   });
-  await t.test('dono gera convite pessoal, cadastro com 6 caracteres aceita como funcionário', async () => {
+  await t.test('dono gera convite pessoal, cadastro com senha longa aceita como funcionário', async () => {
     assert.equal((await post('/invitations', { email: 'employee@example.com' })).status, 401);
     const response = await post('/invitations', { email: 'employee@example.com', role: 'owner', empresaId: 'forged' }, secondCookie);
     assert.equal(response.status, 201);
@@ -342,11 +357,11 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     const ownerTeam = await fetch(`${origin}/dashboard/team`, { headers: { Cookie: secondCookie } });
     assert.equal(ownerTeam.status, 200);
     assert.match(await ownerTeam.text(), /employee@example.com/);
-    const wrong = await post('/auth/register', { nomeUsuario: 'Intruso', email: 'wrong@example.com', senha: 'abc123', invitationToken: token });
+    const wrong = await post('/auth/register', { nomeUsuario: 'Intruso', email: 'wrong@example.com', senha: 'senha-de-teste-123', invitationToken: token });
     assert.equal(wrong.status, 403);
     assert.equal((await query(storage, "SELECT id FROM usuarios WHERE email = 'wrong@example.com'")).length, 0);
-    assert.equal((await post('/auth/register', { nomeUsuario: 'Funcionário', email: 'employee@example.com', senha: 'abc123', invitationToken: token, papel: 'admin', role: 'owner' })).status, 201);
-    const login = await post('/auth/login', { email: 'employee@example.com', senha: 'abc123' });
+    assert.equal((await post('/auth/register', { nomeUsuario: 'Funcionário', email: 'employee@example.com', senha: 'senha-de-teste-123', invitationToken: token, papel: 'admin', role: 'owner' })).status, 201);
+    const login = await post('/auth/login', { email: 'employee@example.com', senha: 'senha-de-teste-123' });
     assert.equal(login.status, 200);
     const cookie = (login.headers.get('set-cookie') || '').split(';')[0];
     const employee = await (await fetch(`${origin}/api/v1/private`, { headers: { Cookie: cookie } })).json();
@@ -369,11 +384,11 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     const token = (await invite.json()).path.split('/').at(-1);
     const [row] = await query<{ id: string }>(storage, "SELECT id FROM restaurant_invitations WHERE email='revoked@example.com'");
     assert.equal((await fetch(`${origin}/api/v1/invitations/${row.id}`, { method: 'DELETE', headers: { Cookie: secondCookie, Origin: origin } })).status, 200);
-    assert.equal((await post('/auth/register', { nomeUsuario: 'Revogado', email: 'revoked@example.com', senha: 'abc123', invitationToken: token })).status, 410);
+    assert.equal((await post('/auth/register', { nomeUsuario: 'Revogado', email: 'revoked@example.com', senha: 'senha-de-teste-123', invitationToken: token })).status, 410);
     const expiring = await post('/invitations', { email: 'expired@example.com' }, secondCookie);
     const expiredToken = (await expiring.json()).path.split('/').at(-1);
     await query(storage, "UPDATE restaurant_invitations SET expires_at='2000-01-01' WHERE email='expired@example.com'");
-    assert.equal((await post('/auth/register', { nomeUsuario: 'Expirado', email: 'expired@example.com', senha: 'abc123', invitationToken: expiredToken })).status, 410);
+    assert.equal((await post('/auth/register', { nomeUsuario: 'Expirado', email: 'expired@example.com', senha: 'senha-de-teste-123', invitationToken: expiredToken })).status, 410);
   });
   await t.test('mesma pessoa participa de restaurantes com papéis diferentes e troca com segurança', async () => {
     const login = await post('/auth/login', { ...credentials, email: 'legacy@example.com' });
@@ -406,7 +421,7 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     const oldPath = (await first.json()).path;
     const newPath = (await second.json()).path;
     assert.notEqual(oldPath, newPath);
-    const signup = { nomeUsuario: 'Novo funcionário', email: 'resend@example.com', senha: 'abc123' };
+    const signup = { nomeUsuario: 'Novo funcionário', email: 'resend@example.com', senha: 'senha-de-teste-123' };
     assert.equal((await post('/auth/register', { ...signup, invitationToken: oldPath.split('/').at(-1) })).status, 410);
     assert.equal((await post('/auth/register', { ...signup, invitationToken: newPath.split('/').at(-1) })).status, 201);
     assert.equal((await post('/invitations', { email: signup.email }, secondCookie)).status, 409);
@@ -414,7 +429,7 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     assert.equal(pending.length, 0);
   });
   await t.test('aceitação simultânea consome o convite uma única vez', async () => {
-    const employeeLogin = await post('/auth/login', { email: 'employee@example.com', senha: 'abc123' });
+    const employeeLogin = await post('/auth/login', { email: 'employee@example.com', senha: 'senha-de-teste-123' });
     assert.equal(employeeLogin.status, 200);
     const employeeCookie = (employeeLogin.headers.get('set-cookie') || '').split(';')[0];
     const otherLogin = await post('/auth/login', { ...credentials, email: 'legacy@example.com' });
@@ -452,7 +467,7 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     const token = path.split('/').at(-1);
     const page = await fetch(`${origin}/register?invite=${token}`, { headers: { Host: lanHost, 'User-Agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36' } });
     assert.equal(page.status, 200); assert.match(await page.text(), /phone@example.com/);
-    const signup = { nomeUsuario: 'Pessoa no celular', email: 'phone@example.com', senha: 'abc123', invitationToken: token };
+    const signup = { nomeUsuario: 'Pessoa no celular', email: 'phone@example.com', senha: 'senha-de-teste-123', invitationToken: token };
     assert.equal((await phonePost('/auth/register', signup, '', 'https://hostil.invalid')).status, 403);
     const response = await phonePost('/auth/register', signup);
     assert.equal(response.status, 201, await response.clone().text());
@@ -492,7 +507,7 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     assert.equal((await query(storage, 'SELECT id FROM restaurant_invitations WHERE id=$1 AND revoked_at IS NULL', [target.id])).length, 1);
   });
   await t.test('edição e exclusão exigem admin do restaurante e senha na exclusão', async () => {
-    const account = { email: 'delete-owner@example.com', senha: 'senha-admin-123' };
+    const account = { email: 'delete-owner@example.com', senha: 'senha-admin-longa-123' };
     assert.equal((await post('/auth/register', { ...account, nomeUsuario: 'Admin', nomeEmpresa: 'Excluir' })).status, 201);
     const login = await post('/auth/login', account);
     const cookie = (login.headers.get('set-cookie') || '').split(';')[0];
@@ -509,8 +524,8 @@ test('schema e autenticação HTTP com PostgreSQL isolado', { timeout: 180_000 }
     assert.deepEqual(await query(storage, 'SELECT nome,cnpj FROM empresas WHERE id=$1', [empresaId]), [{ nome: 'Novo nome', cnpj: '12345678000190' }]);
     const invite = await post('/invitations', { email: 'delete-employee@example.com' }, cookie);
     const token = (await invite.json()).path.split('/').at(-1);
-    assert.equal((await post('/auth/register', { email: 'delete-employee@example.com', senha: 'abc123', nomeUsuario: 'Funcionário', invitationToken: token })).status, 201);
-    const employeeLogin = await post('/auth/login', { email: 'delete-employee@example.com', senha: 'abc123' });
+    assert.equal((await post('/auth/register', { email: 'delete-employee@example.com', senha: 'senha-de-teste-123', nomeUsuario: 'Funcionário', invitationToken: token })).status, 201);
+    const employeeLogin = await post('/auth/login', { email: 'delete-employee@example.com', senha: 'senha-de-teste-123' });
     const employeeCookie = (employeeLogin.headers.get('set-cookie') || '').split(';')[0];
     assert.equal((await change('PATCH', { nomeEmpresa: 'Proibido', cnpj: '' }, employeeCookie)).status, 403);
     assert.equal((await change('DELETE', { senha: account.senha }, employeeCookie)).status, 403);

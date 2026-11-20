@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { isolatedDatabase, query } from './postgres-fixture';
 import ExcelJS from 'exceljs';
 
@@ -34,17 +34,21 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     method, headers: { Cookie: cookie, Origin: requestOrigin, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const register = async (email: string) => {
-    assert.equal((await api('/auth/register', '', 'POST', { nomeUsuario: 'Dono', nomeEmpresa: email.startsWith('other') ? 'Outra casa' : 'Casa principal', email, senha: 'abc123' })).status, 201);
+    assert.equal((await api('/auth/register', '', 'POST', { nomeUsuario: 'Dono', nomeEmpresa: email.startsWith('other') ? 'Outra casa' : 'Casa principal', email, senha: 'senha-de-teste-123' })).status, 201);
   };
-  const login = async (email: string) => { const response = await api('/auth/login', '', 'POST', { email, senha: 'abc123' }); assert.equal(response.status, 200); return (response.headers.get('set-cookie') || '').split(';')[0]; };
+  const login = async (email: string) => { const response = await api('/auth/login', '', 'POST', { email, senha: 'senha-de-teste-123' }); assert.equal(response.status, 200); return (response.headers.get('set-cookie') || '').split(';')[0]; };
   await register('owner@expenses.invalid'); await register('other@expenses.invalid');
   const owner = await login('owner@expenses.invalid'); const other = await login('other@expenses.invalid');
   const invitation = await api('/invitations', owner, 'POST', { email: 'employee@expenses.invalid' }); assert.equal(invitation.status, 201);
   const token = (await invitation.json()).path.split('/').at(-1);
-  assert.equal((await api('/auth/register', '', 'POST', { nomeUsuario: 'Funcionário', email: 'employee@expenses.invalid', senha: 'abc123', invitationToken: token })).status, 201);
+  assert.equal((await api('/auth/register', '', 'POST', { nomeUsuario: 'Funcionário', email: 'employee@expenses.invalid', senha: 'senha-de-teste-123', invitationToken: token })).status, 201);
   const employee = await login('employee@expenses.invalid');
   const ownerUser = (await (await api('/private', owner)).json()).user;
   const employeeUser = (await (await api('/private', employee)).json()).user;
+  const importKeys = [ownerUser.id, employeeUser.id].map(id => createHash('sha256').update(`imports:${id}`).digest('hex'));
+  const globalImportKey = createHash('sha256').update('imports:global').digest('hex');
+  // Each subtest gets its own quota window; quota behavior has a dedicated test.
+  t.beforeEach(() => fixture.pool.query('DELETE FROM auth_rate_limits WHERE key=ANY($1::text[])', [[...importKeys, globalImportKey]]).then(() => undefined));
   const period = 'start=2026-10-01&end=2026-10-07';
   const body = { description: 'Hortifruti da semana', amountCents: 12590, date: '2026-10-01', category: 'alimentos', merchant: 'Mercado Central', status: 'paid', paymentMethod: 'pix', notes: 'Compra da cozinha' };
   const firstRequest = randomUUID(); let firstId = ''; let employeeId = '';
@@ -139,7 +143,8 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal((await api('/revenue', owner, 'POST', input, 'https://hostil.invalid')).status, 403);
     assert.equal((await api('/revenue', owner, 'POST', { ...input, totalCents: -1 })).status, 400);
     assert.equal((await api('/revenue', owner, 'POST', input)).status, 200);
-    assert.equal((await api('/revenue', owner, 'POST', { ...input, totalCents: 20000 })).status, 200);
+    assert.equal((await api('/revenue', owner, 'POST', { ...input, totalCents: 20000 })).status, 409);
+    assert.equal((await api('/revenue', owner, 'POST', { ...input, totalCents: 20000, expected: input })).status, 200);
     const csv = 'Data;Faturamento (R$)\n01/10/2026;999,00\n02/10/2026;0,00';
     const preview = await api('/revenue', owner, 'POST', { mode: 'preview', empresaId, csv });
     assert.equal(preview.status, 200);
@@ -211,7 +216,7 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal(row.getCell(6).value, 8);
     assert.equal(row.getCell(7).value, 7);
     assert.equal(row.getCell(8).value, 5);
-    assert.equal((await api('/revenue', owner, 'POST', { ...input, mealsSold: 0, orderCount: null, deliveryMeals: 0, dineInMeals: null })).status, 200);
+    assert.equal((await api('/revenue', owner, 'POST', { ...input, mealsSold: 0, orderCount: null, deliveryMeals: 0, dineInMeals: null, expected: input })).status, 200);
     assert.equal((await api('/revenue', owner, 'DELETE', { ...input, confirm: true })).status, 409);
     assert.equal((await api('/revenue', owner, 'DELETE', { ...input, mealsSold: 0, orderCount: null, deliveryMeals: 0, dineInMeals: null, confirm: true })).status, 200);
     const csv = 'Data;Faturamento;Refeições/marmitex vendidos;Número de pedidos;Marmitex delivery;Refeições no restaurante\n04/10/2026;100,00;20;10;8;12';
@@ -550,8 +555,8 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.doesNotMatch(employeePage, /Excluir lançamentos do período/);
     // Concurrent retries must not delete/audit the same record twice.
     const responses = await Promise.all([
-      api('/expenses', owner, 'DELETE', { ...deletion, senha: 'abc123', category: 'alimentos', page: 1 }),
-      api('/expenses', owner, 'DELETE', { ...deletion, senha: 'abc123' }),
+      api('/expenses', owner, 'DELETE', { ...deletion, senha: 'senha-de-teste-123', category: 'alimentos', page: 1 }),
+      api('/expenses', owner, 'DELETE', { ...deletion, senha: 'senha-de-teste-123' }),
     ]);
     for (const response of responses) assert.equal(response.status, 200, await response.clone().text());
     const results = await Promise.all(responses.map(response => response.json()));
@@ -567,7 +572,7 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     }
     assert.equal((await query(fixture.pool, "SELECT id FROM expense_audit WHERE expense_id=$1 AND action='deleted'", [oldId])).length, 1);
     assert.equal((await query(fixture.pool, 'SELECT id FROM expenses WHERE id=ANY($1::uuid[]) AND deleted_at IS NULL', [[outsideId, otherId]])).length, 2);
-    assert.equal((await api('/expenses', owner, 'DELETE', { ...deletion, senha: 'abc123', start: '2038-03-01', end: '2038-03-01' })).status, 200);
+    assert.equal((await api('/expenses', owner, 'DELETE', { ...deletion, senha: 'senha-de-teste-123', start: '2038-03-01', end: '2038-03-01' })).status, 200);
     assert.equal((await query(fixture.pool, 'SELECT id FROM expenses WHERE id=$1 AND deleted_at IS NULL', [outsideId])).length, 0);
   });
   await t.test('identificadores de outro restaurante não liberam painel, exportações ou troca de sessão', async () => {
@@ -598,7 +603,7 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     const deletion = { empresaId: ownerUser.empresaId, start: '2051-04-01', end: '2051-04-01', confirm: true };
     assert.equal((await create(owner, { date: deletion.start })).status, 201);
     for (let attempt = 0; attempt < 2; attempt++) await api('/expenses', owner, 'DELETE', { ...deletion, senha: 'incorreta' });
-    assert.equal((await api('/expenses', owner, 'DELETE', { ...deletion, senha: 'abc123' })).status, 429);
+    assert.equal((await api('/expenses', owner, 'DELETE', { ...deletion, senha: 'senha-de-teste-123' })).status, 429);
     assert.equal((await list(owner, range)).count, 1);
   });
   await t.test('auditoria financeira reconcilia centavos entre banco, filtros, gráficos e Excel', async () => {
@@ -652,7 +657,7 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal(Math.round(Number(sheet.getRow(7).getCell(sheet.columnCount).value) * 100), Number(revenue - expected));
   });
   await t.test('produtos persistem, somam além da paginação e respeitam edição, exclusão e restaurante', async () => {
-    const items = [{ name: 'Carne bovina', quantity: 1.25, unit: 'kg', amountCents: 4500 }, { name: 'Arroz', quantity: 2, unit: 'pacote', amountCents: 2000 }];
+    const items = [{ name: 'Alcatra', quantity: 1.25, unit: 'kg', amountCents: 4500 }, { name: 'Arroz', quantity: 2, unit: 'pacote', amountCents: 2000 }];
     const catalog = (await (await api('/catalog', owner)).json()).products;
     const registered = items.map(item => ({ ...item, productId: catalog.find((product: { name: string }) => product.name === item.name).id }));
     const purchase = { description: 'Compra BH', date: '2040-05-10', amountCents: 10000, items };
@@ -670,23 +675,23 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal(data.expenses.length, 15);
     assert.equal(data.count, 17);
     assert.equal(data.summary.totalCents, 161000);
-    const meat = data.products.find((item: { name: string }) => item.name === 'Carne bovina');
+    const meat = data.products.find((item: { name: string }) => item.name === 'Alcatra');
     assert.equal(meat.quantity, 20); assert.equal(meat.unit, 'kg'); assert.equal(meat.amountCents, 72000); assert.equal(meat.purchases, 16); assert.equal(meat.productId, registered[0].productId); assert.equal(meat.averagePriceCents, '3600');
-    assert.equal((await list(owner, range + '&q=Carne')).count, 16);
+    assert.equal((await list(owner, range + '&q=Alcatra')).count, 16);
     assert.equal((await list(owner, range + '&q=%25')).count, 0);
     assert.deepEqual((await list(other, range)).products, []);
     const csv = await (await api('/expenses?' + range + '&format=csv', owner)).text();
-    assert.match(csv, /Carne bovina/);
-    const changed = [{ name: 'carne bovina', quantity: 500, unit: 'g', amountCents: 3000 }];
+    assert.match(csv, /Alcatra/);
+    const changed = [{ name: 'alcatra', quantity: 500, unit: 'g', amountCents: 3000 }];
     assert.equal((await api(`/expenses/${id}`, owner, 'PATCH', { ...body, ...purchase, items: changed, version: 1 })).status, 200);
     data = await list(owner, range);
-    assert.equal(data.products.find((item: { name: string }) => item.name === 'Carne bovina').quantity, 19.25);
+    assert.equal(data.products.find((item: { name: string }) => item.name === 'Alcatra').quantity, 19.25);
     assert.equal(data.products.some((item: { unit: string }) => item.unit === 'g'), false);
     const audit = await query<{ before: { items: unknown }; after: { items: unknown } }>(fixture.pool, "SELECT before,after FROM expense_audit WHERE expense_id=$1 AND action='updated'", [id]);
-    assert.deepEqual(audit[0].before.items, registered); assert.deepEqual(audit[0].after.items, [{ ...changed[0], name: 'Carne bovina', productId: registered[0].productId }]);
+    assert.deepEqual(audit[0].before.items, registered); assert.deepEqual(audit[0].after.items, [{ ...changed[0], name: 'Alcatra', productId: registered[0].productId }]);
     assert.equal((await api(`/expenses/${id}`, owner, 'DELETE', { version: 2 })).status, 200);
     data = await list(owner, range);
-    assert.equal(data.products.find((item: { name: string }) => item.name === 'Carne bovina').quantity, 18.75);
+    assert.equal(data.products.find((item: { name: string }) => item.name === 'Alcatra').quantity, 18.75);
     assert.equal(data.products.some((item: { unit: string }) => item.unit === 'g'), false);
   });
   await t.test('cadastro de produtos vem pronto, evita duplicados e mantém gráficos após renomear e excluir', async () => {
@@ -994,6 +999,27 @@ test('gastos, resumos e permissões por restaurante', { timeout: 180000 }, async
     assert.equal((await api(`/expenses/${expenseId}`, owner, 'DELETE', { version: 2 })).status, 200);
     assert.equal(await balance(), 0);
     assert.deepEqual(await snapshot(), before);
+  });
+  await t.test('faturamento concorrente não sobrescreve nem ressuscita valores de outra aba', async () => {
+    const input = { mode: 'save', empresaId: ownerUser.empresaId, date: '2098-01-01', totalCents: 100 };
+    const creations = await Promise.all([api('/revenue', owner, 'POST', input), api('/revenue', owner, 'POST', input)]);
+    assert.deepEqual(creations.map(response => response.status).sort(), [200, 409]);
+    const changes = await Promise.all([200, 300].map(totalCents => api('/revenue', owner, 'POST', { ...input, totalCents, expected: input })));
+    assert.deepEqual(changes.map(response => response.status).sort(), [200, 409]);
+    const winner = changes[0].status === 200 ? 200 : 300;
+    const saved = await query<{ amount_cents: string }>(fixture.pool, 'SELECT amount_cents FROM daily_revenue WHERE empresa_id=$1 AND date=$2', [input.empresaId, input.date]);
+    assert.equal(Number(saved[0].amount_cents), winner);
+    assert.equal((await api('/revenue', owner, 'POST', { ...input, expected: [] })).status, 400);
+    assert.equal((await api('/revenue', owner, 'DELETE', { ...input, totalCents: winner, confirm: true })).status, 200);
+    assert.equal((await api('/revenue', owner, 'POST', { ...input, expected: { ...input, totalCents: winner } })).status, 409);
+    assert.equal((await query(fixture.pool, 'SELECT date FROM daily_revenue WHERE empresa_id=$1 AND date=$2', [input.empresaId, input.date])).length, 0);
+  });
+  await t.test('importações rejeitam quota por usuário e global antes de processar CSV', async () => {
+    await query(fixture.pool, 'INSERT INTO auth_rate_limits(key,count,window_start) VALUES ($1,30,$2)', [importKeys[0], Date.now()]);
+    assert.equal((await api('/expenses/import', owner, 'POST', { mode: 'preview', csv: 'inválido' })).status, 429);
+    assert.equal((await api('/revenue', owner, 'POST', { mode: 'import', empresaId: ownerUser.empresaId, csv: 'inválido' })).status, 429);
+    await query(fixture.pool, 'UPDATE auth_rate_limits SET count=120 WHERE key=$1', [globalImportKey]);
+    assert.equal((await api('/expenses/import', employee, 'POST', { mode: 'preview', csv: 'inválido' })).status, 429);
   });
   await t.test('revogação concorrente impede criar, editar ou excluir gastos com acesso antigo',async()=>{
     const created=await create(employee,{description:'Teste de revogação concorrente'});

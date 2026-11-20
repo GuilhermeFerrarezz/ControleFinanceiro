@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react';
 import { api, errorMessage } from '@/src/lib/api';
 import Icon from '@/src/components/Icon';
 import PasswordInput from '@/src/components/PasswordInput';
+import { MIN_PASSWORD_LENGTH } from '@/src/lib/password-policy';
 import AuthWebsiteField from '@/src/components/AuthWebsiteField';
 import styles from '@/src/components/auth.module.css';
 import EmailConfirmationNotice from '@/src/components/EmailConfirmationNotice';
@@ -29,7 +30,7 @@ export default function FormCadastro({ invitation }: { invitation?: { token: str
       <label className={styles.field} htmlFor="nomeUsuario">Seu nome<input className={styles.input} id="nomeUsuario" name="nomeUsuario" autoComplete="name" placeholder="Como podemos chamar você?" minLength={2} maxLength={120} required disabled={success} /></label>
       {!invitation && <label className={styles.field} htmlFor="nomeEmpresa">Nome do restaurante<input className={styles.input} id="nomeEmpresa" name="nomeEmpresa" autoComplete="organization" placeholder="O nome da sua casa" minLength={2} maxLength={120} required disabled={success} /></label>}
       <label className={styles.field} htmlFor="email">Seu e-mail<input className={styles.input} id="email" name="email" type="email" autoComplete="username" placeholder="voce@restaurante.com.br" defaultValue={invitation?.email} readOnly={!!invitation} maxLength={254} required disabled={success} /></label>
-      <div className={styles.field}><label htmlFor="senha">Crie sua senha</label><PasswordInput registration disabled={success} /></div><p className={styles.hint} id="senha-hint">Use 6 ou mais caracteres. Prefira uma senha que você não usa em outros sites.</p>
+      <div className={styles.field}><label htmlFor="senha">Crie sua senha</label><PasswordInput registration disabled={success} /></div><p className={styles.hint} id="senha-hint">Use {MIN_PASSWORD_LENGTH} ou mais caracteres. Prefira uma senha que você não usa em outros sites.</p>
       <button className={styles.button} type="submit" disabled={loading || success}>{loading ? 'Preparando sua conta...' : invitation ? 'Criar conta e aceitar convite' : 'Criar meu restaurante'}<Icon name="arrow" size={18} /></button>
       {message && <div className={success ? styles.success : styles.error} role={success ? 'status' : 'alert'}>{message}{success && <p><Link className="button" href="/login">Entrar na minha conta <Icon name="arrow" size={16} /></Link></p>}</div>}
       {success && <p className={styles.recoveryLinks}><Link href="/verify-email">Solicitar novo link de confirmação</Link></p>}

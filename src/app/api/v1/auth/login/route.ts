@@ -11,7 +11,7 @@ import { honeypotResponse, limitAuthSource, SecurityLimitError, withPasswordBudg
 import { isPlatformOwner } from '@/src/lib/platform-owner';
 
 // A fixed hash keeps nonexistent accounts on the same bcrypt comparison path.
-const dummyHash = bcrypt.hashSync('not-a-real-user-password', 10);
+const dummyHash = '$2b$10$3LnUHxDX4h02syyACpW/TOsU7eVPPewFfWkp1wdeatH.DHN8GAcl.';
 export async function POST(request: Request) {
   if (!trustedOrigin(request)) return jsonError('Origem não permitida.', 403);
   try {

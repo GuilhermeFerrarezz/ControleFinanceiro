@@ -2,9 +2,11 @@ import { createHash } from 'node:crypto';
 import { db } from './db';
 export async function consumeLimit(key: string, limit: number, windowMs: number) {
   const now = Date.now();
-  if (now - lastCleanup >= 3600_000) {
+  if (now - lastCleanup >= 60_000) {
     lastCleanup = now;
-    await db.query('DELETE FROM auth_rate_limits WHERE window_start < $1', [now - 24 * 60 * 60_000]);
+    await db.query(`DELETE FROM auth_rate_limits WHERE key IN (
+      SELECT key FROM auth_rate_limits WHERE window_start < $1 ORDER BY window_start LIMIT 1000
+    )`, [now - 24 * 60 * 60_000]);
   }
   const hashedKey = createHash('sha256').update(key).digest('hex');
   const { rows } = await db.query<{ count: number }>(

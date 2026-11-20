@@ -2,11 +2,11 @@ import { NextResponse } from 'next/server';
 import { matchesRestaurantContext, currentUser, jsonError, trustedOrigin } from '@/src/lib/auth';
 import { dateValue, expenseFilters } from '@/src/lib/expenses';
 import { MAX_AMOUNT_CENTS } from '@/src/lib/expense-shared';
-import { deleteRevenue, listRevenue, saveRevenue } from '@/src/lib/revenue';
+import { deleteRevenue, listRevenue, saveRevenue, RevenueConflictError } from '@/src/lib/revenue';
 import { parseRevenueCsv, revenueCsv } from '@/src/lib/revenue-csv';
 import { InputError, readBody } from '@/src/lib/validation';
 import { revenueCount } from '@/src/lib/revenue-counts';
-import { SecurityLimitError, withExportBudget } from '@/src/lib/security-limits';
+import { SecurityLimitError, withExportBudget, withImportBudget } from '@/src/lib/security-limits';
 
 function revenueAmount(value: unknown) {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value > MAX_AMOUNT_CENTS) {
@@ -44,10 +44,11 @@ export async function POST(request: Request) {
     const user = await currentUser();
     if (!user) return jsonError('Entre na sua conta para continuar.', 401);
     if (!user.empresaId || user.role !== 'owner') return jsonError('Somente o dono pode registrar faturamento.', 403);
+    const actor = { id: user.id, empresaId: user.empresaId };
+    return await withImportBudget(user.id, async () => {
     const body = await readBody(request, 4 * 1024 * 1024);
     if (body.empresaId !== user.empresaId) return jsonError('O restaurante ativo mudou. Atualize a página.', 409);
     if (body.mode !== 'save' && body.mode !== 'preview' && body.mode !== 'import') throw new InputError('Operação inválida.');
-    const actor = { id: user.id, empresaId: user.empresaId };
     if (body.mode === 'save') {
       const date = dateValue(body.date);
       const totalCents = revenueAmount(body.totalCents);
@@ -55,15 +56,23 @@ export async function POST(request: Request) {
       const orderCount = revenueCount(body.orderCount, 'Número de pedidos');
       const deliveryMeals = revenueCount(body.deliveryMeals, 'Marmitex delivery');
       const dineInMeals = revenueCount(body.dineInMeals, 'Refeições no restaurante');
-      const saved = await saveRevenue(actor, [{ date, totalCents, mealsSold, orderCount, deliveryMeals, dineInMeals }], true);
+      const previous = body.expected;
+      if (previous !== undefined && previous !== null && (typeof previous !== 'object' || Array.isArray(previous))) throw new InputError('Valor anterior inválido.');
+      const snapshot = previous as Record<string, unknown> | null | undefined;
+      const expected = snapshot ? { date, totalCents: revenueAmount(snapshot.totalCents),
+        mealsSold: revenueCount(snapshot.mealsSold, 'Refeições anteriores'), orderCount: revenueCount(snapshot.orderCount, 'Pedidos anteriores'),
+        deliveryMeals: revenueCount(snapshot.deliveryMeals, 'Delivery anterior'), dineInMeals: revenueCount(snapshot.dineInMeals, 'Refeições anteriores no restaurante') } : null;
+      const saved = await saveRevenue(actor, [{ date, totalCents, mealsSold, orderCount, deliveryMeals, dineInMeals }], true, expected);
       return saved ? NextResponse.json(saved) : jsonError('Somente o dono pode registrar faturamento.', 403);
     }
     const rows = parseRevenueCsv(body.csv);
     if (body.mode === 'preview') return NextResponse.json({ count: rows.length, rows: rows.slice(0, 10) });
     const imported = await saveRevenue(actor, rows, false);
     return imported ? NextResponse.json(imported) : jsonError('Somente o dono pode importar faturamento.', 403);
+    });
   } catch (error) {
-    return jsonError(error instanceof InputError ? error.message : 'Não foi possível salvar o faturamento.', error instanceof InputError ? 400 : 500);
+    if (error instanceof SecurityLimitError) return jsonError(error.message, 429);
+    return jsonError(error instanceof InputError ? error.message : 'Não foi possível salvar o faturamento.', error instanceof RevenueConflictError ? 409 : error instanceof InputError ? 400 : 500);
   }
 }
 

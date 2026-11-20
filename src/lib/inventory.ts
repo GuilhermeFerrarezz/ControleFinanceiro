@@ -17,12 +17,26 @@ function limitedText(value: unknown, label: string, max: number) {
   return value.trim();
 }
 export async function validateStockItems(empresaId: string, input: ExpenseInput, client: Queryable) {
+  const products = new Map<string, { unit: string; name: string }>();
   for (const item of input.items || []) if (item.stock) {
     if (!item.productId) throw new InputError('Selecione um produto cadastrado para adicionar ao estoque.');
     const unit = stockUnit(item);
-    await ensureInventoryProduct(empresaId, item.productId, unit, client);
-    const settings = (await client.query<{ unit: string }>('SELECT unit FROM inventory_products WHERE empresa_id=$1 AND product_id=$2', [empresaId, item.productId])).rows[0];
-    if (settings.unit !== unit) throw new InputError(`“${item.name}” é controlado em ${settings.unit}. Confira a unidade e o conteúdo da embalagem, ou desmarque a entrada no estoque.`);
+    const previous = products.get(item.productId);
+    if (previous && previous.unit !== unit) throw new InputError(`“${item.name}” aparece com unidades de estoque diferentes na mesma compra.`);
+    products.set(item.productId, { unit, name: item.name });
+  }
+  if (!products.size) return;
+  const ids = [...products.keys()];
+  // The caller holds the restaurant catalog lock. Two queries regardless of
+  // item count; the composite FK still validates tenant ownership.
+  await client.query(`INSERT INTO inventory_products(empresa_id,product_id,unit)
+    SELECT $1,id,unit FROM unnest($2::uuid[],$3::text[]) AS item(id,unit) ON CONFLICT DO NOTHING`,
+    [empresaId, ids, [...products.values()].map(item => item.unit)]);
+  const { rows } = await client.query<{ product_id: string; unit: string }>(
+    'SELECT product_id,unit FROM inventory_products WHERE empresa_id=$1 AND product_id=ANY($2::uuid[])', [empresaId, ids]);
+  for (const settings of rows) {
+    const item = products.get(settings.product_id)!;
+    if (settings.unit !== item.unit) throw new InputError(`“${item.name}” é controlado em ${settings.unit}. Confira a unidade e o conteúdo da embalagem, ou desmarque a entrada no estoque.`);
   }
 }
 export async function assertStockBalances(empresaId: string, client: Queryable) {

@@ -9,7 +9,7 @@ Sistema para organizar a gestão financeira de restaurantes, pensado para acompa
 - **Dono do restaurante:** cria sua conta, cadastra o restaurante e administra a equipe.
 - **Convites:** o dono informa o e-mail de um funcionário, gera um link pessoal e o compartilha com ele. Não há envio automático de e-mail.
 - **Funcionários:** abrem o convite, criam uma conta ou entram com uma conta existente e passam a fazer parte do restaurante.
-- **Acessos individuais:** cada pessoa usa seu próprio e-mail e senha. A senha deve ter pelo menos 6 caracteres.
+- **Acessos individuais:** cada pessoa usa seu próprio e-mail e senha. Novas senhas exigem pelo menos 15 caracteres, inclusive ao recuperar a conta. Senhas antigas continuam válidas para login.
 - **Mais de um restaurante:** uma conta pode participar de diferentes restaurantes e alternar entre eles no painel.
 - **Confirmação de e-mail:** confirme em até 7 dias após o cadastro para manter o acesso. Após esse prazo, o acesso fica bloqueado até confirmar; é possível solicitar um novo link público, válido por 24 horas. Recuperar a senha não elimina esse bloqueio.
 
@@ -32,6 +32,10 @@ A busca geral também encontra os produtos de uma compra. CSV preserva os detalh
 Na área **Lançamentos**, consulte e exporte os dados filtrados em CSV ou Excel. O CSV apresenta datas como texto legível (`Data: 30/10/2026`); a planilha Excel tem datas, valores e larguras de coluna formatados. Funcionários podem editar e excluir os próprios gastos; o dono pode administrar todos os lançamentos do restaurante. A área **Equipe** mantém os convites e os acessos individuais. O dono pode remover funcionários: o acesso ao restaurante é revogado e os gastos anteriores continuam identificados com o nome de quem os lançou.
 
 ## Como iniciar o projeto
+
+As gravações de faturamento comparam o valor anterior antes de atualizar: uma aba desatualizada recebe conflito (409) e deve recarregar o dia, sem sobrescrever outra edição. Importações CSV preservam datas já cadastradas.
+
+Prévias/importações de gastos e gravações/importações de faturamento compartilham uma proteção de 30 solicitações por usuário/minuto, 120 globais/minuto e duas operações simultâneas por processo. O limite é aplicado antes da leitura do corpo. As transações HTTP têm timeout de consulta de 30 segundos, espera por lock de 5 segundos e ociosidade transacional de 15 segundos, usando `SET LOCAL` para compatibilidade com o pooler do Neon. Migrações têm limites próprios (5 minutos por comando e 10 segundos por lock). Aplique `npm run db:migrate` antes desta versão para criar também o índice de expiração do rate limiter e a coluna do tutorial.
 
 ### Requisitos
 

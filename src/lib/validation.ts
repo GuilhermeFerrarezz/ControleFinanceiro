@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MIN_PASSWORD_LENGTH } from './password-policy';
 
 export class InputError extends Error {}
 const jsonObject = z.record(z.string(), z.unknown());
@@ -43,6 +44,6 @@ export function textValue(value: unknown, label: string) {
 export function passwordValue(value: unknown, registration = false) {
   if (typeof value !== 'string' || !value.length) throw new InputError('Informe sua senha.');
   if (!passwordSchema.safeParse(value).success) throw new InputError('A senha é muito longa. Use uma senha menor.');
-  if (registration && value.length < 6) throw new InputError('Use uma senha com pelo menos 6 caracteres.');
+  if (registration && Array.from(value).length < MIN_PASSWORD_LENGTH) throw new InputError(`Use uma senha com pelo menos ${MIN_PASSWORD_LENGTH} caracteres.`);
   return value;
 }

@@ -2,6 +2,7 @@ import { subtractCents, sumCents } from './financial-math';
 import { db } from './db';
 import { inTransaction, type Queryable } from './postgres';
 import { findMembership } from '../models/Membership';
+import { InputError } from './validation';
 import { expenseDaily, integer } from '../models/Expense';
 import { addDays, buildExpenseSeries, daysBetween, type DailyRevenue, type ExpenseFilters, type FinanceComparison } from './expense-shared';
 
@@ -14,16 +15,34 @@ export async function listRevenue(empresaId: string, period: { start: string; en
   return rows.map(row => ({ ...row, totalCents: integer(row.totalCents) }));
 }
 
-export async function saveRevenue(actor: { id: string; empresaId: string }, rows: DailyRevenue[], replace: boolean) {
+export class RevenueConflictError extends InputError {}
+
+export async function saveRevenue(actor: { id: string; empresaId: string }, rows: DailyRevenue[], replace: boolean, expected: DailyRevenue | null = null) {
   return inTransaction(async client => {
     if ((await findMembership(actor.id, actor.empresaId, client, true))?.role !== 'owner') return null;
+    if (replace) {
+      if (rows.length !== 1 || (expected && expected.date !== rows[0].date)) throw new InputError('Informe um único dia e seu valor anterior.');
+      const row = rows[0];
+      const values = [actor.empresaId, row.date, row.totalCents, row.mealsSold ?? null,
+        row.orderCount ?? null, row.deliveryMeals ?? null, row.dineInMeals ?? null];
+      const result = expected
+        ? await client.query(`UPDATE daily_revenue SET amount_cents=$3,meals_sold=$4,order_count=$5,
+            delivery_meals=$6,dine_in_meals=$7,demo_key=NULL,updated_at=clock_timestamp()
+            WHERE empresa_id=$1 AND date=$2 AND amount_cents=$8
+            AND meals_sold IS NOT DISTINCT FROM $9::integer AND order_count IS NOT DISTINCT FROM $10::integer
+            AND delivery_meals IS NOT DISTINCT FROM $11::integer AND dine_in_meals IS NOT DISTINCT FROM $12::integer`,
+          [...values, expected.totalCents, expected.mealsSold ?? null, expected.orderCount ?? null,
+            expected.deliveryMeals ?? null, expected.dineInMeals ?? null])
+        : await client.query(`INSERT INTO daily_revenue(empresa_id,date,amount_cents,meals_sold,order_count,delivery_meals,dine_in_meals)
+            VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (empresa_id,date) DO NOTHING`, values);
+      if (result.rowCount !== 1) throw new RevenueConflictError('O faturamento mudou. Atualize a página e selecione o dia novamente antes de salvar.');
+      return { saved: 1, skipped: 0 };
+    }
     const sorted = [...rows].sort((a, b) => a.date.localeCompare(b.date));
     const result = await client.query(
       `INSERT INTO daily_revenue (empresa_id,date,amount_cents,meals_sold,order_count,delivery_meals,dine_in_meals)
        SELECT $1,date,amount,meals,orders,delivery,dine_in FROM unnest($2::date[],$3::bigint[],$4::integer[],$5::integer[],$6::integer[],$7::integer[]) AS item(date,amount,meals,orders,delivery,dine_in)
-       ON CONFLICT (empresa_id,date) ${replace
-        ? 'DO UPDATE SET amount_cents=EXCLUDED.amount_cents,meals_sold=EXCLUDED.meals_sold,order_count=EXCLUDED.order_count,delivery_meals=EXCLUDED.delivery_meals,dine_in_meals=EXCLUDED.dine_in_meals,demo_key=NULL,updated_at=CURRENT_TIMESTAMP'
-        : 'DO NOTHING'}`,
+       ON CONFLICT (empresa_id,date) DO NOTHING`,
       [actor.empresaId, sorted.map(row => row.date), sorted.map(row => row.totalCents),
         sorted.map(row => row.mealsSold ?? null), sorted.map(row => row.orderCount ?? null),
         sorted.map(row => row.deliveryMeals ?? null), sorted.map(row => row.dineInMeals ?? null)]);

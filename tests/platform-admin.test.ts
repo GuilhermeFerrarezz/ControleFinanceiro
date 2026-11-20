@@ -77,7 +77,7 @@ test('admin exclusivo, cotas concorrentes e suspensão reversível', {timeout:18
     assert.equal((await change({action:'user',id:ownerId,ativo:false,expectedActive:true})).status,200);
     assert.equal((await send('/api/v1/private','GET',undefined,ownerCookie)).status,401);
     assert.equal((await post('/auth/login',{email:'owner@platform.example',senha:password})).status,401);
-    assert.equal((await post('/auth/reset-password',{token:reset,senha:'senha-nova-123'})).status,400);
+    assert.equal((await post('/auth/reset-password',{token:reset,senha:'senha-nova-longa-123'})).status,400);
     const missing=await post('/auth/forgot-password',{email:'missing@platform.example'});const blocked=await post('/auth/forgot-password',{email:'owner@platform.example'});assert.equal(blocked.status,200);assert.deepEqual(await missing.json(),await blocked.json());
     assert.equal((await query(storage,'SELECT id FROM auth_tokens WHERE user_id=$1',[ownerId])).length,0);
     assert.equal((await change({action:'user',id:ownerId,ativo:true,expectedActive:false})).status,200);
@@ -160,7 +160,7 @@ test('admin exclusivo, cotas concorrentes e suspensão reversível', {timeout:18
     for(const table of ['usuarios','refresh_tokens','auth_tokens','restaurant_members'])assert.equal((await query(storage,`SELECT id FROM ${table} WHERE ${table==='usuarios'?'id':'user_id'}=$1`,[id])).length,0);
     const [invitation]=await query(storage,'SELECT email,revoked_at FROM restaurant_invitations WHERE id=$1',[inviteId]);assert.notEqual(invitation.email,email);assert.ok(invitation.revoked_at);
     assert.equal((await send('/api/v1/private','GET',undefined,oldCookie)).status,401);
-    assert.equal((await post('/auth/reset-password',{token:reset,senha:'nova-senha-123'})).status,400);
+    assert.equal((await post('/auth/reset-password',{token:reset,senha:'nova-senha-longa-123'})).status,400);
     assert.equal((await post('/auth/login',{email,senha:password})).status,401);
     assert.equal((await remove(id)).status,404);
     const [audit]=await query<{actor_id:string;before:unknown;after:{mode:string}}>(storage,"SELECT actor_id,before,after FROM platform_audit WHERE target_id=$1 AND action='user_deleted'",[id]);assert.equal(audit.actor_id,adminId);assert.equal(audit.after.mode,'removed');assert.doesNotMatch(JSON.stringify(audit),/delete-empty/);

@@ -23,5 +23,8 @@ test('preserva banco local e limita o pool sem exibir credenciais em erros', () 
   const local = 'postgresql://example:example@localhost:5432/database?options=-c%20search_path%3Disolated';
   const options = databaseOptions(local);
   assert.equal(options.connectionString, local); assert.equal(options.max, 5);
+  // Neon PgBouncer rejects these in startup packets. Apply SET LOCAL instead.
+  assert.equal(options.statement_timeout, undefined);
+  assert.equal(options.lock_timeout, undefined);
   for (const invalid of ['password-secret', 'https://example:password-secret@host/database']) assert.throws(() => databaseOptions(invalid), error => error instanceof Error && !error.message.includes('password-secret'));
 });

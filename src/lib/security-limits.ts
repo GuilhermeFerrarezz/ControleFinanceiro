@@ -33,6 +33,18 @@ export async function limitAuthSource(request: Request, operation: 'login' | 're
 // Share capacity across route bundles and development reloads in this process.
 const runtime = globalThis as unknown as { financeSecurityLimits?: { passwords: number; exports: number } };
 const capacity = runtime.financeSecurityLimits ??= { passwords: 0, exports: 0 };
+const importRuntime = globalThis as unknown as { financeImportCapacity?: { active: number } };
+const imports = importRuntime.financeImportCapacity ??= { active: 0 };
+export async function withImportBudget<T>(userId: string, work: () => Promise<T>) {
+  if (imports.active >= 2) throw new SecurityLimitError('Importações ocupadas. Tente novamente em instantes.');
+  // Reserve before reading/parsing the payload or awaiting the distributed quota.
+  imports.active++;
+  try {
+    if (!await consumeLimit('imports:global', 120, 60_000) ||
+      !await consumeLimit(`imports:${userId}`, 30, 60_000)) throw new SecurityLimitError('Muitas importações. Aguarde um minuto.');
+    return await work();
+  } finally { imports.active--; }
+}
 export async function withPasswordBudget<T>(work: () => Promise<T>) {
   if (capacity.passwords >= 8) throw new SecurityLimitError('Autenticação ocupada. Tente novamente em instantes.');
   capacity.passwords++;

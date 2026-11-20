@@ -1,6 +1,8 @@
 -- PostgreSQL schema for a new database; this does not import SQLite data.
 -- Repositories use snake_case columns and must update updated_at on writes.
 BEGIN;
+SET LOCAL statement_timeout = '5min';
+SET LOCAL lock_timeout = '10s';
 
 CREATE TABLE IF NOT EXISTS schema_migrations (
     version TEXT PRIMARY KEY
@@ -47,6 +49,7 @@ CREATE TABLE IF NOT EXISTS platform_audit (
 );
 
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS tutorial_completed_at TIMESTAMPTZ;
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='usuarios'::regclass AND conname='usuarios_deleted_inactive') THEN
@@ -83,6 +86,7 @@ CREATE TABLE IF NOT EXISTS auth_rate_limits (
     -- Epoch milliseconds, matching the existing rate limiter.
     window_start BIGINT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS auth_rate_limits_expiration ON auth_rate_limits (window_start);
 
 CREATE TABLE IF NOT EXISTS restaurant_members (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

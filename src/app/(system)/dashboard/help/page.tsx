@@ -22,7 +22,7 @@ export default async function HelpPage() {
           <p>Aprenda a registrar, conferir e entender os números do seu restaurante.</p></div>
         <RestaurantSwitcher restaurants={await userRestaurants(user.id)} selected={user.empresaId} />
       </div>
-      <HelpCenter role={user.role === 'owner' ? 'owner' : 'employee'} />
+      <HelpCenter role={user.role === 'owner' ? 'owner' : 'employee'} platformAdmin={user.platformAdmin} />
     </main>
   </>;
 }

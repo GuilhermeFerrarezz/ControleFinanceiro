@@ -19,7 +19,11 @@ export async function createRefreshToken(token: string, userId: string, empresaI
     return true;
   });
 }
-export async function removeExpiredSessions() { await db.query('DELETE FROM refresh_tokens WHERE expires_at <= CURRENT_TIMESTAMP'); }
+export async function removeExpiredSessions() {
+  await db.query(`DELETE FROM refresh_tokens WHERE id IN (
+    SELECT id FROM refresh_tokens WHERE expires_at <= CURRENT_TIMESTAMP ORDER BY expires_at LIMIT 500
+  )`);
+}
 export async function deleteRefreshToken(token: string) { await db.query('DELETE FROM refresh_tokens WHERE token=$1', [token]); }
 export async function sessionIdentity(token: string) {
   return (await db.query<ISessionIdentity>(`SELECT u.id,u.nome,u.email,(u.email_verified_at IS NOT NULL) AS "emailVerified",s.empresa_id AS "empresaId",e.nome AS "empresaNome",m.role

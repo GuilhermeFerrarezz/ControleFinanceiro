@@ -2,6 +2,27 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { sendAuthEmail, authEmailLink } from '../src/lib/auth-email';
 
+test('produção rejeita sandbox em runtime e libera o corpo da resposta do provedor', async t => {
+  const keys = ['NODE_ENV', 'VERCEL_ENV', 'APP_ORIGIN', 'RESEND_API_KEY', 'RESEND_FROM_EMAIL', 'RESEND_SANDBOX_TO'];
+  const original = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  t.after(() => { for (const key of keys) { if (original[key] === undefined) delete process.env[key]; else process.env[key] = original[key]; } });
+  Object.assign(process.env, { NODE_ENV: 'production', VERCEL_ENV: 'production', APP_ORIGIN: 'https://app.example.com',
+    RESEND_API_KEY: 'fake-test-key', RESEND_FROM_EMAIL: 'Saldo <auth@example.com>', RESEND_SANDBOX_TO: 'sandbox@example.com' });
+  let cancelled = false;
+  let requests = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    requests++;
+    return new Response(new ReadableStream({ cancel() { cancelled = true; } }), { status: 422 });
+  });
+  const request = new Request('https://app.example.com');
+  await assert.rejects(sendAuthEmail('person@example.com', 'password_reset', 'a'.repeat(43), request), /Sandbox/);
+  assert.equal(requests, 0);
+  delete process.env.RESEND_SANDBOX_TO;
+  await assert.rejects(sendAuthEmail('person@example.com', 'password_reset', 'a'.repeat(43), request), /Falha no envio/);
+  assert.equal(requests, 1);
+  assert.equal(cancelled, true);
+});
+
 test('envio Resend e fallback local protegem o token e a origem do link', async t => {
   const keys = ['NODE_ENV', 'APP_ORIGIN', 'RESEND_API_KEY', 'RESEND_FROM_EMAIL', 'RESEND_SANDBOX_TO'];
   const original = Object.fromEntries(keys.map(key => [key, process.env[key]]));

@@ -6,7 +6,10 @@ import { db } from './db';
 export async function migrateDatabase(pool: Pool = db) {
   const sql = await readFile(new URL('../../schema.sql', import.meta.url), 'utf8');
   const client = await pool.connect();
-  try { await client.query(sql); }
+  try {
+    // schema.sql sets transaction-local DDL timeouts, compatible with pooling.
+    await client.query(sql);
+  }
   catch (error) { await client.query('ROLLBACK').catch(() => undefined); throw error; }
-  finally { client.release(); }
+  finally { client.release(true); }
 }
