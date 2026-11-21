@@ -44,6 +44,8 @@ jobs:
           set -euo pipefail
           umask 077
           echo 'Etapa 1/4 - Conferindo a configuração e a chave pública.'
+          AGE_RECIPIENT="$(printf '%s' "$AGE_RECIPIENT" | tr -d '[:space:]')"
+          AGE_RECIPIENT="${AGE_RECIPIENT#\#publickey:}"
           if [[ -z "$PGDATABASE" || -z "$AGE_RECIPIENT" ]]; then
             echo 'Configure o secret BACKUP_DATABASE_URL e a variável BACKUP_AGE_RECIPIENT em Settings > Secrets and variables > Actions.' >&2
             exit 1
@@ -62,7 +64,8 @@ jobs:
           trap cleanup EXIT
           # Verify the public recipient before connecting or exporting private data.
           if ! age -r "$AGE_RECIPIENT" -o "$diagnostics/key-check.age" </dev/null 2>"$diagnostics/age"; then
-            echo 'Chave pública inválida. Em Actions > Variables, salve em BACKUP_AGE_RECIPIENT somente a chave age1..., sem aspas, prefixo ou chave privada.' >&2
+            printf 'O job recebeu uma chave inválida (início: %.5s, tamanho: %s caracteres). Confira BACKUP_AGE_RECIPIENT em Settings > Secrets and variables > Actions > Variables.\n' "${AGE_RECIPIENT:0:5}" "${#AGE_RECIPIENT}" >&2
+            echo 'O valor deve ser a chave age1... completa, sem aspas. Se o erro persistir, edite e salve a variável novamente.' >&2
             exit 1
           fi
           echo 'Etapa 2/4 - Conectando ao Neon e conferindo a versão.'
